@@ -5,6 +5,7 @@ import { registerCreate } from './create.js';
 import { registerSend } from './send.js';
 import { registerState } from './state.js';
 import { registerWait } from './wait.js';
+import { registerStop } from './stop.js';
 import { registerStyle } from './style.js';
 import { registerInteraction } from './interaction.js';
 import { registerPlugin } from './plugin.js';
@@ -16,6 +17,7 @@ export function registerChat(program: Command, context: CommandContext): void {
   registerSend(chat, context);
   registerState(chat, context);
   registerWait(chat, context);
+  registerStop(chat, context);
   registerStyle(chat, context);
   registerInteraction(chat, context);
   registerPlugin(chat, context);

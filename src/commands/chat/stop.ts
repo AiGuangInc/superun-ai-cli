@@ -5,8 +5,8 @@ import { object, text } from '../../contracts/value.js';
 import type { CommandContext } from '../shared.js';
 import { runtime, businessWrite } from '../shared.js';
 
-export function registerStop(session: Command, context: CommandContext): void {
-  session
+export function registerStop(chat: Command, context: CommandContext): void {
+  chat
     .command('stop <sessionId>')
     .description('停止远端任务')
     .option('--message-id <messageId>', '指定任务消息')

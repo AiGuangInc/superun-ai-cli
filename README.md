@@ -53,10 +53,10 @@ superun-create chat create --message "为咖啡店制作一个活动网站"
 superun-create chat send <sessionId> --message "增加会员权益介绍"
 superun-create chat state <sessionId>
 superun-create chat wait <sessionId> --timeout 120
-superun-create session stop <sessionId>
+superun-create chat stop <sessionId>
 ```
 
-写命令支持 `--no-wait`：请求被接受后立即返回。`chat wait` 等待到需要输入、需要选择或任务结束；达到本地等待时限后返回当前状态和 `waitTimedOut: true`，可以继续查询。按 Ctrl+C 只结束本地等待；远端停止需要显式执行 `session stop`。
+写命令支持 `--no-wait`：请求被接受后立即返回。`chat wait` 等待到需要输入、需要选择或任务结束；达到本地等待时限后返回当前状态和 `waitTimedOut: true`，可以继续查询。按 Ctrl+C 只结束本地等待；远端停止需要显式执行 `chat stop`。
 
 全局参数：`--env prod|pre` 选择正式或预发布环境，默认使用正式环境；`--endpoint <URL>` 指定 API 地址，`--locale <language>` 指定响应语言。远端连接使用 HTTPS，本机调试允许 localhost 的 HTTP 地址。
 
@@ -178,11 +178,10 @@ src/commands/  # 按命令域分包，只负责命令注册、输入校验和操
 │   ├── login.ts  # 接收并保存 PAT
 │   ├── status.ts  # 查看本地 PAT 配置状态
 │   └── logout.ts  # 清除本地 PAT
-├── session/  # session：项目查询和管理
-│   ├── index.ts  # 注册 list、get、stop
+├── session/  # session：项目查询
+│   ├── index.ts  # 注册 list、get
 │   ├── list.ts  # 项目列表、筛选与分页
-│   ├── get.ts  # 项目详情与可见附件
-│   └── stop.ts  # 停止远端任务
+│   └── get.ts  # 项目详情与可见附件
 ├── chat/  # chat：对话创作及其子流程
 │   ├── index.ts  # 注册创作命令与 style、interaction、plugin、publish
 │   ├── create.ts  # 新建项目并发送需求
@@ -190,6 +189,7 @@ src/commands/  # 按命令域分包，只负责命令注册、输入校验和操
 │   ├── message.ts  # create/send 共用的输入校验、附件上传和消息发送
 │   ├── state.ts  # 查询当前任务、交互与指定附件
 │   ├── wait.ts  # 等待交互或任务结果
+│   ├── stop.ts  # 停止远端任务
 │   ├── style.ts  # chat style：风格生成、查询、选择与重试
 │   ├── interaction.ts  # chat interaction：提交或跳过当前交互
 │   ├── plugin.ts  # chat plugin：插件查询、启用与禁用
