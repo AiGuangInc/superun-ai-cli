@@ -68,7 +68,8 @@ export async function sendMessage(
       ...(create
         ? {
             sessionExtra: {
-              agentRuntime: create.runtime,
+              // 新建项目直接进入 Stage 1（构想阶段）。
+              agentRuntime: 'glow',
               hasSlidesIntent: create.slides ? '1' : '0',
               hasClarifiedPrd: '0',
               generatedByBranch: '1',
@@ -76,7 +77,6 @@ export async function sendMessage(
             },
             roundExtra: {
               ROUND_LANGUAGE: create.language,
-              ...(create.runtime === 'shire' ? { stage0Intro: 'true' } : {}),
             },
           }
         : {}),
