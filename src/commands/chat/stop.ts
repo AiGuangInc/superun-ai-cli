@@ -17,6 +17,6 @@ export function registerStop(chat: Command, context: CommandContext): void {
       await businessWrite(context, service, sessionId, () =>
         service.command.stop(sessionId, options.scope === 'all' ? 'all' : 'own', text(options.messageId)),
       );
-      context.output.write({ state: 'CANCELLED', sessionId });
+      context.output.write({ state: 'COMPLETED', sessionId });
     });
 }
