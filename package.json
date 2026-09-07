@@ -1,0 +1,42 @@
+{
+  "name": "superun-creation-cli",
+  "version": "0.1.0",
+  "description": "Superun 命令行工具，支持项目管理、对话创作、交互问答和应用发布",
+  "author": "xiuyu.yi",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "superun-create": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/cli.js",
+    "dev": "npm run build --silent && node dist/development.js",
+    "format": "prettier --write src package.json tsconfig.json",
+    "format:check": "prettier --check src package.json tsconfig.json",
+    "prepack": "npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "commander": "14.0.0",
+    "semver": "7.7.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/semver": "^7.7.0",
+    "prettier": "^3.6.2",
+    "typescript": "5.9.3"
+  }
+}
