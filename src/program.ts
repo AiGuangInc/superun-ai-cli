@@ -20,7 +20,7 @@ export function createProgram(
     .name(COMMAND_NAME)
     .description('superun-ai 项目管理、对话创作和应用发布')
     .version(PACKAGE_VERSION)
-    .addOption(new Option('--env <environment>', '目标环境，默认 prod').choices(['prod', 'pre']))
+    .addOption(new Option('--env <environment>', '目标环境，默认 prod').choices(['prod', 'pre']).hideHelp())
     .option('--endpoint <URL>', 'API 地址')
     .option('--locale <language>', '回复语言', 'zh-CN')
     .exitOverride()

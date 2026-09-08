@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { RuntimeConfig } from '../config/runtime-config.js';
-import { PRE_ENDPOINT } from '../config/constants.js';
+import { DEFAULT_ENDPOINT } from '../config/constants.js';
 import { CliError } from '../output/exit-codes.js';
 import type { OutputWriter } from '../output/writer.js';
 import { ApiClient } from '../transport/api-client.js';
@@ -44,11 +44,10 @@ export async function ensurePat(options: {
       'AUTH_REQUIRED',
       '未配置 PAT，请执行 superun-ai auth login；脚本中请设置 SUPERUN_PAT 或使用 auth login --stdin',
     );
-  if (config.endpoint === PRE_ENDPOINT && !config.gatewayToken)
-    throw new CliError('AUTH_REQUIRED', '预发布环境需要 PRIVATE_TOKEN 网关凭据');
-
+  // 认证统一使用 Superun 站点，业务地址不影响登录与凭据签发。
+  const loginConfig = { ...config, endpoint: DEFAULT_ENDPOINT, gatewayToken: undefined };
   const uuid = randomUUID();
-  const loginUrl = new URL('/web/cli-token-callback', config.endpoint);
+  const loginUrl = new URL('/web/cli-token-callback', loginConfig.endpoint);
   loginUrl.searchParams.set('uuid', uuid);
   const timeout = AbortSignal.timeout(300_000);
   const signal = AbortSignal.any([commandSignal, timeout]);
@@ -56,7 +55,7 @@ export async function ensurePat(options: {
     signal.throwIfAborted();
     output.log(`请在浏览器完成 Superun 登录：${loginUrl.href}`);
     if (!(await openBrowser(loginUrl.href, signal))) output.log('未能自动打开浏览器，请手动打开上面的地址。');
-    const anonymousClient = new ApiClient(config, '', undefined, signal);
+    const anonymousClient = new ApiClient(loginConfig, '', undefined, signal);
     while (true) {
       signal.throwIfAborted();
       // 领取接口会删除已返回的 Token，因此按写请求处理，禁止自动重试。
@@ -71,7 +70,7 @@ export async function ensurePat(options: {
       }
       if (typeof token !== 'string') throw new CliError('PROTOCOL_ERROR', '网页登录未返回有效 Token');
       output.registerSecret(token);
-      const client = new ApiClient(config, token, undefined, signal);
+      const client = new ApiClient(loginConfig, token, undefined, signal);
       const issued = await client.call('/api/uxa-center/support/PersonalAccessToken/create', {}, true);
       if (typeof issued !== 'string') throw new CliError('PROTOCOL_ERROR', '未取得有效 PAT');
       output.registerSecret(issued);

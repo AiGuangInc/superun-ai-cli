@@ -118,7 +118,7 @@ superun-ai chat stop <sessionId>
 
 写命令支持 `--no-wait`：请求被接受后立即返回。`chat wait` 等待到需要输入、需要选择或任务结束；达到本地等待时限后返回当前状态和 `waitTimedOut: true`，可以继续查询。按 Ctrl+C 只结束本地等待；远端停止需要显式执行 `chat stop`。
 
-默认连接正式环境。全局参数 `--endpoint <URL>` 可指定 API 地址，`--locale <language>` 可指定响应语言。
+默认连接 Superun 服务。全局参数 `--endpoint <URL>` 可指定 API 地址，`--locale <language>` 可指定响应语言。
 
 ## 回答交互
 
