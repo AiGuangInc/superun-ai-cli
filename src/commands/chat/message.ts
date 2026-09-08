@@ -70,7 +70,7 @@ export async function sendMessage(
             sessionExtra: {
               // 新建项目直接进入 Stage 1（构想阶段）。
               agentRuntime: 'glow',
-              hasSlidesIntent: create.slides ? '1' : '0',
+              hasSlidesIntent: '0',
               hasClarifiedPrd: '0',
               generatedByBranch: '1',
               version: '6',
