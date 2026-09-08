@@ -8,12 +8,14 @@ import { currentRound, roundMessage } from './round-selector.js';
 import { pendingAutomaticTools } from '../auto-tools/registry.js';
 import { replyReadLogs } from '../auto-tools/read-logs.js';
 import { CliError } from '../output/exit-codes.js';
+import type { StyleWaitTarget } from '../interactions/parsers/style-selection.js';
 
 export type WaitOptions = {
   timeout?: number;
   interval?: number;
   messageId?: string;
   submittedInteractionId?: string;
+  styleTarget?: StyleWaitTarget;
 };
 
 export function applySnapshot(view: SessionView, pipeline: NodePipeline): SessionView {
@@ -68,13 +70,14 @@ export class SessionWaiter {
       conversation: ConversationApi;
       command: AgentCommandApi;
       load: (sessionId: string) => Promise<SessionView>;
-      inspect: (view: SessionView) => Promise<CreationResult>;
+      inspect: (view: SessionView, styleTarget?: StyleWaitTarget) => Promise<CreationResult>;
       signal?: AbortSignal;
     },
   ) {}
 
   async wait(sessionId: string, options: WaitOptions = {}): Promise<CreationResult> {
-    const deadline = Date.now() + (options.timeout ?? 1800) * 1000;
+    const deadline =
+      options.timeout === undefined ? Number.POSITIVE_INFINITY : Date.now() + options.timeout * 1000;
     let view = await this.dependencies.load(sessionId),
       lastRefresh = Date.now();
     let etag: string | undefined,
@@ -96,7 +99,7 @@ export class SessionWaiter {
           view = await this.dependencies.load(sessionId);
         }
       }
-      let result = await this.dependencies.inspect(view);
+      let result = await this.dependencies.inspect(view, options.styleTarget);
       const suppressSubmitted = (value: CreationResult): CreationResult => {
         if (!options.submittedInteractionId || value.state !== 'NEEDS_INPUT') return value;
         const interactions = value.interactions.filter(
@@ -108,7 +111,7 @@ export class SessionWaiter {
       if (!['RUNNING', 'QUEUED'].includes(result.state)) {
         // 终态和交互退出前重读全量，防止快照漏掉新轮或服务端刚完成的交接。
         view = await this.dependencies.load(sessionId);
-        result = suppressSubmitted(await this.dependencies.inspect(view));
+        result = suppressSubmitted(await this.dependencies.inspect(view, options.styleTarget));
       }
       for (const item of result.messages) messages.set(item.id, item);
       for (const item of result.progress) progress.set(item.id, item);
@@ -147,7 +150,12 @@ export class SessionWaiter {
         target = latestMessage;
         etag = undefined;
       }
-      if (!target || view.session.pendingBranch || Date.now() - lastRefresh >= 10_000) {
+      if (
+        !target ||
+        options.styleTarget ||
+        view.session.pendingBranch ||
+        Date.now() - lastRefresh >= 10_000
+      ) {
         view = await this.dependencies.load(sessionId);
         lastRefresh = Date.now();
         etag = undefined;

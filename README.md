@@ -1,80 +1,108 @@
-# Superun CLI
+# superun-ai-cli
 
-Superun 命令行工具，支持项目管理、对话创作、交互问答、插件管理和应用发布。人和自动化程序使用同一组命令；业务结果以 JSON 输出。
+superun-ai-cli 命令行工具，支持项目管理、对话创作、交互问答、插件管理和应用发布。人和自动化程序使用同一组命令；业务结果以 JSON 输出。
 
-## 安装与本地运行
+## 安装
 
 需要 Node.js 22 或更新版本，以及 npm。
 
+> 当前版本尚未正式发布，以下为正式发布后的安装与使用方式。
+
 ```bash
-npm install
-npm run build
-npm start -- --help
+npm install -g superun-ai-cli
+superun-ai --help
 ```
 
-当前为尚未发布的开发版本。源码调试使用 `npm run dev -- <命令>`；该入口只在 `package.json` 标记为私有开发包时可用。正式入口会在业务操作前检查并运行指定版本。
+`-g` 表示全局安装。安装会下载运行所需的程序和依赖，无需下载源码仓库或自行编译。全局命令目录在 `PATH` 中时，可以在任意目录使用 `superun-ai`。
+
+安装包名为 `superun-ai-cli`，使用时的命令名为 `superun-ai`。
+
+## 命令树
+
+下面列出完整命令层级、位置参数和用途。`<...>` 表示需要替换的必填位置参数；选项参数及其要求可通过各命令的 `--help` 查看。
+
+```text
+superun-ai
+├── auth                                         # 管理 PAT 登录
+│   ├── login                                    # 配置本地 PAT
+│   ├── status                                   # 查看本地 PAT 配置状态
+│   └── logout                                   # 清除本地 PAT
+├── session                                      # 查询项目
+│   ├── list                                     # 查询项目列表
+│   └── get <sessionId>                          # 查询项目详情
+├── chat                                         # 对话创作
+│   ├── create                                   # 新建项目并发送需求
+│   ├── send <sessionId>                         # 继续项目创作
+│   ├── state <sessionId>                        # 查询当前任务和交互
+│   ├── wait <sessionId>                         # 等待当前交互或任务结果
+│   ├── stop <sessionId>                         # 停止远端任务
+│   ├── style                                    # 管理创作风格
+│   │   ├── generate <sessionId>                 # 生成风格候选
+│   │   ├── list <sessionId>                     # 查询全部风格批次
+│   │   ├── select <sessionId> <choiceId>        # 选择已完成的风格
+│   │   └── retry <sessionId> <choiceId>         # 重试失败风格
+│   ├── demo <sessionId>                         # 查看演示快照并记录已查看状态
+│   ├── develop <sessionId>                      # 保留演示，进入研发并生成规划
+│   ├── interaction                              # 回答或跳过交互
+│   │   ├── reply <sessionId> <interactionId>    # 提交回答
+│   │   └── skip <sessionId> <interactionId>     # 跳过当前交互
+│   ├── plugin                                   # 查询、启用和禁用插件
+│   │   ├── list <sessionId>                     # 查询可用插件
+│   │   ├── status <sessionId> <pluginId>        # 查询插件状态
+│   │   ├── enable <sessionId> <pluginId>        # 启用插件
+│   │   └── disable <sessionId> <pluginId>       # 禁用插件
+│   └── publish                                  # 发布应用和管理站点状态
+│       ├── status <sessionId>                   # 查询发布版本与部署进度
+│       ├── start <sessionId> <encryptedId>      # 发布指定版本
+│       └── visibility <sessionId> <visibility>  # 设置站点上线或下线状态
+├── update                                       # 检查并安装指定版本
+└── version                                      # 显示本地版本与输出协议版本
+```
+
+查看某一组命令或具体命令的帮助：
+
+```bash
+superun-ai chat --help
+superun-ai chat style generate --help
+```
 
 ## PAT 登录
 
 ```bash
-npm run dev -- auth login --pat
-npm run dev -- auth status
-npm run dev -- auth logout
+superun-ai auth login --pat
+superun-ai auth status
+superun-ai auth logout
 ```
 
-`auth login --pat` 在终端隐藏读取现有 PAT，即使已设置 `SUPERUN_PAT` 也会要求重新输入。`--pat` 是输入方式开关，后面不能直接跟 PAT 明文，并且不能与 `--stdin` 同时使用。当前不带选项的 `auth login` 仍兼容原有行为：优先读取环境变量，否则隐藏读取 PAT；网页创建入口尚未实现。
+`auth login --pat` 在终端隐藏读取现有 PAT，即使已设置 `SUPERUN_PAT` 也会要求重新输入。`--pat` 是输入方式开关，后面不能直接跟 PAT 明文，并且不能与 `--stdin` 同时使用。不带选项的 `auth login` 优先读取环境变量，否则隐藏读取 PAT；网页创建入口尚未实现。
 
 自动化环境可以设置 `SUPERUN_PAT`，也可以通过标准输入登录：
 
 ```bash
-printf '%s\n' "$SUPERUN_PAT" | npm run dev -- auth login --stdin
+printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
 ```
 
-凭据优先级为 `SUPERUN_PAT` 环境变量，其次是 `~/.config/superun-creation-cli/credentials.json`。文件权限为 `0600`；退出登录只清除本地保存的凭据，不撤销服务端 PAT。请勿将 PAT 写进命令行参数、仓库或日志。
+凭据优先级为 `SUPERUN_PAT` 环境变量，其次是 `~/.config/superun-ai-cli/credentials.json`。文件权限为 `0600`；退出登录只清除本地保存的凭据，不撤销服务端 PAT。请勿将 PAT 写进命令行参数、仓库或日志。
 
-### 统一执行流程
-
-业务命令遵循同一流程：**解析命令 → 检查版本 → 读取 PAT → 直接调用业务接口 → 输出结果**。所有业务命令都必须提供 PAT；缺失或格式错误在本地拦截，有效性和资源权限由实际业务请求的服务端鉴权决定。
-
-CLI 不额外调用用户资料接口，也不发送用于探测登录状态的 Session 查询。例如，`session list` 只按用户传入的筛选和分页参数请求一次列表接口。命令内的多个请求共用凭据和连接，每个实际 API 请求仍由服务端鉴权。
-
-`auth login` 只检查 PAT 格式并按输入方式保存；`auth status` 只检查本地凭据配置。两者返回 `CONFIGURED` 与 `credentialSource`，表示本地已配置凭据，不代表服务端已经接受 PAT，也不返回用户资料。PAT 过期、禁用等问题会在实际业务请求时返回 `AUTH_REQUIRED`。这两个命令不调用业务接口，发行入口原有的版本检查保持不变。
+`auth login` 保存 PAT，`auth status` 查看本地凭据配置。返回 `CONFIGURED` 表示本地已配置凭据；PAT 是否有效、是否有权访问项目，会在实际业务请求时校验。PAT 过期、禁用等问题会返回 `AUTH_REQUIRED`。
 
 帮助、`version`、`update` 和清除本地凭据的 `auth logout` 不要求已有 PAT。提供 `SUPERUN_PAT` 即可直接调用业务命令，无需重复执行登录命令。
 
 ## 常用命令
 
-以下使用正式命令名 `superun-create`。源码调试时，将它替换为 `npm run dev --`。
-
 ```bash
-superun-create session list --limit 20
-superun-create session get <sessionId>
-superun-create chat create --message "为咖啡店制作一个活动网站"
-superun-create chat send <sessionId> --message "增加会员权益介绍"
-superun-create chat state <sessionId>
-superun-create chat wait <sessionId> --timeout 120
-superun-create chat stop <sessionId>
+superun-ai session list --limit 20
+superun-ai session get <sessionId>
+superun-ai chat create --message "为咖啡店制作一个活动网站"
+superun-ai chat send <sessionId> --message "增加会员权益介绍"
+superun-ai chat state <sessionId>
+superun-ai chat wait <sessionId> --timeout 120
+superun-ai chat stop <sessionId>
 ```
 
 写命令支持 `--no-wait`：请求被接受后立即返回。`chat wait` 等待到需要输入、需要选择或任务结束；达到本地等待时限后返回当前状态和 `waitTimedOut: true`，可以继续查询。按 Ctrl+C 只结束本地等待；远端停止需要显式执行 `chat stop`。
 
-全局参数：`--env prod|pre` 选择正式或预发布环境，默认使用正式环境；`--endpoint <URL>` 指定 API 地址，`--locale <language>` 指定响应语言。远端连接使用 HTTPS，本机调试允许 localhost 的 HTTP 地址。
-
-### 环境切换
-
-```bash
-# 源码调试：使用预发布环境验证登录并查询项目
-npm run --silent dev -- --env pre auth status
-npm run --silent dev -- --env pre session list --limit 5
-
-# 正式命令同样支持切换环境
-superun-create --env pre session list
-superun-create --env prod session list
-```
-
-也可以设置 `SUPERUN_ENV=pre`。地址优先级为：`--endpoint` → `--env` → `SUPERUN_ENDPOINT` → `SUPERUN_ENV` → 默认正式环境，因此显式传入 `--env pre` 会覆盖环境变量中的默认地址。
-
-预发布环境需要额外的网关访问凭据 `PRIVATE_TOKEN`，它只通过 `PRIVATE-TOKEN` 请求头发送到预发布 API 地址，不会保存到凭据文件、输出到日志或发送到正式/自定义地址。`SUPERUN_PAT` 则用于业务登录，两者不能互换。
+默认连接正式环境。全局参数 `--endpoint <URL>` 可指定 API 地址，`--locale <language>` 可指定响应语言。
 
 ## 回答交互
 
@@ -90,11 +118,11 @@ superun-create --env prod session list
 ```
 
 ```bash
-superun-create chat interaction reply <sessionId> <interactionId> --input ./answer.json
-superun-create chat interaction skip <sessionId> <interactionId>
+superun-ai chat interaction reply <sessionId> <interactionId> --input ./answer.json
+superun-ai chat interaction skip <sessionId> <interactionId>
 ```
 
-选择下标从 `0` 开始。只有交互声明支持 `SKIP` 时才可跳过。需求问卷使用 `REFINE` 或 `GENERATE_STYLES`；阶段交接、数据库变更确认等交互应使用各自返回的动作，不能统一发送 `SUBMIT`。
+选择下标从 `0` 开始。只有交互声明支持 `SKIP` 时才可跳过。需求问卷答齐后直接生成风格，`action` 可省略或填写 `GENERATE_STYLES`；上面的 `SUBMIT` 示例适用于普通问答。阶段交接、数据库变更确认等交互应使用各自返回的动作。
 
 密钥输入使用 `{"values":{"请求的键名":"密钥值"}}`，只提交当前交互要求的键；内容不会回显。过期或存在歧义的交互会被拒绝，请重新查询状态。
 
@@ -105,20 +133,20 @@ superun-create chat interaction skip <sessionId> <interactionId>
 交互、风格、插件和发布均归属对话创作，统一使用 `chat interaction`、`chat style`、`chat plugin` 和 `chat publish`，不提供对应顶层入口。
 
 ```bash
-superun-create chat style generate <sessionId> --content "生成简洁的品牌风格" --count 2
-superun-create chat style list <sessionId>
-superun-create chat style select <sessionId> <choiceId>
-superun-create chat style retry <sessionId> <choiceId>
+superun-ai chat style generate <sessionId> --content "生成简洁的品牌风格" --count 2
+superun-ai chat style list <sessionId>
+superun-ai chat style select <sessionId> <choiceId>
+superun-ai chat style retry <sessionId> <choiceId>
 
-superun-create chat plugin list <sessionId>
-superun-create chat plugin status <sessionId> <pluginId>
-superun-create chat plugin enable <sessionId> <pluginId>
-superun-create chat plugin disable <sessionId> <pluginId>
+superun-ai chat plugin list <sessionId>
+superun-ai chat plugin status <sessionId> <pluginId>
+superun-ai chat plugin enable <sessionId> <pluginId>
+superun-ai chat plugin disable <sessionId> <pluginId>
 
-superun-create chat publish status <sessionId>
-superun-create chat publish start <sessionId> <encryptedId>
-superun-create chat publish visibility <sessionId> public
-superun-create chat publish visibility <sessionId> private
+superun-ai chat publish status <sessionId>
+superun-ai chat publish start <sessionId> <encryptedId>
+superun-ai chat publish visibility <sessionId> public
+superun-ai chat publish visibility <sessionId> private
 ```
 
 风格默认生成 2 个，支持 1～4 个；使用查询结果中的 `choiceId`。发布使用查询结果中的 `encryptedId`，按目标版本跟踪部署状态。插件 ID 以 `chat plugin list` 返回值为准。
@@ -165,50 +193,15 @@ superun-create chat publish visibility <sessionId> private
 
 ## 更新
 
-正式入口每次执行业务命令都会校验发布渠道指定版本。需要更新时安装到用户目录的独立版本缓存，校验完成后再运行原命令；不会覆盖正在执行的全局安装。更新或校验失败时不发送业务请求。`help`、`version` 和 `auth logout` 可离线使用。
-
-## 命令分包
-
-命令按领域组织，`index.ts` 负责注册该领域的子命令，具体操作放在各自文件中。共用消息流程只供创建和续写复用；跨命令认证保持统一入口。
-
-```text
-src/commands/  # 按命令域分包，只负责命令注册、输入校验和操作编排
-├── auth/  # auth：PAT 登录管理
-│   ├── index.ts  # 注册 login、status、logout
-│   ├── login.ts  # 接收并保存 PAT
-│   ├── status.ts  # 查看本地 PAT 配置状态
-│   └── logout.ts  # 清除本地 PAT
-├── session/  # session：项目查询
-│   ├── index.ts  # 注册 list、get
-│   ├── list.ts  # 项目列表、筛选与分页
-│   └── get.ts  # 项目详情与可见附件
-├── chat/  # chat：对话创作及其子流程
-│   ├── index.ts  # 注册创作命令与 style、interaction、plugin、publish
-│   ├── create.ts  # 新建项目并发送需求
-│   ├── send.ts  # 继续项目创作
-│   ├── message.ts  # create/send 共用的输入校验、附件上传和消息发送
-│   ├── state.ts  # 查询当前任务、交互与指定附件
-│   ├── wait.ts  # 等待交互或任务结果
-│   ├── stop.ts  # 停止远端任务
-│   ├── style.ts  # chat style：风格生成、查询、选择与重试
-│   ├── interaction.ts  # chat interaction：提交或跳过当前交互
-│   ├── plugin.ts  # chat plugin：插件查询、启用与禁用
-│   └── publish.ts  # chat publish：版本发布、进度查询与站点上下线
-├── system/  # 根级工具命令，不额外引入 system 命令层级
-│   ├── update.ts  # 安装当前发布渠道指定的版本
-│   └── version.ts  # 显示本地版本与输出协议版本
-└── shared.ts  # 跨命令共用的凭据和连接上下文、输入读取与等待辅助
-```
-
-## 开发检查
+CLI 会在执行业务命令前检查版本，需要更新时自动安装指定版本后继续执行。更新或校验失败时会停止执行，请根据错误提示处理后重试。帮助、`version` 和 `auth logout` 可离线使用。
 
 ```bash
-npm run typecheck
-npm run format:check
-npm run build
-npm pack --dry-run
+superun-ai version
+superun-ai update
 ```
 
-发布前需要确定正式包名、Registry 和开源许可证，并完成目标环境的契约验证。当前仓库不包含访问凭据。
+## 卸载
 
-- [ ] 推送仓库前提醒维护者移除预发布调试入口及专用网关凭据支持。
+```bash
+npm uninstall -g superun-ai-cli
+```

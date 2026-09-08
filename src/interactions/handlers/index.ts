@@ -42,8 +42,14 @@ export async function dispatchReply(context: ReplyContext): Promise<Record<strin
   };
   if (Object.keys(context.input).some((key) => !fields[context.binding.interaction.kind].includes(key)))
     throw new CliError('INVALID_ARGUMENT', '回答包含当前交互不支持的字段');
-  const action =
-    context.input.action ?? (context.binding.interaction.actions.includes('SUBMIT') ? 'SUBMIT' : undefined);
+  // 需求问卷答完直接生成风格；其他交互仍保留各自的确认语义。
+  const defaultAction =
+    context.binding.interaction.kind === 'PRD_CLARIFICATION'
+      ? 'GENERATE_STYLES'
+      : context.binding.interaction.actions.includes('SUBMIT')
+        ? 'SUBMIT'
+        : undefined;
+  const action = context.input.action ?? defaultAction;
   if (typeof action !== 'string' || !context.binding.interaction.actions.includes(action))
     throw new CliError('INVALID_ARGUMENT', 'action 不在当前交互允许的动作中');
   return handlers[context.binding.interaction.kind]({ ...context, input: { ...context.input, action } });

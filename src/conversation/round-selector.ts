@@ -11,10 +11,11 @@ export function currentRound(view: SessionView, messageId?: string): NodeRound |
     );
     if (found) return found;
   }
-  return rounds
-    .filter((round) => !round.meta?.consult && !round.meta?.passive && !round.meta?.subAgentReport)
-    .sort((a, b) => a.time.timestamp - b.time.timestamp)
-    .at(-1);
+  const active = rounds
+    .filter((round) => !round.meta?.consult && !round.meta?.passive)
+    .sort((a, b) => a.time.timestamp - b.time.timestamp);
+  // 最近窗口可能只剩主任务处理子任务回执的轮次；不能把真正的收尾轮全部过滤掉。
+  return active.filter((round) => !round.meta?.subAgentReport).at(-1) ?? active.at(-1);
 }
 
 export function roundMessage(view: SessionView, round?: NodeRound): NodeMessage | undefined {

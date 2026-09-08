@@ -12,6 +12,13 @@ export class AgentQueryApi {
   async extra(sessionId: string): Promise<JsonObject> {
     return object(await this.client.call(`${PREFIX}/querySessionExtra`, { sessionId }));
   }
+  async snapshots(sessionId: string): Promise<unknown> {
+    return this.client.call('/api/uxa-center/agent/SessionSnapshot/pageQuerySessionSnapshotHistory', {
+      sessionId,
+      page: 1,
+      pageSize: 50,
+    });
+  }
   async parallel(sessionId: string, preReplyMessageId: string): Promise<JsonObject> {
     return object(
       await this.client.call(`${PREFIX}/queryAllParallelInfos`, { sessionId, preReplyMessageId }),

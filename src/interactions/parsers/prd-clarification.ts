@@ -13,7 +13,13 @@ export const parsePrd: InteractionParser = (context) => {
   }));
   return bind(context, 'PRD_CLARIFICATION', {
     questions,
-    actions: ['REFINE', 'GENERATE_STYLES'],
-    schema: ANSWER_JSON_SCHEMA,
+    actions: ['GENERATE_STYLES'],
+    schema: {
+      ...ANSWER_JSON_SCHEMA,
+      properties: {
+        ...ANSWER_JSON_SCHEMA.properties,
+        action: { type: 'string', enum: ['GENERATE_STYLES'], default: 'GENERATE_STYLES' },
+      },
+    },
   });
 };

@@ -3,11 +3,11 @@ import { chmod, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/pro
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { PAT_PREFIX } from '../config/constants.js';
+import { PACKAGE_NAME, PAT_PREFIX } from '../config/constants.js';
 import { CliError } from '../output/exit-codes.js';
 import { object, text } from '../contracts/value.js';
 
-export const CREDENTIAL_DIRECTORY = join(homedir(), '.config', 'superun-creation-cli');
+export const CREDENTIAL_DIRECTORY = join(homedir(), '.config', PACKAGE_NAME);
 
 export function validatePat(value: string): string {
   const pat = value.trim();

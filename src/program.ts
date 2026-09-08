@@ -18,7 +18,7 @@ export function createProgram(
 ): Command {
   const program = new Command()
     .name(COMMAND_NAME)
-    .description('Superun 项目管理、对话创作和应用发布')
+    .description('superun-ai 项目管理、对话创作和应用发布')
     .version(PACKAGE_VERSION)
     .addOption(new Option('--env <environment>', '目标环境，默认 prod').choices(['prod', 'pre']))
     .option('--endpoint <URL>', 'API 地址')

@@ -6,14 +6,45 @@ import { currentRound, roundMessage } from './round-selector.js';
 import { projectText } from './text-projector.js';
 import { pendingAutomaticTools, hasServerAutomaticWork } from '../auto-tools/registry.js';
 import { CliError } from '../output/exit-codes.js';
+import { enabled } from '../contracts/value.js';
+import {
+  isStyleSelected,
+  latestStyleChoices,
+  styleBatchState,
+} from '../interactions/parsers/style-selection.js';
+import type { StyleWaitTarget } from '../interactions/parsers/style-selection.js';
+
+/** 统一判断自动任务是否仍在进行，避免未选功能打断当前创作。 */
+export function hasPendingCreationWork(view: SessionView): boolean {
+  if (view.automaticWork || pendingAutomaticTools(view).length || hasServerAutomaticWork(view)) return true;
+  const round = currentRound(view),
+    message = roundMessage(view, round);
+  // 回执窗口可能没有工作卡，仍需核对已选功能的完成状态。
+  return (
+    view.session.status === 3 &&
+    round?.status === 'completed' &&
+    enabled(message?.roundExtra?.startDevelopment) &&
+    view.features?.some(
+      (feature) =>
+        enabled(feature.checked) &&
+        typeof feature.status === 'string' &&
+        !['completed', 'cancelled', 'skipped'].includes(feature.status),
+    ) === true
+  );
+}
 
 export function resolveState(
   view: SessionView,
   bindings: Array<InteractionBinding>,
   choices: Array<Choice> = [],
+  styleTarget?: StyleWaitTarget,
 ): CreationResult {
   const round = currentRound(view),
     message = roundMessage(view, round);
+  const waitingForStyles = !!styleTarget || (!!view.session.pendingBranch && !isStyleSelected(view, choices));
+  const currentChoices = styleTarget
+    ? choices.filter((choice) => styleTarget.choiceIds.includes(choice.choiceId))
+    : latestStyleChoices(choices);
   if (!view.pipeline.render && view.pipeline.messages.length)
     throw new CliError('PROTOCOL_ERROR', 'API 未返回会话轮次模型');
   const result: CreationResult = {
@@ -24,8 +55,13 @@ export function resolveState(
     replyMessageId: round?.anchorUserMessageId,
     ...projectText(round ? [round] : []),
     interactions: bindings.map((binding) => binding.interaction),
-    ...(view.session.pendingBranch ? { choices } : {}),
-    cursor: { messageId: message?.messageId, branchAnchor: view.session.pendingBranch?.preReplyMessageId },
+    ...(waitingForStyles || currentChoices.length ? { choices: currentChoices } : {}),
+    cursor: {
+      messageId: message?.messageId,
+      branchAnchor: waitingForStyles
+        ? (styleTarget?.preReplyMessageId ?? view.session.pendingBranch?.preReplyMessageId)
+        : undefined,
+    },
   };
   if (view.session.status === -1 || view.session.errorType || round?.status === 'failed') {
     throw new CliError('BUSINESS_ERROR', '创作任务执行失败', {
@@ -41,16 +77,18 @@ export function resolveState(
       : 'NEEDS_INPUT';
     return result;
   }
-  if (view.session.pendingBranch) {
-    if (choices.some((choice) => choice.status === 'success')) result.state = 'NEEDS_SELECTION';
-    else if (choices.length && choices.every((choice) => choice.status === 'failed'))
+  if (waitingForStyles) {
+    if (styleTarget && currentChoices.length !== styleTarget.choiceIds.length) return result;
+    const state = styleBatchState(currentChoices);
+    if (state === 'FAILED')
       throw new CliError('BUSINESS_ERROR', '本批风格均生成失败，可以使用 chat style retry 重试', {
         sessionId: result.sessionId,
-        choices,
+        choices: currentChoices,
       });
+    result.state = state;
     return result;
   }
-  if (view.automaticWork || pendingAutomaticTools(view).length || hasServerAutomaticWork(view)) return result;
+  if (hasPendingCreationWork(view)) return result;
   if (view.session.status === 4)
     throw new CliError('UNSUPPORTED_INTERACTION', '会话正在等待当前 CLI 未识别的交互', {
       sessionId: result.sessionId,

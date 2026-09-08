@@ -64,10 +64,8 @@ export const replySemantic: ReplyHandler = async ({ runtime, binding, input }) =
   }
   const message = binding.message;
   if (!message) throw new CliError('UNSUPPORTED_INTERACTION', '执行动作缺少源消息');
-  if (
-    Number(message.mode ?? object(message.extra).mode) === 6 &&
-    !enabled(message.roundExtra?.startDevelopment)
-  ) {
+  const mode = Number(message.mode ?? object(message.extra).mode);
+  if (mode === 11 || (mode === 6 && !enabled(message.roundExtra?.startDevelopment))) {
     const content = binding.round.agentItems
       .filter((item) => item.kind === 'bubble')
       .map((item) => visibleText(item.payload))
@@ -86,16 +84,22 @@ export const replySemantic: ReplyHandler = async ({ runtime, binding, input }) =
       },
     });
   }
-  const planBatch = text(message.roundExtra?.plan_batch_id) ?? message.replyMessageId;
-  if (!planBatch) throw new CliError('UNSUPPORTED_INTERACTION', '执行动作缺少计划来源锚点');
+  const planBacked = mode === 10;
+  const planBatch = planBacked
+    ? (text(message.roundExtra?.plan_batch_id) ?? message.replyMessageId)
+    : undefined;
+  if (planBacked && !planBatch) throw new CliError('UNSUPPORTED_INTERACTION', '执行动作缺少计划来源锚点');
+  if (!planBacked && selected.length)
+    throw new CliError('INVALID_ARGUMENT', '当前执行动作不接受规划功能 ID，请使用功能选择交互');
   if (selected.some((id) => typeof id !== 'number' || !Number.isInteger(id) || id <= 0))
     throw new CliError('INVALID_ARGUMENT', '规划功能 ID 必须为正整数');
   return runtime.command.chat({
     sessionId,
     content: '立即执行',
+    ...(planBacked ? { preReplyMessageId: planBatch } : {}),
     businessParams: {
-      business_type: 'plan_execution',
-      plan_batch_id: planBatch,
+      business_type: 'ExitPlanMode',
+      ...(planBatch ? { plan_batch_id: planBatch } : {}),
       ...(text(message.consultId ?? message.meta?.consultId)
         ? { consultId: message.consultId ?? message.meta?.consultId }
         : {}),

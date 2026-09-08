@@ -1,4 +1,4 @@
-/** 保存需求问卷并继续澄清或生成风格。@author xiuyu.yi */
+/** 保存需求问卷后直接生成风格。@author xiuyu.yi */
 import { resolveAnswers } from '../questions.js';
 import { object } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
@@ -20,18 +20,6 @@ export const replyPrd: ReplyHandler = async ({ runtime, binding, input }) => {
   }));
   const name = `internal/prd_answers__${source.messageId}__${source.contentId.replace('.', '_')}.json`;
   await runtime.command.saveAttachment(sessionId, name, states, binding.round.anchorUserMessageId);
-  await runtime.command.contentExtra({
-    sessionId,
-    messageId: source.messageId,
-    contentId: source.contentId,
-    extra: { ...object(binding.item.payload.extra), prdAnswersAttachment: name },
-  });
-  if (input.action === 'REFINE')
-    return runtime.command.chat({
-      sessionId,
-      content: '继续完善',
-      businessParams: { business_type: 'expand_questionnaire' },
-    });
   await runtime.command.contentExtra({
     sessionId,
     messageId: source.messageId,

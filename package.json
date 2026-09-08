@@ -1,13 +1,13 @@
 {
-  "name": "superun-creation-cli",
+  "name": "superun-ai-cli",
   "version": "0.1.0",
-  "description": "Superun 命令行工具，支持项目管理、对话创作、交互问答和应用发布",
+  "description": "superun-ai-cli 命令行工具，支持项目管理、对话创作、交互问答和应用发布",
   "author": "xiuyu.yi",
   "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "bin": {
-    "superun-create": "dist/cli.js"
+    "superun-ai": "dist/cli.js"
   },
   "files": [
     "dist",

@@ -57,11 +57,11 @@ export async function versionGate(
 ): Promise<{ reexecuted: boolean; version: string; exitCode?: number }> {
   let required = await latestVersion();
   if (required === PACKAGE_VERSION) return { reexecuted: false, version: required };
-  if (process.env.SUPERUN_CLI_REEXEC === '1')
+  if (process.env.SUPERUN_AI_CLI_REEXEC === '1')
     throw new CliError('UPDATE_FAILED', '重启后版本仍不匹配，已停止重复更新');
   const entry = await withUpdateLock(async () => {
     required = await latestVersion();
-    const root = join(homedir(), '.cache', 'superun-creation-cli', 'versions');
+    const root = join(homedir(), '.cache', PACKAGE_NAME, 'versions');
     await mkdir(root, { recursive: true, mode: 0o700 });
     const destination = join(root, required);
     const verifiedEntry = async (directory: string): Promise<string | undefined> => {
@@ -116,7 +116,7 @@ export async function versionGate(
     const child = spawn(process.execPath, [entry, ...argv], {
       shell: false,
       stdio: 'inherit',
-      env: { ...process.env, SUPERUN_CLI_REEXEC: '1' },
+      env: { ...process.env, SUPERUN_AI_CLI_REEXEC: '1' },
     });
     child.once('error', () => reject(new CliError('UPDATE_FAILED', '新版本命令启动失败')));
     child.once('close', (code, signal) => resolve(code ?? (signal === 'SIGINT' ? 130 : 1)));

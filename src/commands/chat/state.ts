@@ -24,6 +24,6 @@ export function registerState(chat: Command, context: CommandContext): void {
       const result = await service.inspect(view),
         names = z.array(z.string()).parse(options.includeFile);
       if (names.length) result.attachments = await service.query.attachments(sessionId, names);
-      context.output.write(result);
+      context.output.write(service.withGuidance(result));
     });
 }

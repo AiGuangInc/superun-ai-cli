@@ -7,6 +7,8 @@ export type ChatInput = {
   sessionId?: string;
   content: string;
   model?: string;
+  minDuration?: number;
+  previewVersionId?: number;
   workspaceId?: string;
   mode?: number;
   framework?: number;
@@ -27,6 +29,7 @@ export class AgentCommandApi {
         `${PREFIX}/glowChat`,
         {
           ...input,
+          ...(input.sessionId ? { previewVersionId: input.previewVersionId ?? 0 } : {}),
           mode: input.mode ?? 6,
           framework: input.framework ?? 6,
           roundExtra: { ...input.roundExtra, humanizeVer: '1' },
@@ -46,6 +49,25 @@ export class AgentCommandApi {
   }
   async parallel(input: JsonObject): Promise<JsonObject> {
     return object(await this.client.call(`${PREFIX}/glowParallelChat`, input, true));
+  }
+  async viewDemo(sessionId: string): Promise<JsonObject> {
+    return object(
+      await this.client.call(
+        `${PREFIX}/fakeGlowChat`,
+        {
+          sessionId,
+          content: '查看演示',
+          agentContents: [{ content: '你可以通过对话，继续完善演示。我也可以帮你推荐其他演示功能。' }],
+          skipAgent: true,
+          duration: 3,
+          roundExtra: {
+            business_type: 'fake_confirm_generate_more_demo',
+            showConfirmGenerateMoreDemo: '1',
+          },
+        },
+        true,
+      ),
+    );
   }
   async retry(sessionId: string, replyMessageId: string): Promise<JsonObject> {
     return object(await this.client.call(`${PREFIX}/retry`, { sessionId, replyMessageId }, true));

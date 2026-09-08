@@ -12,6 +12,7 @@ export class ConversationApi {
       recentlySchema,
       await this.client.call('/web-api/conversation-v2/unified-recently', {
         sessionId,
+        previewVersionId: 0,
         withAttachment: false,
         withAllAttachmentContent: false,
         timelineVariant: 'work_block',
@@ -25,7 +26,7 @@ export class ConversationApi {
   ): Promise<{ status: number; etag?: string; pipeline?: NodePipeline }> {
     const response = await this.client.request(
       '/web-api/conversation-v2/message-snapshot',
-      { sessionId, messageId, timelineVariant: 'work_block' },
+      { sessionId, messageId, previewVersionId: 0, timelineVariant: 'work_block' },
       { etag },
     );
     return {

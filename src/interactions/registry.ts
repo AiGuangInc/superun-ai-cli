@@ -2,6 +2,7 @@
 import type { SessionView } from '../contracts/node-wire.js';
 import type { InteractionParser, InteractionBinding } from './context.js';
 import { currentRound, roundMessage } from '../conversation/round-selector.js';
+import { hasPendingCreationWork } from '../conversation/state-resolver.js';
 import { parsePrd } from './parsers/prd-clarification.js';
 import { parseAskTool } from './parsers/ask-user-tool.js';
 import { parseUniversalAsk } from './parsers/universal-ask-user.js';
@@ -9,6 +10,7 @@ import { parseSecret } from './parsers/secret-input.js';
 import { parsePlugin } from './parsers/plugin-action.js';
 import { parseDdl } from './parsers/ddl-approval.js';
 import { semanticInteraction } from './parsers/semantic-action.js';
+import { isStyleSelected } from './parsers/style-selection.js';
 import { pendingTool, toolId } from './context.js';
 import { CliError } from '../output/exit-codes.js';
 
@@ -22,7 +24,10 @@ const parsers: Record<string, InteractionParser> = {
   tool_execute_ddl: parseDdl,
 };
 
-export function collectInteractions(view: SessionView): Array<InteractionBinding> {
+export function collectInteractions(
+  view: SessionView,
+  styleSelected = isStyleSelected(view),
+): Array<InteractionBinding> {
   const latest = currentRound(view);
   const bindings: Array<InteractionBinding> = [];
   for (const round of view.pipeline.render?.rounds ?? []) {
@@ -57,9 +62,10 @@ export function collectInteractions(view: SessionView): Array<InteractionBinding
       if (binding) bindings.push(binding);
     }
   }
-  if (bindings.length === 0 && !view.session.pendingBranch) {
+  if (bindings.length === 0 && (!view.session.pendingBranch || styleSelected)) {
     const semantic = semanticInteraction(view, latest, roundMessage(view, latest));
-    if (semantic) bindings.push(semantic);
+    if (semantic && !(semantic.interaction.kind === 'SELECT_FEATURES' && hasPendingCreationWork(view)))
+      bindings.push(semantic);
   }
   return [...new Map(bindings.map((binding) => [binding.interaction.interactionId, binding])).values()];
 }

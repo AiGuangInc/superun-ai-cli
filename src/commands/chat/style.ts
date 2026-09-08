@@ -4,6 +4,11 @@ import { object, requiredText, text } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
 import type { CommandContext } from '../shared.js';
 import { runtime, positive, withWait, waitOptions, businessWrite } from '../shared.js';
+import {
+  latestStyleChoices,
+  styleBatchState,
+  styleBranchAnchor,
+} from '../../interactions/parsers/style-selection.js';
 
 export function registerStyle(chat: Command, context: CommandContext): void {
   const style = chat.command('style').description('管理创作风格');
@@ -31,8 +36,23 @@ export function registerStyle(chat: Command, context: CommandContext): void {
     .option('--anchor <preReplyMessageId>', '分支查询锚点')
     .action(async (sessionId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command),
-        choices = await service.choices(sessionId, text(object(command.opts()).anchor));
-      context.output.write({ state: 'COMPLETED', sessionId, choices });
+        view = await service.load(sessionId),
+        currentAnchor = styleBranchAnchor(view),
+        anchor = text(object(command.opts()).anchor) ?? currentAnchor,
+        choices = await service.choices(sessionId, anchor, view);
+      const result = service.withGuidance({
+        state: choices.length ? styleBatchState(latestStyleChoices(choices)) : 'COMPLETED',
+        sessionId,
+        choices,
+        cursor: { branchAnchor: anchor },
+      });
+      context.output.write({
+        state: result.state,
+        sessionId,
+        choices,
+        // 历史批次只供查看；选择与重试命令仅接受当前未决批次。
+        nextActions: anchor === currentAnchor ? result.nextActions : [],
+      });
     });
   for (const action of ['select', 'retry'])
     withWait(

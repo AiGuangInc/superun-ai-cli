@@ -1,6 +1,7 @@
 /** HTTP 与业务响应信封处理；写请求只发送一次。@author xiuyu.yi */
 import { CliError } from '../output/exit-codes.js';
 import { object, text } from '../contracts/value.js';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export type HttpResponse = { status: number; etag?: string; data: unknown };
 export type HttpRequest = {
@@ -17,6 +18,25 @@ export class HttpClient {
   constructor(private readonly fetcher: typeof fetch = fetch) {}
 
   async request(request: HttpRequest): Promise<HttpResponse> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.requestOnce(request);
+      } catch (error) {
+        const transientRead =
+          error instanceof CliError &&
+          error.code === 'PROTOCOL_ERROR' &&
+          (error.details.retryable === true || [502, 503, 504].includes(Number(error.details.httpStatus)));
+        if (request.write || !transientRead || attempt >= 2) throw error;
+        // 只恢复幂等查询；写请求结果不确定时必须交还调用方确认，不能自动重发。
+        try {
+          await delay((attempt + 1) * 500, undefined, { signal: request.signal });
+        } catch {
+          throw new CliError('INTERRUPTED', '已停止本地查询等待，远端任务不受影响');
+        }
+      }
+    }
+  }
+  private async requestOnce(request: HttpRequest): Promise<HttpResponse> {
     const timeout = AbortSignal.timeout(request.timeoutMs ?? 65_000);
     const signal = request.signal ? AbortSignal.any([timeout, request.signal]) : timeout;
     let response: Response;

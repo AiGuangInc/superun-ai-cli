@@ -43,6 +43,7 @@ export type Interaction = {
 };
 export type Choice = {
   choiceId: string;
+  batchVersion?: number;
   index: number;
   preReplyMessageId: string;
   replyMessageId: string;
@@ -52,6 +53,35 @@ export type Choice = {
   screenshotUrl?: string;
   errorType?: string;
   selected?: boolean;
+};
+export type NextAction = {
+  action: string;
+  instruction: string;
+  requiresUserInput: boolean;
+  /** 完整命令的参数数组；仅提供引导，不会自动执行。 */
+  command: Array<string>;
+  interactionId?: string;
+  choiceId?: string;
+  /** 回复的固定字段，用户数据仍需按对应交互的 answerSchema 补齐。 */
+  input?: { action: string };
+};
+export type DemoPreview = {
+  snapshotId: string;
+  messageId: string;
+  url: string;
+  viewed: boolean;
+};
+export type DevelopmentProgress = {
+  stage:
+    | 'READY'
+    | 'PLANNING'
+    | 'PLAN_REVIEW'
+    | 'FEATURE_SELECTION'
+    | 'EXECUTION_REVIEW'
+    | 'DEVELOPING'
+    | 'COMPLETED';
+  started: boolean;
+  planApproved: boolean;
 };
 export type CreationResult = {
   state: CreationState;
@@ -63,7 +93,10 @@ export type CreationResult = {
   progress: Array<{ id: string; text: string; status?: string }>;
   interactions: Array<Interaction>;
   choices?: Array<Choice>;
+  demo?: DemoPreview;
+  development?: DevelopmentProgress;
   cursor?: { messageId?: string; etag?: string; branchAnchor?: string };
   attachments?: Array<Record<string, unknown>>;
   waitTimedOut?: boolean;
+  nextActions?: Array<NextAction>;
 };

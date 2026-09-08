@@ -6,6 +6,9 @@ import type { JsonObject } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
 import type { CommandContext } from '../shared.js';
 import { runtime, withWait, waitOptions, pollOperation, businessWrite } from '../shared.js';
+import { COMMAND_NAME } from '../../config/constants.js';
+import type { CreationRuntime } from '../../runtime.js';
+import type { NextAction } from '../../contracts/cli-output.js';
 
 function versions(value: JsonObject): Array<JsonObject> {
   return [
@@ -30,6 +33,78 @@ function projectPublish(value: JsonObject, encryptedId?: string): JsonObject {
       })),
   };
 }
+function publishActions(
+  service: CreationRuntime,
+  sessionId: string,
+  value: JsonObject,
+  publicStatus?: number,
+  encryptedId?: string,
+): Array<NextAction> {
+  const command = [
+    COMMAND_NAME,
+    '--endpoint',
+    service.client.config.endpoint,
+    '--locale',
+    service.client.config.locale,
+    'chat',
+    'publish',
+  ];
+  const records = versions(value);
+  const pending = records.find(
+    (item) => (!encryptedId || item.encryptedId === encryptedId) && item.deployStatus === 2,
+  );
+  if (pending)
+    return [
+      {
+        action: 'QUERY_PUBLISH',
+        instruction: '发布正在进行，继续查询该版本结果，不要重复提交发布。',
+        requiresUserInput: false,
+        command: [...command, 'status', '--version-id', String(pending.encryptedId), '--', sessionId],
+      },
+    ];
+  const candidate = encryptedId
+    ? records.find((item) => item.encryptedId === encryptedId)
+    : object(value.unPublishedVersion);
+  const target = text(candidate?.encryptedId);
+  if (target && candidate?.deployStatus !== 1)
+    return [
+      {
+        action: 'PUBLISH_VERSION',
+        instruction: '请核对本版本的变更摘要；确认后执行发布命令，CLI 会等待部署完成。',
+        requiresUserInput: true,
+        command: [...command, 'start', '--', sessionId, target],
+      },
+    ];
+  if (records.some((item) => item.deployStatus === 1) && publicStatus === 0)
+    return [
+      {
+        action: 'MAKE_PUBLIC',
+        instruction: '部署已完成，但站点尚未公开；确认对外上线后执行此命令。',
+        requiresUserInput: true,
+        command: [...command, 'visibility', '--', sessionId, 'public'],
+      },
+    ];
+  return [];
+}
+async function publishResult(
+  service: CreationRuntime,
+  sessionId: string,
+  value: JsonObject,
+  encryptedId?: string,
+  waitTimedOut = false,
+) {
+  const { session } = await service.conversation.recently(sessionId);
+  const running = versions(value).some(
+    (item) => (!encryptedId || item.encryptedId === encryptedId) && item.deployStatus === 2,
+  );
+  return {
+    state: running || waitTimedOut ? 'RUNNING' : 'COMPLETED',
+    sessionId,
+    publish: { ...projectPublish(value, encryptedId), publicStatus: session.publicStatus },
+    ...(waitTimedOut ? { waitTimedOut } : {}),
+    nextActions: publishActions(service, sessionId, value, session.publicStatus, encryptedId),
+  };
+}
 export function registerPublish(chat: Command, context: CommandContext): void {
   const publish = chat.command('publish').description('发布应用和管理站点状态');
   publish
@@ -39,11 +114,9 @@ export function registerPublish(chat: Command, context: CommandContext): void {
     .action(async (sessionId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command),
         value = await service.publish.status(sessionId);
-      context.output.write({
-        state: 'COMPLETED',
-        sessionId,
-        publish: projectPublish(value, text(object(command.opts()).versionId)),
-      });
+      context.output.write(
+        await publishResult(service, sessionId, value, text(object(command.opts()).versionId)),
+      );
     });
   withWait(
     publish
@@ -62,17 +135,43 @@ export function registerPublish(chat: Command, context: CommandContext): void {
     );
     if (!before) throw new CliError('INVALID_ARGUMENT', '该版本不在当前项目的可发布记录中');
     if (before.deployStatus === 2) throw new CliError('INVALID_ARGUMENT', '该版本正在发布，请查询进度');
-    await businessWrite(context, service, sessionId, () =>
-      service.publish.start({
+    await businessWrite(context, service, sessionId, async () => {
+      const response = await service.publish.start({
         sessionId,
         encryptedId,
         targetRegion: text(options.region),
         ...(options.indexing ? { noIndex: options.indexing === 'deny' } : {}),
         ...(options.acknowledgeCloudFee ? { acknowledgedCloudServiceFee: true } : {}),
-      }),
-    );
+      });
+      try {
+        await service.command.sessionExtra(sessionId, { hasViewedLaunch: '1' });
+      } catch {
+        throw new CliError(
+          'OUTCOME_UNKNOWN',
+          '发布已提交，但发布阶段标记同步未确认；请查询发布进度，勿重复提交',
+          {
+            sessionId,
+            encryptedId,
+            phase: 'PUBLISH_STAGE_SYNC',
+            retryable: false,
+          },
+        );
+      }
+      return response;
+    });
     if (options.wait === false) {
-      context.output.write({ state: 'ACCEPTED', sessionId, publish: { encryptedId } });
+      context.output.write({
+        state: 'ACCEPTED',
+        sessionId,
+        publish: { encryptedId },
+        nextActions: publishActions(
+          service,
+          sessionId,
+          { publishedVersions: [{ encryptedId, deployStatus: 2 }] },
+          undefined,
+          encryptedId,
+        ),
+      });
       return;
     }
     let observed: JsonObject = {},
@@ -100,12 +199,7 @@ export function registerPublish(chat: Command, context: CommandContext): void {
         encryptedId,
         publish: projectPublish(observed, encryptedId),
       });
-    context.output.write({
-      state: waitTimedOut ? 'RUNNING' : 'COMPLETED',
-      sessionId,
-      publish: projectPublish(observed, encryptedId),
-      ...(waitTimedOut ? { waitTimedOut } : {}),
-    });
+    context.output.write(await publishResult(service, sessionId, observed, encryptedId, waitTimedOut));
   });
   publish
     .command('visibility <sessionId> <visibility>')
@@ -122,6 +216,9 @@ export function registerPublish(chat: Command, context: CommandContext): void {
       await businessWrite(context, service, sessionId, () =>
         service.publish.visibility(sessionId, visibility === 'public'),
       );
-      context.output.write({ state: 'COMPLETED', sessionId, visibility });
+      context.output.write({
+        ...(await publishResult(service, sessionId, await service.publish.status(sessionId))),
+        visibility,
+      });
     });
 }

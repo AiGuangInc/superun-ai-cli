@@ -1,6 +1,6 @@
 /** API 连接与公共请求头。@author xiuyu.yi */
 import type { RuntimeConfig } from '../config/runtime-config.js';
-import { PRE_ENDPOINT } from '../config/constants.js';
+import { PACKAGE_NAME, PRE_ENDPOINT } from '../config/constants.js';
 import { CliError } from '../output/exit-codes.js';
 import { HttpClient } from './http-client.js';
 import type { HttpResponse } from './http-client.js';
@@ -33,7 +33,7 @@ export class ApiClient {
         'content-type': 'application/json',
         'access-token': this.pat,
         'prefer-language': this.config.locale,
-        'request-source': 'superun-creation-cli',
+        'request-source': PACKAGE_NAME,
         'x-superun-client': 'cli',
         'x-superun-host': 'superun.com',
         ...(requiresGatewayToken && this.config.gatewayToken

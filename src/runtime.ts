@@ -6,17 +6,27 @@ import { ConversationApi } from './api/conversation-api.js';
 import { IntegrationApi } from './api/integration-api.js';
 import { PluginApi } from './api/plugin-api.js';
 import { PublishApi } from './api/publish-api.js';
+import { PreviewVersionApi } from './api/preview-version-api.js';
 import type { ApiClient } from './transport/api-client.js';
 import type { OutputWriter } from './output/writer.js';
 import type { SessionView } from './contracts/node-wire.js';
 import type { CreationResult, Choice } from './contracts/cli-output.js';
-import { object, text } from './contracts/value.js';
+import { enabled, object, text } from './contracts/value.js';
 import type { JsonObject } from './contracts/value.js';
 import { collectInteractions } from './interactions/registry.js';
 import { toolId as sourceToolId, toolData } from './interactions/context.js';
 import { integrationKey } from './interactions/handlers/reply-plugin.js';
-import { projectChoices } from './interactions/parsers/style-selection.js';
+import {
+  isStyleSelected,
+  projectChoices,
+  styleBranchAnchor,
+  styleWaitTarget,
+} from './interactions/parsers/style-selection.js';
+import type { StyleWaitTarget } from './interactions/parsers/style-selection.js';
 import { resolveState } from './conversation/state-resolver.js';
+import { buildNextActions } from './conversation/next-actions.js';
+import { isInitialDemoRound, projectDemoPreview } from './conversation/demo-preview.js';
+import type { GuidanceResult } from './conversation/next-actions.js';
 import { currentRound, roundMessage } from './conversation/round-selector.js';
 import { SessionWaiter } from './conversation/session-waiter.js';
 import type { WaitOptions } from './conversation/session-waiter.js';
@@ -31,6 +41,7 @@ export class CreationRuntime {
   readonly integration: IntegrationApi;
   readonly plugin: PluginApi;
   readonly publish: PublishApi;
+  readonly previewVersions: PreviewVersionApi;
   readonly waiter: SessionWaiter;
   constructor(
     readonly client: ApiClient,
@@ -43,11 +54,12 @@ export class CreationRuntime {
     this.integration = new IntegrationApi(client);
     this.plugin = new PluginApi(client);
     this.publish = new PublishApi(client);
+    this.previewVersions = new PreviewVersionApi(client);
     this.waiter = new SessionWaiter({
       conversation: this.conversation,
       command: this.command,
       load: (id) => this.load(id),
-      inspect: (view) => this.inspect(view),
+      inspect: (view, styleTarget) => this.inspect(view, styleTarget),
       signal: client.signal,
     });
   }
@@ -63,7 +75,7 @@ export class CreationRuntime {
       view.session.status === 3 &&
       extra.agentRuntime !== 'shire' &&
       message?.roundExtra?.hasSelectedStyle === '1' &&
-      !object(message.extra).featureListConfirmed
+      !enabled(object(message.extra).featureListConfirmed)
     ) {
       view.features = await this.query.features(sessionId, round?.anchorUserMessageId);
     }
@@ -71,15 +83,14 @@ export class CreationRuntime {
   }
   async choices(sessionId: string, anchor?: string, view?: SessionView): Promise<Array<Choice>> {
     const accessible = view ?? (await this.load(sessionId));
-    const preReplyMessageId = anchor ?? accessible.session.pendingBranch?.preReplyMessageId;
+    const preReplyMessageId = anchor ?? styleBranchAnchor(accessible);
     if (!preReplyMessageId) return [];
     return projectChoices(await this.query.parallel(sessionId, preReplyMessageId), preReplyMessageId);
   }
-  async inspect(view: SessionView): Promise<CreationResult> {
-    const choices = view.session.pendingBranch
-      ? await this.choices(view.session.sessionId, undefined, view)
-      : [];
-    const bindings = collectInteractions(view);
+  async inspect(view: SessionView, styleTarget?: StyleWaitTarget): Promise<CreationResult> {
+    const anchor = styleTarget?.preReplyMessageId ?? styleBranchAnchor(view);
+    const choices = anchor ? await this.choices(view.session.sessionId, anchor, view) : [];
+    const bindings = collectInteractions(view, !styleTarget && isStyleSelected(view, choices));
     const processingIds = new Set<string>();
     for (const binding of bindings) {
       if (binding.interaction.kind !== 'PLUGIN_ACTION') continue;
@@ -89,14 +100,61 @@ export class CreationRuntime {
       if (['ENABLING', 'RESTORING', 'PAUSING', 'DISABLING'].includes(String(state.integrationStatus)))
         processingIds.add(binding.interaction.interactionId);
     }
-    return resolveState(
+    const result = resolveState(
       { ...view, automaticWork: processingIds.size > 0 },
       bindings.filter((binding) => !processingIds.has(binding.interaction.interactionId)),
       choices,
+      styleTarget,
     );
+    if (result.state === 'COMPLETED' && isStyleSelected(view, choices) && isInitialDemoRound(view)) {
+      const message = roundMessage(view, currentRound(view));
+      if (
+        Number(view.extra.demoGenerateStatus) !== 2 ||
+        Number(message?.roundExtra?.demoReadyAt) > Date.now()
+      )
+        return { ...result, state: 'RUNNING' };
+      const demo = projectDemoPreview(await this.query.snapshots(view.session.sessionId), view, choices);
+      // 不能用“消息完成”代替演示就绪，也不能拿另一种风格的最新快照兜底。
+      if (!demo) return { ...result, state: 'RUNNING' };
+      result.demo = demo;
+    }
+    const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
+    const started = enabled(roundExtra.startDevelopment);
+    const planApproved = enabled(roundExtra.architecturePlanApproved);
+    if (started || result.demo?.viewed) {
+      result.development = {
+        started,
+        planApproved,
+        stage: !started
+          ? 'READY'
+          : result.interactions.some((item) => item.kind === 'APPROVE_ARCHITECTURE_PLAN')
+            ? 'PLAN_REVIEW'
+            : result.interactions.some((item) => item.kind === 'SELECT_FEATURES')
+              ? 'FEATURE_SELECTION'
+              : result.interactions.some((item) => item.kind === 'START_EXECUTION')
+                ? 'EXECUTION_REVIEW'
+                : !planApproved
+                  ? 'PLANNING'
+                  : result.state === 'COMPLETED'
+                    ? 'COMPLETED'
+                    : 'DEVELOPING',
+      };
+      if (result.development.stage === 'PLAN_REVIEW')
+        result.attachments = (await this.query.attachments(view.session.sessionId, ['README.md'])).filter(
+          (attachment) => attachment.name === 'README.md',
+        );
+    }
+    return result;
   }
   async state(sessionId: string): Promise<CreationResult> {
-    return this.inspect(await this.load(sessionId));
+    return this.withGuidance(await this.inspect(await this.load(sessionId)));
+  }
+  withGuidance<T extends GuidanceResult>(result: T) {
+    return { ...result, nextActions: buildNextActions(result, this.client.config) };
+  }
+  async wait(sessionId: string, options: WaitOptions): Promise<CreationResult> {
+    // 等待器可能过滤已提交的交互，必须在最终结果确定后生成引导。
+    return this.withGuidance(await this.waiter.wait(sessionId, options));
   }
   async accepted(
     response: JsonObject,
@@ -108,8 +166,12 @@ export class CreationRuntime {
     if (!id)
       throw new CliError('OUTCOME_UNKNOWN', '写请求已返回，但响应中缺少 sessionId，请查询会话列表确认');
     if (wait)
-      return this.waiter.wait(id, { ...options, messageId: text(response.messageId) ?? options.messageId });
-    return {
+      return this.wait(id, {
+        ...options,
+        messageId: text(response.messageId) ?? options.messageId,
+        styleTarget: styleWaitTarget(response) ?? options.styleTarget,
+      });
+    return this.withGuidance({
       state: 'ACCEPTED',
       sessionId: id,
       messageId: text(response.messageId),
@@ -117,7 +179,8 @@ export class CreationRuntime {
       messages: [],
       progress: [],
       interactions: [],
-    };
+      cursor: { branchAnchor: text(response.preReplyMessageId) },
+    });
   }
   async generateStyles(
     sessionId: string,
@@ -156,17 +219,91 @@ export class CreationRuntime {
     }
     if (choice.status !== 'success' || choice.errorType)
       throw new CliError('INVALID_ARGUMENT', '只能选择成功生成的风格');
-    return this.command.chat({
+    if (choice.selected)
+      throw new CliError('STALE_INTERACTION', '该风格已经选中，请查看演示，勿重复提交选择', { sessionId });
+    const now = Date.now();
+    const stageExtra = {
+      hasSelectedStyle: '1',
+      hasGeneratedIdea: String(now + 3000),
+      demoReadyAt: String(now + 6000),
+    };
+    const response = await this.command.chat({
       sessionId,
+      minDuration: 10,
       content: `选择风格 ${choice.index + 1}`,
       parallelSelectRequest: {
         sessionId,
         selectedReplyMessageId: choice.replyMessageId,
         selectedLastReplyMessageId: choice.lastReplyMessageId ?? choice.replyMessageId,
       },
-      roundExtra: { hasSelectedStyle: '1', business_type: 'choose_style_v2' },
+      roundExtra: { ...stageExtra, business_type: 'choose_style_v2' },
       businessParams: { business_type: 'choose_style_v2' },
     });
+    try {
+      await this.command.sessionExtra(sessionId, stageExtra);
+    } catch {
+      throw new CliError('OUTCOME_UNKNOWN', '风格选择已提交，但阶段状态同步未确认；请查询会话，勿重复选择', {
+        sessionId,
+        messageId: text(response.messageId),
+        replyMessageId: text(response.replyMessageId),
+        phase: 'STYLE_SELECTION_SYNC',
+        retryable: false,
+      });
+    }
+    return response;
+  }
+  async viewDemo(sessionId: string): Promise<CreationResult> {
+    const view = await this.load(sessionId);
+    const result = await this.inspect(view);
+    if (result.state !== 'COMPLETED' || !result.demo)
+      throw new CliError('INVALID_ARGUMENT', '当前演示尚不可查看，请先查询并等待当前任务完成', { sessionId });
+    const extra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
+    // 查看与选择是两个动作；只在取得对应演示快照后记录已查看。
+    if (!enabled(view.extra.hasViewedDemo))
+      await this.command.sessionExtra(sessionId, { hasViewedDemo: '1' });
+    if (
+      Number(view.extra.version) >= 4 &&
+      !enabled(extra.showConfirmGenerateMoreDemo) &&
+      !enabled(extra.generateDemo) &&
+      !enabled(extra.startDevelopment)
+    ) {
+      await this.command.viewDemo(sessionId);
+    }
+    return this.withGuidance({
+      ...result,
+      demo: { ...result.demo, viewed: true },
+      development: { stage: 'READY', started: false, planApproved: false },
+    });
+  }
+  async startDevelopment(sessionId: string): Promise<JsonObject> {
+    const view = await this.load(sessionId);
+    const extra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
+    if (enabled(extra.startDevelopment))
+      throw new CliError('STALE_INTERACTION', '项目已进入研发，请继续处理当前规划或任务，勿重复进入', {
+        sessionId,
+      });
+    const result = await this.inspect(view);
+    if (result.state !== 'COMPLETED' || !result.demo?.viewed)
+      throw new CliError('INVALID_ARGUMENT', '请先完成并查看演示，再进入研发', { sessionId });
+    await this.previewVersions.prepareDevelopment(sessionId);
+    const response = await this.command.chat({
+      sessionId,
+      previewVersionId: 0,
+      content: '开始研发，先生成研发规划',
+      businessParams: { business_type: 'start_dev' },
+      roundExtra: { startDevelopment: '1', showDismissInBuildTutorial: '0' },
+    });
+    try {
+      await this.command.sessionExtra(sessionId, { startDevelopment: '1', hasViewedBuild: '1' });
+    } catch {
+      throw new CliError('OUTCOME_UNKNOWN', '进入研发已提交，但阶段同步未确认；请查询当前任务，勿重复进入', {
+        sessionId,
+        messageId: text(response.messageId),
+        phase: 'DEVELOPMENT_SYNC',
+        retryable: false,
+      });
+    }
+    return response;
   }
   async reply(sessionId: string, interactionId: string, input: JsonObject): Promise<JsonObject> {
     const view = await this.load(sessionId);

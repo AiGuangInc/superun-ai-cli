@@ -16,7 +16,7 @@ export const PACKAGE_NAME = metadata.name;
 export const PACKAGE_VERSION = metadata.version;
 export const PACKAGE_PRIVATE = metadata.private === true;
 export const NPM_REGISTRY = metadata.publishConfig.registry;
-export const COMMAND_NAME = 'superun-create';
+export const COMMAND_NAME = 'superun-ai';
 export const SCHEMA_VERSION = '1';
 export const DEFAULT_ENDPOINT = 'https://superun.com';
 export const PRE_ENDPOINT = 'https://superun.pre.qima-inc.com';

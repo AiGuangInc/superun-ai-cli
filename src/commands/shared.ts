@@ -70,7 +70,7 @@ export function withWait(command: Command, noWaitDescription = '服务端接受�
   return command
     .option('--wait', '等待交互或终态', true)
     .option('--no-wait', noWaitDescription)
-    .option('--timeout <seconds>', '本地等待上限，默认 1800 秒', positive, 1800);
+    .option('--timeout <seconds>', '本地等待上限；不传则持续等待', positive);
 }
 export async function readInput(path: string): Promise<JsonObject> {
   let content = '';
@@ -113,6 +113,7 @@ export async function businessWrite(
         /* 查询失败仍保留原始不确定结果。 */
       }
       throw new CliError('OUTCOME_UNKNOWN', '写请求结果不确定，已查询当前会话；请核对后再决定下一步', {
+        ...error.details,
         sessionId,
         observedState,
         retryable: false,
@@ -128,7 +129,8 @@ export async function pollOperation<T>(
   isTerminal: (value: T) => boolean,
   options: { timeout?: number; signal?: AbortSignal },
 ): Promise<T> {
-  const deadline = Date.now() + (options.timeout ?? 1800) * 1000;
+  const deadline =
+    options.timeout === undefined ? Number.POSITIVE_INFINITY : Date.now() + options.timeout * 1000;
   while (true) {
     const value = await read();
     if (isTerminal(value)) return value;
