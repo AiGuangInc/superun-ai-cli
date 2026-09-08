@@ -5,6 +5,7 @@ import { InvalidArgumentError } from 'commander';
 import type { Command } from 'commander';
 import { z } from 'zod';
 import { PatStore } from '../auth/pat-store.js';
+import { ensurePat } from '../auth/browser-login.js';
 import { runtimeConfig } from '../config/runtime-config.js';
 import { ApiClient } from '../transport/api-client.js';
 import { CreationRuntime } from '../runtime.js';
@@ -25,9 +26,11 @@ export type CredentialContext = {
   credentialSource: 'env' | 'file';
 };
 
-async function loadCredentialContext(context: CommandContext, command: Command): Promise<CredentialContext> {
-  const credential = await context.patStore.read();
-  context.output.registerSecret(credential.pat);
+async function loadCredentialContext(
+  context: CommandContext,
+  command: Command,
+  allowBrowser: boolean,
+): Promise<CredentialContext> {
   const options = object(command.optsWithGlobals());
   const config = runtimeConfig({
     endpoint: text(options.endpoint),
@@ -35,18 +38,27 @@ async function loadCredentialContext(context: CommandContext, command: Command):
     env: text(options.env),
   });
   if (config.gatewayToken) context.output.registerSecret(config.gatewayToken);
+  const credential = await ensurePat({
+    store: context.patStore,
+    config,
+    output: context.output,
+    signal: context.signal,
+    allowBrowser,
+  });
+  context.output.registerSecret(credential.pat);
   const service =
     context.makeRuntime?.(config, credential.pat) ??
     new CreationRuntime(new ApiClient(config, credential.pat, undefined, context.signal), context.output);
   return { service, credentialSource: credential.source };
 }
 
-/** 只加载本地凭据和连接，PAT 有效性由实际业务请求的服务端鉴权决定。 */
+/** 已有 PAT 直接复用；允许浏览器登录时自动补齐缺失的凭据。 */
 export async function requireCredentials(
   context: CommandContext,
   command: Command,
+  allowBrowser = false,
 ): Promise<CredentialContext> {
-  context.connection ??= loadCredentialContext(context, command);
+  context.connection ??= loadCredentialContext(context, command, allowBrowser);
   return context.connection;
 }
 

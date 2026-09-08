@@ -8,6 +8,7 @@ import { CliError } from '../output/exit-codes.js';
 import { object, text } from '../contracts/value.js';
 
 export const CREDENTIAL_DIRECTORY = join(homedir(), '.config', PACKAGE_NAME);
+export type PatCredential = { pat: string; source: 'env' | 'file' };
 
 export function validatePat(value: string): string {
   const pat = value.trim();
@@ -20,7 +21,14 @@ export function validatePat(value: string): string {
 export class PatStore {
   constructor(private readonly directory = CREDENTIAL_DIRECTORY) {}
 
-  async read(): Promise<{ pat: string; source: 'env' | 'file' }> {
+  async read(): Promise<PatCredential> {
+    const credential = await this.readIfPresent();
+    if (!credential)
+      throw new CliError('AUTH_REQUIRED', '未找到有效 PAT，请执行 superun-ai auth login 或设置 SUPERUN_PAT');
+    return credential;
+  }
+
+  async readIfPresent(): Promise<PatCredential | undefined> {
     if (process.env.SUPERUN_PAT !== undefined)
       return { pat: validatePat(process.env.SUPERUN_PAT), source: 'env' };
     const path = join(this.directory, 'credentials.json');
@@ -33,7 +41,8 @@ export class PatStore {
       return { pat: validatePat(text(object(value).pat) ?? ''), source: 'file' };
     } catch (error) {
       if (error instanceof CliError) throw error;
-      throw new CliError('AUTH_REQUIRED', '未找到有效 PAT，请执行 auth login 或设置 SUPERUN_PAT');
+      if (object(error).code === 'ENOENT') return undefined;
+      throw new CliError('AUTH_REQUIRED', '无法读取本地 PAT，请重新执行 superun-ai auth login --pat');
     }
   }
 

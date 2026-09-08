@@ -34,7 +34,8 @@ export function createProgram(
       (authCommand && action.name() === 'logout');
     if (offline || action === program) return;
     await hooks.beforeBusiness();
-    if (!(authCommand && action.name() === 'login')) await requireCredentials(context, action);
+    if (!(authCommand && action.name() === 'login'))
+      await requireCredentials(context, action, !authCommand && Boolean(process.stdin.isTTY));
   });
   registerAuth(program, context);
   registerSession(program, context);

@@ -24,7 +24,7 @@ superun-ai --help
 ```text
 superun-ai
 ├── auth                                         # 管理 PAT 登录
-│   ├── login                                    # 配置本地 PAT
+│   ├── login                                    # 登录 Superun 并保存 PAT
 │   ├── status                                   # 查看本地 PAT 配置状态
 │   └── logout                                   # 清除本地 PAT
 ├── session                                      # 查询项目
@@ -69,14 +69,24 @@ superun-ai chat style generate --help
 ## PAT 登录
 
 ```bash
-superun-ai auth login --pat
+superun-ai auth login
 superun-ai auth status
 superun-ai auth logout
 ```
 
-`auth login --pat` 在终端隐藏读取现有 PAT，即使已设置 `SUPERUN_PAT` 也会要求重新输入。`--pat` 是输入方式开关，后面不能直接跟 PAT 明文，并且不能与 `--stdin` 同时使用。不带选项的 `auth login` 优先读取环境变量，否则隐藏读取 PAT；网页创建入口尚未实现。
+已有 PAT 时，`auth login` 直接复用；没有时自动打开 Superun 网页，完成登录后领取 PAT 并保存到本地，无需手动复制。首次在交互终端执行业务命令时，如果没有 PAT，也会自动进入同一登录流程，完成后继续执行原命令。
 
-自动化环境可以设置 `SUPERUN_PAT`，也可以通过标准输入登录：
+网页登录最多等待 5 分钟，按 Ctrl+C 可取消。浏览器未自动打开时，可以手动打开终端提示的地址。网页登录 Token 只用于申请 PAT，不会保存到本地。
+
+如果已经有 PAT，也可以手动导入：
+
+```bash
+superun-ai auth login --pat
+```
+
+`--pat` 会在终端隐藏读取输入，即使已设置 `SUPERUN_PAT` 也会要求重新输入。它是输入方式开关，后面不能直接跟 PAT 明文，并且不能与 `--stdin` 同时使用。
+
+自动化脚本中缺少 PAT 时会报错，不会自动打开浏览器。可以设置 `SUPERUN_PAT`，也可以通过标准输入登录：
 
 ```bash
 printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
@@ -84,7 +94,13 @@ printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
 
 凭据优先级为 `SUPERUN_PAT` 环境变量，其次是 `~/.config/superun-ai-cli/credentials.json`。文件权限为 `0600`；退出登录只清除本地保存的凭据，不撤销服务端 PAT。请勿将 PAT 写进命令行参数、仓库或日志。
 
-`auth login` 保存 PAT，`auth status` 查看本地凭据配置。返回 `CONFIGURED` 表示本地已配置凭据；PAT 是否有效、是否有权访问项目，会在实际业务请求时校验。PAT 过期、禁用等问题会返回 `AUTH_REQUIRED`。
+`auth status` 只查看本地凭据配置，不会打开浏览器或申请 PAT。返回 `CONFIGURED` 表示本地已配置凭据；已有 PAT 是否有效、是否有权访问项目，会在实际业务请求时校验。PAT 过期、禁用或本地文件损坏时会报错，不会自动重新登录或覆盖凭据。
+
+`auth logout` 会删除本地保存的 PAT，下次使用时重新登录。若设置了 `SUPERUN_PAT`，环境变量仍然有效，需要在终端手动清除：
+
+```bash
+unset SUPERUN_PAT
+```
 
 帮助、`version`、`update` 和清除本地凭据的 `auth logout` 不要求已有 PAT。提供 `SUPERUN_PAT` 即可直接调用业务命令，无需重复执行登录命令。
 
