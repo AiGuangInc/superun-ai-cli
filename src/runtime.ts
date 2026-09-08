@@ -254,10 +254,21 @@ export class CreationRuntime {
   }
   async viewDemo(sessionId: string): Promise<CreationResult> {
     const view = await this.load(sessionId);
+    const round = currentRound(view);
+    const extra = roundMessage(view, round)?.roundExtra ?? {};
     const result = await this.inspect(view);
+    // 已有查看轮时只等待其结果，不重复发送查看消息。
+    if (
+      round &&
+      extra.business_type === 'fake_confirm_generate_more_demo' &&
+      !enabled(extra.startDevelopment)
+    ) {
+      if (!enabled(view.extra.hasViewedDemo))
+        await this.command.sessionExtra(sessionId, { hasViewedDemo: '1' });
+      return this.waitForDemoView(sessionId, round.anchorUserMessageId);
+    }
     if (result.state !== 'COMPLETED' || !result.demo)
       throw new CliError('INVALID_ARGUMENT', '当前演示尚不可查看，请先查询并等待当前任务完成', { sessionId });
-    const extra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
     // 查看与选择是两个动作；只在取得对应演示快照后记录已查看。
     if (!enabled(view.extra.hasViewedDemo))
       await this.command.sessionExtra(sessionId, { hasViewedDemo: '1' });
@@ -267,13 +278,62 @@ export class CreationRuntime {
       !enabled(extra.generateDemo) &&
       !enabled(extra.startDevelopment)
     ) {
-      await this.command.viewDemo(sessionId);
+      const response = await this.command.viewDemo(sessionId);
+      const messageId = text(response.messageId) ?? text(response.replyMessageId);
+      if (!messageId)
+        throw new CliError(
+          'OUTCOME_UNKNOWN',
+          '查看演示已提交，但响应缺少消息标识；请查询当前状态，勿重复提交',
+          {
+            sessionId,
+            phase: 'DEMO_VIEW',
+            retryable: false,
+          },
+        );
+      return this.waitForDemoView(sessionId, messageId);
     }
     return this.withGuidance({
       ...result,
       demo: { ...result.demo, viewed: true },
       development: { stage: 'READY', started: false, planApproved: false },
     });
+  }
+  private async waitForDemoView(sessionId: string, messageId: string): Promise<CreationResult> {
+    // 只约束查看演示这一条等待链，普通创作的等待行为保持不变。
+    const waiter = new SessionWaiter({
+      conversation: this.conversation,
+      command: this.command,
+      load: (id) => this.load(id),
+      signal: this.client.signal,
+      inspect: async (view) => {
+        const latest = currentRound(view);
+        if (view.session.status === -1 || view.session.errorType || latest?.status === 'failed')
+          return this.inspect(view);
+        const targetRound = view.pipeline.render?.rounds.find(
+          (round) =>
+            round.anchorUserMessageId === messageId ||
+            [...round.userItems, ...round.agentItems].some(
+              (item) => (item.source?.messageId ?? text(item.payload.messageId)) === messageId,
+            ),
+        );
+        if (targetRound && latest?.roundId !== targetRound.roundId)
+          throw new CliError('STALE_INTERACTION', '查看演示后会话已进入其他轮次，请查询当前状态', {
+            sessionId,
+            messageId,
+          });
+        if (!targetRound || !enabled(view.extra.hasViewedDemo))
+          return {
+            state: 'RUNNING',
+            sessionId,
+            messageId,
+            messages: [],
+            progress: [],
+            interactions: [],
+          };
+        return this.inspect(view);
+      },
+    });
+    return this.withGuidance(await waiter.wait(sessionId, { messageId }));
   }
   async startDevelopment(sessionId: string): Promise<JsonObject> {
     const view = await this.load(sessionId);

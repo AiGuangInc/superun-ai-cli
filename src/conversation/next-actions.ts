@@ -119,20 +119,20 @@ function nextActionsForState(
   }
   if (result.state === 'COMPLETED' && result.demo) {
     if (result.demo.viewed) {
+      const instruction =
+        '请先向用户展示 demo.url，再原样展示以下引导：\n- **修改演示**：直接告诉我修改要求，比如“把主题换成绿色”。\n- **进入研发**：回复 **“开始研发”**，我会先生成研发规划供你确认。\n等待用户响应；查看记录不代表用户已满意，不额外增加确认步骤。';
       return [
         {
-          action: 'ENTER_DEVELOPMENT',
-          instruction:
-            '演示已查看；确认后执行此命令保留演示并进入研发，先等待研发规划，再确认功能和开始开发。',
-          requiresUserInput: true,
-          command: [...command, 'develop', '--', result.sessionId],
-        },
-        {
           action: 'CONTINUE_CHAT',
-          instruction:
-            '请用户查看 demo.url；需要修改时，将用户的新需求放入 content 字段，通过 --input - 提交 JSON 继续对话，不自动追加需求。',
+          instruction: `${instruction} 用户直接给出修改要求时，将其放入 content 字段，通过 --input - 提交 JSON，无需先让用户回复“修改演示”；如果用户只选择修改演示而未说明要求，再询问具体修改内容。不自动追加需求或进入研发。`,
           requiresUserInput: true,
           command: [...command, 'send', '--input', '-', '--', result.sessionId],
+        },
+        {
+          action: 'ENTER_DEVELOPMENT',
+          instruction: `${instruction} 仅在用户回复“开始研发”或明确选择进入研发后执行此命令，保留演示并等待研发规划或业务提问；不自动确认规划或选择功能。`,
+          requiresUserInput: true,
+          command: [...command, 'develop', '--', result.sessionId],
         },
       ];
     }
@@ -140,7 +140,7 @@ function nextActionsForState(
       {
         action: 'VIEW_DEMO',
         instruction:
-          '演示已就绪，请向用户展示 demo.url；查看演示时执行此命令记录已查看状态，之后可继续对话。',
+          '请告知用户“简易演示生成完毕”，询问是否查看演示以确认效果；此时只引导查看演示，不提前询问修改或进入研发。只有用户明确要求查看后才执行此命令；已取得 demo.url 不代表用户已经查看。',
         requiresUserInput: true,
         command: [...command, 'demo', '--', result.sessionId],
       },
