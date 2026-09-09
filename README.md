@@ -39,8 +39,7 @@ superun-ai
 │   ├── style                                    # 管理创作风格
 │   │   ├── generate <sessionId>                 # 生成风格候选
 │   │   ├── list <sessionId>                     # 查询全部风格批次
-│   │   ├── select <sessionId> <choiceId>        # 选择已完成的风格
-│   │   └── retry <sessionId> <choiceId>         # 重试失败风格
+│   │   └── select <sessionId> <choiceId>        # 选择已完成的风格
 │   ├── demo <sessionId>                         # 查看演示快照并记录已查看状态
 │   ├── develop <sessionId>                      # 保留演示，进入研发并生成规划
 │   ├── interaction                              # 回答或跳过交互
@@ -152,7 +151,6 @@ superun-ai chat interaction skip <sessionId> <interactionId>
 superun-ai chat style generate <sessionId> --content "生成简洁的品牌风格" --count 2
 superun-ai chat style list <sessionId>
 superun-ai chat style select <sessionId> <choiceId>
-superun-ai chat style retry <sessionId> <choiceId>
 
 superun-ai chat plugin list <sessionId>
 superun-ai chat plugin status <sessionId> <pluginId>

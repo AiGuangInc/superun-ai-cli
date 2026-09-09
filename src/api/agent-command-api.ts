@@ -69,9 +69,6 @@ export class AgentCommandApi {
       ),
     );
   }
-  async retry(sessionId: string, replyMessageId: string): Promise<JsonObject> {
-    return object(await this.client.call(`${PREFIX}/retry`, { sessionId, replyMessageId }, true));
-  }
   async stop(sessionId: string, scope: 'own' | 'all', messageId?: string): Promise<void> {
     await this.client.call(
       `${PREFIX}/stop`,

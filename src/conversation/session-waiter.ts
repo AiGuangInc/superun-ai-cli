@@ -8,12 +8,17 @@ import { currentRound, roundMessage } from './round-selector.js';
 import { pendingAutomaticTools } from '../auto-tools/registry.js';
 import { replyReadLogs } from '../auto-tools/read-logs.js';
 import { CliError } from '../output/exit-codes.js';
+import { pendingTool } from '../interactions/context.js';
 import type { StyleWaitTarget } from '../interactions/parsers/style-selection.js';
 
 export type WaitOptions = {
   timeout?: number;
   interval?: number;
   messageId?: string;
+  /** 写请求返回的消息须先进入轮次模型，避免把旧规划当作本次结果。 */
+  requiredMessageId?: string;
+  /** 排队响应没有新消息 ID 时，仍须等到旧轮次发生切换。 */
+  previousMessageId?: string;
   submittedInteractionId?: string;
   styleTarget?: StyleWaitTarget;
 };
@@ -86,6 +91,41 @@ export class SessionWaiter {
     const replied = new Set<string>(),
       messages = new Map<string, CreationResult['messages'][number]>();
     const progress = new Map<string, CreationResult['progress'][number]>();
+    let responseObserved = !options.requiredMessageId && !options.previousMessageId;
+    const inspect = async (): Promise<CreationResult> => {
+      if (!responseObserved) {
+        const latestMessageId = roundMessage(view, currentRound(view))?.messageId;
+        responseObserved = options.requiredMessageId
+          ? (view.pipeline.render?.rounds ?? []).some(
+              (round) =>
+                round.anchorUserMessageId === options.requiredMessageId ||
+                [...round.userItems, ...round.agentItems].some(
+                  (item) => (item.source?.messageId ?? item.payload.messageId) === options.requiredMessageId,
+                ),
+            )
+          : !!latestMessageId && latestMessageId !== options.previousMessageId;
+      }
+      const hasPendingTool = (view.pipeline.render?.rounds ?? []).some((round) =>
+        round.agentItems.some(pendingTool),
+      );
+      const terminalRound = ['failed', 'interrupted'].includes(currentRound(view)?.status ?? '');
+      if (
+        !responseObserved &&
+        !hasPendingTool &&
+        !terminalRound &&
+        ![-1, 2].includes(view.session.status) &&
+        !view.session.errorType
+      )
+        return {
+          state: 'RUNNING',
+          sessionId,
+          messageId: options.requiredMessageId,
+          messages: [],
+          progress: [],
+          interactions: [],
+        };
+      return this.dependencies.inspect(view, options.styleTarget);
+    };
     while (true) {
       if (this.dependencies.signal?.aborted)
         throw new CliError('INTERRUPTED', '已停止本地等待，远端任务继续运行', {
@@ -99,7 +139,7 @@ export class SessionWaiter {
           view = await this.dependencies.load(sessionId);
         }
       }
-      let result = await this.dependencies.inspect(view, options.styleTarget);
+      let result = await inspect();
       const suppressSubmitted = (value: CreationResult): CreationResult => {
         if (!options.submittedInteractionId || value.state !== 'NEEDS_INPUT') return value;
         const interactions = value.interactions.filter(
@@ -111,7 +151,7 @@ export class SessionWaiter {
       if (!['RUNNING', 'QUEUED'].includes(result.state)) {
         // 终态和交互退出前重读全量，防止快照漏掉新轮或服务端刚完成的交接。
         view = await this.dependencies.load(sessionId);
-        result = suppressSubmitted(await this.dependencies.inspect(view, options.styleTarget));
+        result = suppressSubmitted(await inspect());
       }
       for (const item of result.messages) messages.set(item.id, item);
       for (const item of result.progress) progress.set(item.id, item);
@@ -146,11 +186,12 @@ export class SessionWaiter {
         });
       }
       const latestMessage = roundMessage(view, currentRound(view))?.messageId;
-      if (latestMessage && latestMessage !== target) {
+      if (responseObserved && latestMessage && latestMessage !== target) {
         target = latestMessage;
         etag = undefined;
       }
       if (
+        !responseObserved ||
         !target ||
         options.styleTarget ||
         view.session.pendingBranch ||

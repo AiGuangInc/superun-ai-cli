@@ -81,7 +81,7 @@ export function resolveState(
     if (styleTarget && currentChoices.length !== styleTarget.choiceIds.length) return result;
     const state = styleBatchState(currentChoices);
     if (state === 'FAILED')
-      throw new CliError('BUSINESS_ERROR', '本批风格均生成失败，可以使用 chat style retry 重试', {
+      throw new CliError('BUSINESS_ERROR', '本批风格均生成失败', {
         sessionId: result.sessionId,
         choices: currentChoices,
       });

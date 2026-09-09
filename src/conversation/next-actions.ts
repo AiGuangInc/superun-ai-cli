@@ -8,22 +8,24 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
   Partial<Pick<CreationResult, 'interactions' | 'choices' | 'messageId' | 'cursor' | 'demo' | 'development'>>;
 
 const QUESTIONNAIRE_INSTRUCTION =
-  '请一次性向用户完整展示当前交互 questions 中的全部问题和选项：保留原始问题、选项标签及说明，标明题号、选项编号、multiSelect 单选/多选规则和 allowOther 自定义回答能力；展示编号须与 question.id、options.index 对应，不要只概括问题、逐题提问或省略选项。收集整份问卷的回答；若用户仅回答部分题目，保留已答内容并一次性展示剩余问题及选项，不要替用户选择推荐项，答案齐全后再统一提交';
+  '请一次性向用户完整展示当前交互 questions 中的全部问题和选项：保留原始问题、选项标签及说明，标明题号、选项编号、multiSelect 单选/多选规则和 allowOther 自定义回答能力；展示编号须与 question.id、options.index 对应，不要只概括问题、逐题提问或省略选项。提示用户“请按题号回答，例如1A、2B，也可以补充自己的要求”，示例不代表固定题数或默认答案。收集整份问卷的回答；若用户仅回答部分题目，保留已答内容并一次性展示剩余问题及选项，不要替用户选择推荐项，答案齐全后再统一提交';
+
+const PLAN_REVIEW_INSTRUCTION =
+  '请按 messages 顺序展示原始规划对话，与产品页面保持一致，不自行摘要、改写或追加 attachments 中的完整研发规划。然后展示：\n- **确认规划**：回复 **“确认规划”** 继续。\n- **调整功能**：直接告诉我需要增加或修改的内容。\n每次调整后都要等待并展示更新方案，再次给出这两个入口；如果服务端再次提问，先回答问题再等待方案。补充要求不等于确认，不能确认旧方案。';
 
 const INTERACTION_INSTRUCTIONS: Record<InteractionKind, string> = {
   PRD_CLARIFICATION: `${QUESTIONNAIRE_INSTRUCTION}；提交后直接生成风格并默认等待风格截图供用户选择，不再额外询问是否生成`,
-  ASK_USER_TOOL: QUESTIONNAIRE_INSTRUCTION,
-  ASK_USER_MESSAGE: QUESTIONNAIRE_INSTRUCTION,
+  ASK_USER_TOOL: `${QUESTIONNAIRE_INSTRUCTION}；提交后等待实际返回的问题或方案，不自动确认规划`,
+  ASK_USER_MESSAGE: `${QUESTIONNAIRE_INSTRUCTION}；提交后等待实际返回的问题或方案，不自动确认规划`,
   SECRET_INPUT: '请用户安全提供当前要求的密钥，不要回显密钥内容',
   PLUGIN_SECRET_INPUT: '请用户安全提供插件所需配置，不要回显密钥内容',
   PLUGIN_ACTION: '请用户确认是否启用当前插件及相关配置',
   DDL_CONFIRMATION: '请用户阅读并确认数据库变更',
   STYLE_SELECTION: '请用户查看风格截图并选择候选',
   ENTER_IDEATION: '请用户确认进入构想阶段',
-  APPROVE_ARCHITECTURE_PLAN:
-    '请按 messages 顺序展示原始对话，与产品页面保持一致，不要自行摘要、改写或追加 attachments 中的完整研发规划。展示原始对话后请用户确认当前规划，不要自动确认',
+  APPROVE_ARCHITECTURE_PLAN: `${PLAN_REVIEW_INSTRUCTION} 只有用户明确确认当前规划时才执行 APPROVE；包含新增或修改要求时先按调整功能处理，不自动确认`,
   SELECT_FEATURES:
-    '实现推荐的产品功能：请先按 messages 顺序展示原始对话，与产品页面保持一致，不要自行摘要或改写，并提醒用户选择 nextActions 提供的下一步入口；用户选择实现功能后，再将当前交互 details.features 中的全部功能按原顺序展示为多选列表，保留 id、title、description 和 checked 状态，不要只说功能已放入问卷。支持用户选择多项或明确全选，不要默认勾选；用户确认选择后，将对应的真实 id 一次性填入 featureIds，不能用展示序号代替真实 id；全选仅包含当前列表中的功能，不要补充或代选其他功能',
+    '请展示原始对话及 details.features 中的功能标题、说明、真实 id 和 checked 状态。推荐清单不是继续研发的强制入口；只有用户明确从清单中选择时才将对应真实 id 填入 featureIds。支持明确多选或全选，不默认勾选，不用展示序号代替真实 id；用户直接提出新需求时应继续对话，不强制选择推荐功能',
   START_EXECUTION: '请用户确认开始执行当前计划',
 };
 
@@ -47,6 +49,16 @@ function nextActionsForState(
 ): Array<NextAction> {
   // 显式保留连接地址，避免调用方执行下一步时切回默认环境；凭据不进入命令。
   const command = [COMMAND_NAME, '--endpoint', config.endpoint, '--locale', config.locale, 'chat'];
+  if (result.development?.snapshot?.status === 'PENDING')
+    return [
+      {
+        action: 'WAIT',
+        instruction:
+          '本轮任务已结束，正在同步对应的研发快照；继续查询，不重复提交研发需求，不使用旧演示链接代替本轮快照。',
+        requiresUserInput: false,
+        command: [...command, 'wait', '--', result.sessionId],
+      },
+    ];
   if (result.state === 'NEEDS_INPUT' || result.state === 'NEEDS_SELECTION') {
     const interactions = result.interactions ?? [];
     if (interactions.length) {
@@ -82,37 +94,37 @@ function nextActionsForState(
         }),
       );
       if (
+        result.development?.stage === 'PLAN_REVIEW' &&
+        interactions.every((interaction) => interaction.kind === 'APPROVE_ARCHITECTURE_PLAN')
+      )
+        nextActions.push({
+          action: 'CONTINUE_CHAT',
+          instruction: `${PLAN_REVIEW_INSTRUCTION} 用户直接提出调整要求时，将原始要求放入 content，通过 --input - 提交 JSON；不要把修改内容塞进 APPROVE。若只说调整功能，则先询问具体要求；提交后等待更新方案或问题，不自动进入研发。`,
+          requiresUserInput: true,
+          command: [...command, 'send', '--input', '-', '--', result.sessionId],
+        });
+      if (
         result.state === 'NEEDS_INPUT' &&
         result.development?.planApproved &&
         result.development.stage === 'FEATURE_SELECTION' &&
         interactions.every((interaction) => interaction.kind === 'SELECT_FEATURES')
       )
-        nextActions.push({
-          action: 'REVIEW_PUBLISH',
-          instruction:
-            '上线运营：与“实现推荐的产品功能”一起提示用户选择。用户选择上线运营后，先执行此命令查询可发布版本与部署状态；没有可发布版本时说明现状，不要宣称可以直接上线。核对目标版本并取得用户发布确认后再执行发布，不要把进入运营流程当成已经发布',
-          requiresUserInput: true,
-          command: [...command, 'publish', 'status', '--', result.sessionId],
-        });
+        return developmentActions(result, command);
       return nextActions;
     }
   }
-  if (result.state === 'NEEDS_SELECTION' || result.state === 'FAILED') {
+  if (result.state === 'NEEDS_SELECTION') {
     if (latestStyleChoices(result.choices ?? []).some((choice) => choice.selected)) return [];
     return latestStyleChoices(result.choices ?? []).flatMap((choice): Array<NextAction> => {
-      if (choice.selected) return [];
-      const retry = choice.status === 'failed';
-      if (result.state === 'FAILED' && !retry) return [];
-      if (!retry && (choice.status !== 'success' || !choice.screenshotUrl || choice.errorType)) return [];
+      if (choice.selected || choice.status !== 'success' || !choice.screenshotUrl || choice.errorType)
+        return [];
       return [
         {
-          action: retry ? 'RETRY_STYLE' : 'SELECT_STYLE',
-          instruction: retry
-            ? `风格 ${choice.index + 1} 生成失败；请用户确认是否重试。`
-            : `请向用户展示 choices 中的 screenshotUrl；仅在用户选择风格 ${choice.index + 1} 后执行此命令，继续创作。`,
+          action: 'SELECT_STYLE',
+          instruction: `请向用户展示 choices 中的 screenshotUrl；仅在用户选择风格 ${choice.index + 1} 后执行此命令，继续创作。`,
           requiresUserInput: true,
           choiceId: choice.choiceId,
-          command: [...command, 'style', retry ? 'retry' : 'select', '--', result.sessionId, choice.choiceId],
+          command: [...command, 'style', 'select', '--', result.sessionId, choice.choiceId],
         },
       ];
     });
@@ -147,14 +159,7 @@ function nextActionsForState(
     ];
   }
   if (result.state === 'COMPLETED' && result.development?.stage === 'COMPLETED') {
-    return [
-      {
-        action: 'REVIEW_PUBLISH',
-        instruction: '本轮研发已完成，查询可发布版本并核对结果，再决定发布；不要将演示快照当成研发发布版本。',
-        requiresUserInput: true,
-        command: [...command, 'publish', 'status', '--', result.sessionId],
-      },
-    ];
+    return developmentActions(result, command);
   }
   if (['ACCEPTED', 'RUNNING', 'QUEUED'].includes(result.state)) {
     const anchor = result.cursor?.branchAnchor;
@@ -178,4 +183,29 @@ function nextActionsForState(
     ];
   }
   return [];
+}
+
+function developmentActions(result: GuidanceResult, command: Array<string>): Array<NextAction> {
+  const snapshot = result.development?.snapshot;
+  const previewInstruction =
+    snapshot?.status === 'READY'
+      ? '先展示本轮原始结果和 development.snapshot.url 中对应本轮的快照链接，不使用旧演示链接，也不将快照称为已正式发布。'
+      : snapshot?.status === 'UNAVAILABLE'
+        ? `先展示原始结果，并如实说明：${snapshot.reason} 不伪造快照链接，不宣称本轮没有产出。`
+        : '先按 messages 顺序展示原始对话，不把规划确认当作研发完成，也不要求规划轮产生新快照。';
+  const instruction = `${previewInstruction} 然后展示：\n- **继续研发新功能**：直接告诉我想新增或调整的内容。\n- **上线运营**：回复 **“上线运营”**，我会先检查可发布版本。`;
+  return [
+    {
+      action: 'CONTINUE_CHAT',
+      instruction: `${instruction} 用户直接提出需求后，将原文放入 content，通过 --input - 继续当前会话；不强制先回复继续研发或选择推荐功能。如果有 details.features，保留真实 id、标题和说明供参考；只有用户明确选择其中条目时，才使用对应 interactionId 的 SELECT 和 featureIds 提交，不默认全选。`,
+      requiresUserInput: true,
+      command: [...command, 'send', '--input', '-', '--', result.sessionId],
+    },
+    {
+      action: 'REVIEW_PUBLISH',
+      instruction: `${instruction} 用户选择上线运营后先查询可发布版本和部署状态；没有可发布版本时如实说明。只有另行取得明确发布指令后才发布，不将进入运营流程当作已经上线。`,
+      requiresUserInput: true,
+      command: [...command, 'publish', 'status', '--', result.sessionId],
+    },
+  ];
 }

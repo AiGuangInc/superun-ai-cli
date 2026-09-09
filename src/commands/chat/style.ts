@@ -1,4 +1,4 @@
-/** 创作流程中的风格生成、选择与重试。@author xiuyu.yi */
+/** 创作流程中的风格生成、查询与选择。@author xiuyu.yi */
 import type { Command } from 'commander';
 import { object, requiredText, text } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
@@ -50,19 +50,15 @@ export function registerStyle(chat: Command, context: CommandContext): void {
         state: result.state,
         sessionId,
         choices,
-        // 历史批次只供查看；选择与重试命令仅接受当前未决批次。
+        // 历史批次只供查看；选择命令仅接受当前未决批次。
         nextActions: anchor === currentAnchor ? result.nextActions : [],
       });
     });
-  for (const action of ['select', 'retry'])
-    withWait(
-      style
-        .command(`${action} <sessionId> <choiceId>`)
-        .description(action === 'select' ? '选择已完成的风格' : '重试失败风格'),
-    ).action(async (sessionId: string, choiceId: string, _options: unknown, command: Command) => {
+  withWait(style.command('select <sessionId> <choiceId>').description('选择已完成的风格')).action(
+    async (sessionId: string, choiceId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command);
       const response = await businessWrite(context, service, sessionId, () =>
-        service.selectStyle(sessionId, choiceId, action === 'retry'),
+        service.selectStyle(sessionId, choiceId),
       );
       context.output.write(
         await service.accepted(
@@ -72,5 +68,6 @@ export function registerStyle(chat: Command, context: CommandContext): void {
           waitOptions(command),
         ),
       );
-    });
+    },
+  );
 }

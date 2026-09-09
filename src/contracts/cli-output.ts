@@ -71,6 +71,9 @@ export type DemoPreview = {
   url: string;
   viewed: boolean;
 };
+export type DevelopmentSnapshot =
+  | { status: 'READY'; snapshotId: string; messageId: string; url: string }
+  | { status: 'PENDING' | 'UNAVAILABLE'; messageId: string; reason: string };
 export type DevelopmentProgress = {
   stage:
     | 'READY'
@@ -82,6 +85,8 @@ export type DevelopmentProgress = {
     | 'COMPLETED';
   started: boolean;
   planApproved: boolean;
+  /** 当前研发轮的快照；规划与问答轮不要求产生快照。 */
+  snapshot?: DevelopmentSnapshot;
 };
 export type CreationResult = {
   state: CreationState;

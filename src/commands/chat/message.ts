@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { object, text } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
 import { uploadAttachment } from '../../api/upload-api.js';
+import { currentRound, roundMessage } from '../../conversation/round-selector.js';
 import type { CommandContext } from '../shared.js';
 import { runtime, readInput, withWait, waitOptions, businessWrite } from '../shared.js';
 
@@ -57,6 +58,8 @@ export async function sendMessage(
   const service = await runtime(context, command);
   const attachments = [...input.attachments];
   for (const file of files) attachments.push(await uploadAttachment(service, file));
+  const previous = sessionId && options.wait !== false ? await service.load(sessionId) : undefined;
+  const previousMessageId = previous ? roundMessage(previous, currentRound(previous))?.messageId : undefined;
   const create = sessionId ? undefined : await service.config.creation(content);
   const response = await businessWrite(context, service, sessionId, () =>
     service.command.chat({
@@ -83,6 +86,9 @@ export async function sendMessage(
     }),
   );
   context.output.write(
-    await service.accepted(object(response), sessionId, options.wait !== false, waitOptions(command)),
+    await service.accepted(object(response), sessionId, options.wait !== false, {
+      ...waitOptions(command),
+      previousMessageId,
+    }),
   );
 }

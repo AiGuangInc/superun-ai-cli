@@ -26,12 +26,16 @@ import type { StyleWaitTarget } from './interactions/parsers/style-selection.js'
 import { resolveState } from './conversation/state-resolver.js';
 import { buildNextActions } from './conversation/next-actions.js';
 import { isInitialDemoRound, projectDemoPreview } from './conversation/demo-preview.js';
+import { findDevelopmentSnapshot } from './conversation/development-snapshot.js';
 import type { GuidanceResult } from './conversation/next-actions.js';
 import { currentRound, roundMessage } from './conversation/round-selector.js';
 import { SessionWaiter } from './conversation/session-waiter.js';
 import type { WaitOptions } from './conversation/session-waiter.js';
 import { CliError } from './output/exit-codes.js';
 import { dispatchReply } from './interactions/handlers/index.js';
+
+// 只限制完成结果的短暂同步，不限制用户回答或研发任务的总等待时间。
+const DEVELOPMENT_SNAPSHOT_SYNC_MS = 15_000;
 
 export class CreationRuntime {
   readonly command: AgentCommandApi;
@@ -43,6 +47,7 @@ export class CreationRuntime {
   readonly publish: PublishApi;
   readonly previewVersions: PreviewVersionApi;
   readonly waiter: SessionWaiter;
+  private snapshotSync?: { key: string; startedAt: number };
   constructor(
     readonly client: ApiClient,
     readonly output: OutputWriter,
@@ -143,6 +148,38 @@ export class CreationRuntime {
         result.attachments = (await this.query.attachments(view.session.sessionId, ['README.md'])).filter(
           (attachment) => attachment.name === 'README.md',
         );
+      const current = currentRound(view);
+      const onlyFeatureSelection = result.interactions.every((item) => item.kind === 'SELECT_FEATURES');
+      if (
+        started &&
+        planApproved &&
+        current &&
+        onlyFeatureSelection &&
+        ['COMPLETED', 'NEEDS_INPUT'].includes(result.state) &&
+        !['start_dev', 'architecture_plan_approve'].includes(String(roundExtra.business_type))
+      ) {
+        const messageId = current.anchorUserMessageId;
+        const snapshot = await findDevelopmentSnapshot(this.query, view.session.sessionId, messageId);
+        if (snapshot) {
+          result.development.snapshot = snapshot;
+          this.snapshotSync = undefined;
+        } else {
+          const key = `${view.session.sessionId}:${messageId}`;
+          if (this.snapshotSync?.key !== key) this.snapshotSync = { key, startedAt: Date.now() };
+          const pending = Date.now() - this.snapshotSync.startedAt < DEVELOPMENT_SNAPSHOT_SYNC_MS;
+          result.development.snapshot = {
+            status: pending ? 'PENDING' : 'UNAVAILABLE',
+            messageId,
+            reason: pending
+              ? '正在同步本轮研发快照，请稍候。'
+              : '本轮暂未查到匹配的研发快照，可稍后查询；不能使用旧演示链接代替。',
+          };
+          if (pending) {
+            result.state = 'RUNNING';
+            result.interactions = [];
+          }
+        }
+      }
     }
     return result;
   }
@@ -169,6 +206,7 @@ export class CreationRuntime {
       return this.wait(id, {
         ...options,
         messageId: text(response.messageId) ?? options.messageId,
+        requiredMessageId: text(response.messageId) ?? text(response.replyMessageId),
         styleTarget: styleWaitTarget(response) ?? options.styleTarget,
       });
     return this.withGuidance({
@@ -209,14 +247,10 @@ export class CreationRuntime {
     });
     return response;
   }
-  async selectStyle(sessionId: string, choiceId: string, retry = false): Promise<JsonObject> {
+  async selectStyle(sessionId: string, choiceId: string): Promise<JsonObject> {
     const choice = (await this.choices(sessionId)).find((item) => item.choiceId === choiceId);
     if (!choice)
       throw new CliError('STALE_INTERACTION', '当前未决批次中不存在该风格，请重新执行 chat style list');
-    if (retry) {
-      if (choice.status !== 'failed') throw new CliError('INVALID_ARGUMENT', '只有失败风格可以重试');
-      return this.command.retry(sessionId, choice.replyMessageId);
-    }
     if (choice.status !== 'success' || choice.errorType)
       throw new CliError('INVALID_ARGUMENT', '只能选择成功生成的风格');
     if (choice.selected)
