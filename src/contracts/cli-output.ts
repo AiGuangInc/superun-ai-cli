@@ -98,6 +98,8 @@ export type CreationResult = {
   progress: Array<{ id: string; text: string; status?: string }>;
   interactions: Array<Interaction>;
   choices?: Array<Choice>;
+  /** 用户选定风格后，自动衔接演示状态与研发规划；不代表已确认规划。 */
+  stylePlanning?: { choiceId: string };
   demo?: DemoPreview;
   development?: DevelopmentProgress;
   cursor?: { messageId?: string; etag?: string; branchAnchor?: string };

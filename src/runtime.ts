@@ -20,6 +20,7 @@ import {
   isStyleSelected,
   projectChoices,
   styleBranchAnchor,
+  styleChoiceLabel,
   styleWaitTarget,
 } from './interactions/parsers/style-selection.js';
 import type { StyleWaitTarget } from './interactions/parsers/style-selection.js';
@@ -116,6 +117,30 @@ export class CreationRuntime {
       choices,
       styleTarget,
     );
+    const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
+    const planningChoiceId = text(roundExtra.cliPlanAfterStyle);
+    if (
+      planningChoiceId &&
+      !styleTarget &&
+      isStyleSelected(view, choices) &&
+      isInitialDemoRound(view) &&
+      !enabled(roundExtra.startDevelopment)
+    ) {
+      result.stylePlanning = { choiceId: planningChoiceId };
+      // 只隐藏演示过渡消息；需要用户处理的问题仍按原文展示。
+      if (!result.interactions.length) {
+        const choice = choices.find((item) => item.choiceId === planningChoiceId);
+        result.messages = [
+          {
+            id: `${result.replyMessageId}:style-planning`,
+            role: 'assistant',
+            text: choice
+              ? `已采用${styleChoiceLabel(choice)}，正在生成研发规划，完成后请你确认。`
+              : '风格已选定，正在生成研发规划，完成后请你确认。',
+          },
+        ];
+      }
+    }
     if (result.state === 'COMPLETED' && isStyleSelected(view, choices) && isInitialDemoRound(view)) {
       const message = roundMessage(view, currentRound(view));
       if (demoGenerationStatus(view) !== 2 || Number(message?.roundExtra?.demoReadyAt) > Date.now())
@@ -125,7 +150,6 @@ export class CreationRuntime {
       if (!demo) return { ...result, state: 'RUNNING' };
       result.demo = demo;
     }
-    const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
     const started = enabled(roundExtra.startDevelopment);
     const planApproved = enabled(roundExtra.architecturePlanApproved);
     const modifiedDemo =
@@ -208,8 +232,29 @@ export class CreationRuntime {
     return { ...result, nextActions: buildNextActions(result, this.client.config) };
   }
   async wait(sessionId: string, options: WaitOptions): Promise<CreationResult> {
-    // 等待器可能过滤已提交的交互，必须在最终结果确定后生成引导。
-    return this.withGuidance(await this.waiter.wait(sessionId, options));
+    const deadline = options.timeout === undefined ? undefined : Date.now() + options.timeout * 1000;
+    const remaining = () =>
+      deadline === undefined ? undefined : Math.max(0, (deadline - Date.now()) / 1000);
+    let pending = options;
+    let result = await this.waiter.wait(sessionId, { ...pending, timeout: remaining() });
+    while (result.stylePlanning && result.state === 'COMPLETED') {
+      if (deadline !== undefined && Date.now() >= deadline)
+        return this.withGuidance({ ...result, state: 'RUNNING', waitTimedOut: true });
+      const choiceId = result.stylePlanning.choiceId;
+      result = await this.viewDemo(sessionId, { timeout: remaining() }, choiceId);
+      if (!result.stylePlanning || result.state !== 'COMPLETED') break;
+      if (deadline !== undefined && Date.now() >= deadline)
+        return this.withGuidance({ ...result, state: 'RUNNING', waitTimedOut: true });
+      // 查看演示与进入研发各自先核对当前轮，失败时保留真实错误，不重发写请求。
+      const response = await this.startDevelopment(sessionId, choiceId);
+      pending = {
+        messageId: text(response.messageId),
+        requiredMessageId: text(response.messageId) ?? text(response.replyMessageId),
+      };
+      result = await this.waiter.wait(sessionId, { ...pending, timeout: remaining() });
+    }
+    // 最终只展示规划或当前问题，不混入静默过渡阶段的演示消息。
+    return this.withGuidance(result);
   }
   async accepted(
     response: JsonObject,
@@ -232,9 +277,14 @@ export class CreationRuntime {
       sessionId: id,
       messageId: text(response.messageId),
       replyMessageId: text(response.replyMessageId),
-      messages: [],
+      messages: text(response.planningNotice)
+        ? [{ id: `${id}:style-planning`, role: 'assistant' as const, text: String(response.planningNotice) }]
+        : [],
       progress: [],
       interactions: [],
+      ...(text(response.planningChoiceId)
+        ? { stylePlanning: { choiceId: String(response.planningChoiceId) } }
+        : {}),
       cursor: { branchAnchor: text(response.preReplyMessageId) },
     });
   }
@@ -272,7 +322,9 @@ export class CreationRuntime {
     if (choice.status !== 'success' || choice.errorType)
       throw new CliError('INVALID_ARGUMENT', '只能选择成功生成的风格');
     if (choice.selected)
-      throw new CliError('STALE_INTERACTION', '该风格已经选中，请查看演示，勿重复提交选择', { sessionId });
+      throw new CliError('STALE_INTERACTION', '该风格已经选中，请通过 chat wait 继续当前流程，勿重复选择', {
+        sessionId,
+      });
     const now = Date.now();
     const stageExtra = {
       hasSelectedStyle: '1',
@@ -288,7 +340,7 @@ export class CreationRuntime {
         selectedReplyMessageId: choice.replyMessageId,
         selectedLastReplyMessageId: choice.lastReplyMessageId ?? choice.replyMessageId,
       },
-      roundExtra: { ...stageExtra, business_type: 'choose_style_v2' },
+      roundExtra: { ...stageExtra, cliPlanAfterStyle: choice.choiceId, business_type: 'choose_style_v2' },
       businessParams: { business_type: 'choose_style_v2' },
     });
     try {
@@ -302,13 +354,22 @@ export class CreationRuntime {
         retryable: false,
       });
     }
-    return response;
+    const planningNotice = `已采用${styleChoiceLabel(choice)}，正在生成研发规划，完成后请你确认。`;
+    this.output.log(planningNotice);
+    return { ...response, planningChoiceId: choice.choiceId, planningNotice };
   }
-  async viewDemo(sessionId: string): Promise<CreationResult> {
+  async viewDemo(
+    sessionId: string,
+    options: WaitOptions = {},
+    planningChoiceId?: string,
+  ): Promise<CreationResult> {
     const view = await this.load(sessionId);
     const round = currentRound(view);
     const extra = roundMessage(view, round)?.roundExtra ?? {};
+    if (planningChoiceId && text(extra.cliPlanAfterStyle) !== planningChoiceId)
+      throw new CliError('STALE_INTERACTION', '风格衔接期间会话已切换，请查询当前状态', { sessionId });
     const result = await this.inspect(view);
+    if (planningChoiceId && enabled(extra.startDevelopment)) return this.withGuidance(result);
     // 已有查看轮时只等待其结果，不重复发送查看消息。
     if (
       round &&
@@ -317,7 +378,7 @@ export class CreationRuntime {
     ) {
       if (!enabled(view.extra.hasViewedDemo))
         await this.command.sessionExtra(sessionId, { hasViewedDemo: '1' });
-      return this.waitForDemoView(sessionId, round.anchorUserMessageId);
+      return this.waitForDemoView(sessionId, round.anchorUserMessageId, options);
     }
     if (result.state !== 'COMPLETED' || !result.demo)
       throw new CliError('INVALID_ARGUMENT', '当前演示尚不可查看，请先查询并等待当前任务完成', { sessionId });
@@ -330,7 +391,7 @@ export class CreationRuntime {
       !enabled(extra.generateDemo) &&
       !enabled(extra.startDevelopment)
     ) {
-      const response = await this.command.viewDemo(sessionId);
+      const response = await this.command.viewDemo(sessionId, text(extra.cliPlanAfterStyle));
       const messageId = text(response.messageId) ?? text(response.replyMessageId);
       if (!messageId)
         throw new CliError(
@@ -342,7 +403,7 @@ export class CreationRuntime {
             retryable: false,
           },
         );
-      return this.waitForDemoView(sessionId, messageId);
+      return this.waitForDemoView(sessionId, messageId, options);
     }
     return this.withGuidance({
       ...result,
@@ -350,7 +411,11 @@ export class CreationRuntime {
       development: { stage: 'READY', started: false, planApproved: false },
     });
   }
-  private async waitForDemoView(sessionId: string, messageId: string): Promise<CreationResult> {
+  private async waitForDemoView(
+    sessionId: string,
+    messageId: string,
+    options: WaitOptions = {},
+  ): Promise<CreationResult> {
     // 只约束查看演示这一条等待链，普通创作的等待行为保持不变。
     const waiter = new SessionWaiter({
       conversation: this.conversation,
@@ -385,11 +450,13 @@ export class CreationRuntime {
         return this.inspect(view);
       },
     });
-    return this.withGuidance(await waiter.wait(sessionId, { messageId }));
+    return this.withGuidance(await waiter.wait(sessionId, { messageId, timeout: options.timeout }));
   }
-  async startDevelopment(sessionId: string): Promise<JsonObject> {
+  async startDevelopment(sessionId: string, planningChoiceId?: string): Promise<JsonObject> {
     const view = await this.load(sessionId);
     const extra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
+    if (planningChoiceId && text(extra.cliPlanAfterStyle) !== planningChoiceId)
+      throw new CliError('STALE_INTERACTION', '风格衔接期间会话已切换，请查询当前状态', { sessionId });
     if (enabled(extra.startDevelopment))
       throw new CliError('STALE_INTERACTION', '项目已进入研发，请继续处理当前规划或任务，勿重复进入', {
         sessionId,
@@ -403,7 +470,11 @@ export class CreationRuntime {
       previewVersionId: 0,
       content: '开始研发，先生成研发规划',
       businessParams: { business_type: 'start_dev' },
-      roundExtra: { startDevelopment: '1', showDismissInBuildTutorial: '0' },
+      roundExtra: {
+        startDevelopment: '1',
+        showDismissInBuildTutorial: '0',
+        ...(planningChoiceId ? { cliPlanAfterStyle: planningChoiceId } : {}),
+      },
     });
     try {
       await this.command.sessionExtra(sessionId, { startDevelopment: '1', hasViewedBuild: '1' });

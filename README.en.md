@@ -76,7 +76,7 @@ superun-ai
 │   ├── style                                    # Manage creative styles
 │   │   ├── generate <sessionId>                 # Generate style candidates
 │   │   ├── list <sessionId>                     # List style batches
-│   │   └── select <sessionId> <choiceId>        # Choose a completed style
+│   │   └── select <sessionId> <choiceId>        # Choose a style and generate the development plan
 │   ├── demo <sessionId>                         # View the demo and record it as viewed
 │   ├── develop <sessionId>                      # Keep the demo and plan development
 │   ├── interaction                              # Answer or skip interactions
@@ -196,6 +196,8 @@ superun-ai chat publish visibility <sessionId> private
 Style generation defaults to two candidates and supports one to four. Use the returned `choiceId` to select a style. Publishing uses the returned `encryptedId` and tracks the selected version's deployment. Plugin IDs come from `chat plugin list`.
 
 Style waiting returns progress as soon as one candidate succeeds and its screenshot is ready, while the batch remains `RUNNING`. Show that candidate and its screenshot link immediately, then follow `QUERY_STYLES` to keep checking the remaining candidates. For example: “Style B is ready; waiting for style A.” Labels A/B/C/D correspond to the original `index` 0/1/2/3, regardless of completion order. Announce each `choiceId` only once and wait for the user's selection after the batch finishes.
+
+After the user selects a style, `chat style select` waits for its demo, completes the demo transition and preserves the version internally, then generates the development plan. Show only that the selected style is being used to prepare the plan, without demo-stage prompts or additional questions. Keep the existing plan content and confirmation/adjustment guidance unchanged; the feature-selection step follows plan approval. After `--no-wait` or a local timeout, follow `CONTINUE_STYLE_PLANNING` with `chat wait` to check the current state and resume the transition. `chat state` remains read-only, and existing projects can still use `chat demo` and `chat develop`.
 
 After the user explicitly asks to launch the site, use `chat publish status <sessionId> --for-launch` to get the latest pending version from the publishing panel. Show its `changeLog` unchanged, then follow the returned publishing command without a second confirmation. For a deployment already in progress, only track progress. If deployment is complete but the site is not public, finish the visibility step and return the public URL. `status` is always read-only; an ordinary status query does not grant publishing authorization.
 

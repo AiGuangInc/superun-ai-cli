@@ -50,7 +50,7 @@ export class AgentCommandApi {
   async parallel(input: JsonObject): Promise<JsonObject> {
     return object(await this.client.call(`${PREFIX}/glowParallelChat`, input, true));
   }
-  async viewDemo(sessionId: string): Promise<JsonObject> {
+  async viewDemo(sessionId: string, planningChoiceId?: string): Promise<JsonObject> {
     return object(
       await this.client.call(
         `${PREFIX}/fakeGlowChat`,
@@ -63,6 +63,7 @@ export class AgentCommandApi {
           roundExtra: {
             business_type: 'fake_confirm_generate_more_demo',
             showConfirmGenerateMoreDemo: '1',
+            ...(planningChoiceId ? { cliPlanAfterStyle: planningChoiceId } : {}),
           },
         },
         true,

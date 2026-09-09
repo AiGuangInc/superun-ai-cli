@@ -9,7 +9,12 @@ import {
 } from '../interactions/parsers/style-selection.js';
 
 export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
-  Partial<Pick<CreationResult, 'interactions' | 'choices' | 'messageId' | 'cursor' | 'demo' | 'development'>>;
+  Partial<
+    Pick<
+      CreationResult,
+      'interactions' | 'choices' | 'messageId' | 'cursor' | 'demo' | 'development' | 'stylePlanning'
+    >
+  >;
 
 const QUESTIONNAIRE_INSTRUCTION =
   '请一次性向用户完整展示当前交互 questions 中的全部问题和选项：保留原始问题、选项标签及说明，标明题号、选项编号、multiSelect 单选/多选规则和 allowOther 自定义回答能力；展示编号须与 question.id、options.index 对应，不要只概括问题、逐题提问或省略选项。提示用户“请按题号回答，例如1A、2B，也可以补充自己的要求”，示例不代表固定题数或默认答案。收集整份问卷的回答；若用户仅回答部分题目，保留已答内容并一次性展示剩余问题及选项，不要替用户选择推荐项，答案齐全后再统一提交';
@@ -55,6 +60,16 @@ function nextActionsForState(
 ): Array<NextAction> {
   // 显式保留连接地址，避免调用方执行下一步时切回默认环境；凭据不进入命令。
   const command = [COMMAND_NAME, '--endpoint', config.endpoint, '--locale', config.locale, 'chat'];
+  if (result.stylePlanning && ['ACCEPTED', 'RUNNING', 'QUEUED', 'COMPLETED'].includes(result.state))
+    return [
+      {
+        action: 'CONTINUE_STYLE_PLANNING',
+        instruction:
+          '用户已选定风格，提示已采用该方案、正在生成研发规划。继续等待，CLI 会内部完成演示状态衔接并生成规划；不展示演示完成提示、使用场景说明或演示链接，不询问是否查看演示或是否开始研发。不要声称用户已实际查看演示。生成规划后沿用原有规划展示和确认引导；遇到问题或错误原样展示，不自动确认规划或选择开发功能。',
+        requiresUserInput: false,
+        command: [...command, 'wait', '--', result.sessionId],
+      },
+    ];
   if (result.development?.snapshot?.status === 'PENDING')
     return [
       {
@@ -137,7 +152,7 @@ function nextActionsForState(
       return [
         {
           action: 'SELECT_STYLE',
-          instruction: `请按原始 index 对应的 A/B/C/D 展示本批方案及 screenshotUrl 可点击链接；仅在用户选择${styleChoiceLabel(choice)}（风格 ${choice.index + 1}）后执行此命令，继续创作。`,
+          instruction: `请按原始 index 对应的 A/B/C/D 展示本批方案及 screenshotUrl 可点击链接，说明选定风格后会生成研发规划供用户确认；仅在用户选择${styleChoiceLabel(choice)}（风格 ${choice.index + 1}）后执行此命令。CLI 会静默完成演示衔接并生成研发规划，不再询问是否查看演示或是否开始研发；规划仍按原流程展示并等待确认。`,
           requiresUserInput: true,
           choiceId: choice.choiceId,
           command: [...command, 'style', 'select', '--', result.sessionId, choice.choiceId],
