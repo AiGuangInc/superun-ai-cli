@@ -1,21 +1,58 @@
 # superun-ai-cli
 
+[English](README.en.md) | [中文](README.md)
+
 superun-ai-cli 命令行工具，支持项目管理、对话创作、交互问答、插件管理和应用发布。人和自动化程序使用同一组命令；业务结果以 JSON 输出。
 
 ## 安装
 
 需要 Node.js 22 或更新版本，以及 npm。
 
-> 当前版本尚未正式发布，以下为正式发布后的安装与使用方式。
+> 当前版本尚未在 npm 正式发布。有仓库访问权限的用户可以先从源码安装；npm 安装方式在正式发布后可用。
+
+### 🤖 通过 AI Agent 安装配置（推荐）
+
+把下面这段话发给 Claude Code、Codex 或其他 AI 编码 Agent，它会根据[安装指南](INSTALL.md)检查环境、安装 CLI，并引导你完成登录与验证：
+
+```text
+请阅读 https://raw.githubusercontent.com/AiGuangInc/superun-ai-cli/refs/heads/main/INSTALL.md，帮我安装并配置 superun-ai-cli。请先确认可用的安装方式，登录时让我在浏览器完成操作，不要索取或展示 PAT 明文。
+```
+
+如果 Agent 已经打开本仓库，也可以直接让它阅读根目录的 `INSTALL.md`。
+
+### 手动安装
+
+当前从源码安装需要 Git 和仓库访问权限。在准备存放代码的目录执行：
+
+```bash
+git clone https://github.com/AiGuangInc/superun-ai-cli.git
+cd superun-ai-cli
+npm ci
+npm run build
+npm install -g .
+```
+
+如果本地已有仓库，请使用已有目录，不要覆盖未提交的改动。
+
+正式发布到 npm 后，可直接安装，无需源码和自行编译：
 
 ```bash
 npm install -g superun-ai-cli
-superun-ai --help
 ```
 
-`-g` 表示全局安装。安装会下载运行所需的程序和依赖，无需下载源码仓库或自行编译。全局命令目录在 `PATH` 中时，可以在任意目录使用 `superun-ai`。
+`-g` 表示全局安装。全局命令目录在 `PATH` 中时，可以在任意目录使用 `superun-ai`。
 
 安装包名为 `superun-ai-cli`，使用时的命令名为 `superun-ai`。
+
+## 查看帮助
+
+安装完成后，单独执行以下命令查看帮助；这些命令不会发起登录或创作：
+
+```bash
+superun-ai --help
+superun-ai chat --help
+superun-ai chat style generate --help
+```
 
 ## 命令树
 
@@ -56,13 +93,6 @@ superun-ai
 │       └── visibility <sessionId> <visibility>  # 设置站点上线或下线状态
 ├── update                                       # 检查并安装指定版本
 └── version                                      # 显示本地版本与输出协议版本
-```
-
-查看某一组命令或具体命令的帮助：
-
-```bash
-superun-ai chat --help
-superun-ai chat style generate --help
 ```
 
 ## PAT 登录
@@ -165,6 +195,8 @@ superun-ai chat publish visibility <sessionId> private
 
 风格默认生成 2 个，支持 1～4 个；使用查询结果中的 `choiceId`。发布使用查询结果中的 `encryptedId`，按目标版本跟踪部署状态。插件 ID 以 `chat plugin list` 返回值为准。
 
+用户明确回复“上线运营”后，使用 `chat publish status <sessionId> --for-launch` 获取 Glow 发布面板的最新待发布版本，原样展示该版本的 `changeLog`，再按返回的命令直接发布，无需二次确认。发布中的版本只跟踪进度；部署后尚未公开的站点继续执行上线动作，完成后返回正式链接。`status` 始终只读，普通状态查询不会自动获得发布授权。
+
 `chat publish start --indexing allow|deny` 控制搜索引擎索引，不限制用户访问；站点上下线使用 `chat publish visibility`。若服务端要求确认云服务费用，了解费用后可显式传入 `--acknowledge-cloud-fee`。
 
 ## 附件
@@ -207,7 +239,9 @@ superun-ai chat publish visibility <sessionId> private
 
 ## 更新
 
-CLI 会在执行业务命令前检查版本，需要更新时自动安装指定版本后继续执行。更新或校验失败时会停止执行，请根据错误提示处理后重试。帮助、`version` 和 `auth logout` 可离线使用。
+正式发行版会在执行业务命令前检查版本，需要更新时自动安装指定版本后继续执行。更新或校验失败时会停止执行，请根据错误提示处理后重试。帮助、`version` 和 `auth logout` 可离线使用。
+
+当前从源码安装的版本，请在源码目录重新构建；如果全局命令不是链接到该目录，再执行 `npm install -g .`。不要使用 `superun-ai update` 获取尚未发布的版本。
 
 ```bash
 superun-ai version
