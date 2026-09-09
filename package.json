@@ -1,6 +1,6 @@
 {
   "name": "superun-ai-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "superun-ai-cli 命令行工具，支持项目管理、对话创作、交互问答和应用发布",
   "author": "xiuyu.yi",
   "license": "UNLICENSED",
