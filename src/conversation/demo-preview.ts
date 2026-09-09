@@ -3,8 +3,10 @@ import { z } from 'zod';
 import type { Choice, DemoPreview } from '../contracts/cli-output.js';
 import { parseWire } from '../contracts/node-wire.js';
 import type { SessionView } from '../contracts/node-wire.js';
-import { enabled } from '../contracts/value.js';
+import type { AgentQueryApi } from '../api/agent-query-api.js';
+import { enabled, list, text } from '../contracts/value.js';
 import { currentRound, roundMessage } from './round-selector.js';
+import { findDevelopmentSnapshot } from './development-snapshot.js';
 
 const snapshotSchema = z.array(
   z.object({
@@ -46,4 +48,26 @@ export function projectDemoPreview(
     };
   }
   return undefined;
+}
+
+/** 修改演示可能由本轮收尾回执生成快照，只匹配本轮所属消息。 */
+export async function findModifiedDemoPreview(
+  query: AgentQueryApi,
+  view: SessionView,
+): Promise<DemoPreview | undefined> {
+  const round = currentRound(view);
+  if (!round) return undefined;
+  const messageIds = [
+    round.anchorUserMessageId,
+    ...list(round.meta?.sourceMessageIds).map(text),
+    ...round.agentItems.map((item) => item.source?.messageId),
+  ].filter((id): id is string => !!id);
+  const snapshot = await findDevelopmentSnapshot(query, view.session.sessionId, messageIds);
+  if (!snapshot) return undefined;
+  return {
+    snapshotId: snapshot.snapshotId,
+    messageId: snapshot.messageId,
+    url: snapshot.url,
+    viewed: enabled(view.extra.hasViewedDemo),
+  };
 }

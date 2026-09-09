@@ -12,6 +12,9 @@ export class PublishApi {
   async start(input: {
     sessionId: string;
     encryptedId: string;
+    changeLog?: string;
+    changeLogSummary?: string;
+    websiteIntroduction?: string;
     targetRegion?: string;
     noIndex?: boolean;
     acknowledgedCloudServiceFee?: boolean;

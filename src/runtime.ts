@@ -25,7 +25,11 @@ import {
 import type { StyleWaitTarget } from './interactions/parsers/style-selection.js';
 import { resolveState } from './conversation/state-resolver.js';
 import { buildNextActions } from './conversation/next-actions.js';
-import { isInitialDemoRound, projectDemoPreview } from './conversation/demo-preview.js';
+import {
+  findModifiedDemoPreview,
+  isInitialDemoRound,
+  projectDemoPreview,
+} from './conversation/demo-preview.js';
 import { findDevelopmentSnapshot } from './conversation/development-snapshot.js';
 import type { GuidanceResult } from './conversation/next-actions.js';
 import { currentRound, roundMessage } from './conversation/round-selector.js';
@@ -126,7 +130,23 @@ export class CreationRuntime {
     const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
     const started = enabled(roundExtra.startDevelopment);
     const planApproved = enabled(roundExtra.architecturePlanApproved);
-    if (started || result.demo?.viewed) {
+    const modifiedDemo =
+      result.state === 'COMPLETED' &&
+      !started &&
+      !isInitialDemoRound(view) &&
+      enabled(view.extra.hasViewedDemo) &&
+      enabled(roundExtra.showConfirmGenerateMoreDemo);
+    if (modifiedDemo) {
+      result.demo = await findModifiedDemoPreview(this.query, view);
+      if (result.demo) this.snapshotSync = undefined;
+      else {
+        const key = `demo:${view.session.sessionId}:${currentRound(view)?.roundId}`;
+        if (this.snapshotSync?.key !== key) this.snapshotSync = { key, startedAt: Date.now() };
+        if (Date.now() - this.snapshotSync.startedAt < DEVELOPMENT_SNAPSHOT_SYNC_MS)
+          return { ...result, state: 'RUNNING' };
+      }
+    }
+    if (started || result.demo?.viewed || modifiedDemo) {
       result.development = {
         started,
         planApproved,

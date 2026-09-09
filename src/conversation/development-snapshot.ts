@@ -22,14 +22,15 @@ const pageSchema = z.union([
 export async function findDevelopmentSnapshot(
   query: AgentQueryApi,
   sessionId: string,
-  messageId: string,
+  messageId: string | Array<string>,
 ): Promise<Extract<DevelopmentSnapshot, { status: 'READY' }> | undefined> {
+  const messageIds = new Set(Array.isArray(messageId) ? messageId : [messageId]);
   const seen = new Set<string>();
   for (let page = 1; ; page++) {
     const response = parseWire(pageSchema, await query.developmentSnapshots(sessionId, page));
     const items = Array.isArray(response) ? response : response.data;
     const snapshot = items
-      .filter((item) => item.messageId === messageId)
+      .filter((item) => messageIds.has(item.messageId))
       .sort((left, right) => right.createdAt - left.createdAt)[0];
     if (snapshot) {
       if (!snapshot.visitUrl) return undefined;

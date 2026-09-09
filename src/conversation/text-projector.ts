@@ -19,12 +19,17 @@ export function projectText(rounds: Array<NodeRound>): Pick<CreationResult, 'mes
   const progress: CreationResult['progress'] = [];
   for (const round of rounds) {
     for (const item of [...round.userItems, ...round.agentItems]) {
-      if (item.kind === 'bubble') {
+      const isRequirementChecklist = item.kind === 'card' && item.variant === 'requirement_checklist';
+      if (item.kind === 'bubble' || isRequirementChecklist) {
         const content = visibleText(item.payload)
           .replace(/<superun-action\s+type=["']start-executing["']\s*\/?>/g, '')
           .trim();
         if (content)
-          messages.push({ id: item.id, role: item.role === 'user' ? 'user' : 'assistant', text: content });
+          messages.push({
+            id: item.id,
+            role: item.role === 'user' ? 'user' : 'assistant',
+            text: isRequirementChecklist ? `简版使用场景的演示\n\n${content}` : content,
+          });
       }
       if (item.kind === 'activity-entry') {
         const summary = object(item.payload.summary);

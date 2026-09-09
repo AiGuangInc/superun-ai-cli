@@ -29,7 +29,9 @@ function projectPublish(value: JsonObject, encryptedId?: string): JsonObject {
         deployStatus: item.deployStatus,
         errorMessage: item.errorMessage,
         deploymentSteps: item.deploymentSteps,
+        changeLog: item.changeLog,
         changeLogSummary: item.changeLogSummary,
+        websiteIntroduction: item.websiteIntroduction,
       })),
   };
 }
@@ -39,6 +41,8 @@ function publishActions(
   value: JsonObject,
   publicStatus?: number,
   encryptedId?: string,
+  forLaunch = false,
+  showCompletedGuidance = true,
 ): Array<NextAction> {
   const command = [
     COMMAND_NAME,
@@ -59,7 +63,15 @@ function publishActions(
         action: 'QUERY_PUBLISH',
         instruction: '发布正在进行，继续查询该版本结果，不要重复提交发布。',
         requiresUserInput: false,
-        command: [...command, 'status', '--version-id', String(pending.encryptedId), '--', sessionId],
+        command: [
+          ...command,
+          'status',
+          ...(forLaunch ? ['--for-launch'] : []),
+          '--version-id',
+          String(pending.encryptedId),
+          '--',
+          sessionId,
+        ],
       },
     ];
   const candidate = encryptedId
@@ -70,18 +82,36 @@ function publishActions(
     return [
       {
         action: 'PUBLISH_VERSION',
-        instruction: '请核对本版本的变更摘要；确认后执行发布命令，CLI 会等待部署完成。',
-        requiresUserInput: true,
-        command: [...command, 'start', '--', sessionId, target],
+        instruction: forLaunch
+          ? '用户已明确要求上线运营。原样展示目标版本的 changeLog 作为发布进度说明，与 Glow 发布卡片保持一致；不要改写、概括或用 changeLogSummary 替代，缺少日志时如实说明。直接执行本版本发布并等待完成，不再询问是否确认发布；完成后展示 publishUrl。'
+          : '只展示目标版本的 changeLog 原文和发布状态；用户明确要求发布或上线运营后执行发布命令，不把查询状态视为发布授权。',
+        requiresUserInput: !forLaunch,
+        command: [...command, 'start', ...(forLaunch ? ['--for-launch'] : []), '--', sessionId, target],
       },
     ];
   if (records.some((item) => item.deployStatus === 1) && publicStatus === 0)
     return [
       {
         action: 'MAKE_PUBLIC',
-        instruction: '部署已完成，但站点尚未公开；确认对外上线后执行此命令。',
-        requiresUserInput: true,
+        instruction: forLaunch
+          ? '部署已完成，继续按用户的上线运营要求将站点公开，不再重复确认；完成后展示 publishUrl。'
+          : '部署已完成，但站点尚未公开；用户明确要求对外上线后执行此命令。',
+        requiresUserInput: !forLaunch,
         command: [...command, 'visibility', '--', sessionId, 'public'],
+      },
+    ];
+  if (
+    showCompletedGuidance &&
+    publicStatus === 1 &&
+    records.some((item) => (!encryptedId || item.encryptedId === encryptedId) && item.deployStatus === 1)
+  )
+    return [
+      {
+        action: 'CONTINUE_CHAT',
+        instruction:
+          '展示发布成功结果、目标版本的 changeLog 原文和 publishUrl 可点击链接；未指定版本时使用 updatedAt 最新的已发布版本。最后另起一行原样展示：\n**继续创作**：直接告诉我想新增或调整的内容。\n等待用户响应；收到新的创作要求后，将用户原文不经改写或扩充地放入 content，通过 --input - 提交 JSON，不自动追加需求或重复发布。',
+        requiresUserInput: true,
+        command: [...command.slice(0, -1), 'send', '--input', '-', '--', sessionId],
       },
     ];
   return [];
@@ -92,6 +122,7 @@ async function publishResult(
   value: JsonObject,
   encryptedId?: string,
   waitTimedOut = false,
+  forLaunch = false,
 ) {
   const { session } = await service.conversation.recently(sessionId);
   const running = versions(value).some(
@@ -102,7 +133,15 @@ async function publishResult(
     sessionId,
     publish: { ...projectPublish(value, encryptedId), publicStatus: session.publicStatus },
     ...(waitTimedOut ? { waitTimedOut } : {}),
-    nextActions: publishActions(service, sessionId, value, session.publicStatus, encryptedId),
+    nextActions: publishActions(
+      service,
+      sessionId,
+      value,
+      session.publicStatus,
+      encryptedId,
+      forLaunch,
+      !waitTimedOut,
+    ),
   };
 }
 export function registerPublish(chat: Command, context: CommandContext): void {
@@ -111,17 +150,27 @@ export function registerPublish(chat: Command, context: CommandContext): void {
     .command('status <sessionId>')
     .description('查询发布版本与部署进度')
     .option('--version-id <encryptedId>', '只查询指定版本')
+    .option('--for-launch', '用户已明确要求上线运营，返回直接发布的后续动作；本命令仍只读')
     .action(async (sessionId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command),
-        value = await service.publish.status(sessionId);
+        value = await service.publish.status(sessionId),
+        options = object(command.opts());
       context.output.write(
-        await publishResult(service, sessionId, value, text(object(command.opts()).versionId)),
+        await publishResult(
+          service,
+          sessionId,
+          value,
+          text(options.versionId),
+          false,
+          options.forLaunch === true,
+        ),
       );
     });
   withWait(
     publish
       .command('start <sessionId> <encryptedId>')
       .description('发布指定版本')
+      .option('--for-launch', '继续已授权的上线运营流程，部署后引导公开站点')
       .addOption(new Option('--region <region>', '部署区域').choices(['CN', 'INTL']))
       .addOption(
         new Option('--indexing <policy>', '搜索引擎索引策略；不代表访问权限').choices(['allow', 'deny']),
@@ -139,6 +188,9 @@ export function registerPublish(chat: Command, context: CommandContext): void {
       const response = await service.publish.start({
         sessionId,
         encryptedId,
+        changeLog: text(before.changeLog),
+        changeLogSummary: text(before.changeLogSummary),
+        websiteIntroduction: text(before.websiteIntroduction),
         targetRegion: text(options.region),
         ...(options.indexing ? { noIndex: options.indexing === 'deny' } : {}),
         ...(options.acknowledgeCloudFee ? { acknowledgedCloudServiceFee: true } : {}),
@@ -170,6 +222,7 @@ export function registerPublish(chat: Command, context: CommandContext): void {
           { publishedVersions: [{ encryptedId, deployStatus: 2 }] },
           undefined,
           encryptedId,
+          options.forLaunch === true,
         ),
       });
       return;
@@ -199,7 +252,16 @@ export function registerPublish(chat: Command, context: CommandContext): void {
         encryptedId,
         publish: projectPublish(observed, encryptedId),
       });
-    context.output.write(await publishResult(service, sessionId, observed, encryptedId, waitTimedOut));
+    context.output.write(
+      await publishResult(
+        service,
+        sessionId,
+        observed,
+        encryptedId,
+        waitTimedOut,
+        options.forLaunch === true,
+      ),
+    );
   });
   publish
     .command('visibility <sessionId> <visibility>')
