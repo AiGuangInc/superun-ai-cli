@@ -19,6 +19,5 @@ export const NPM_REGISTRY = metadata.publishConfig.registry;
 export const COMMAND_NAME = 'superun-ai';
 export const SCHEMA_VERSION = '1';
 export const DEFAULT_ENDPOINT = 'https://superun.com';
-export const PRE_ENDPOINT = 'https://superun.pre.qima-inc.com';
 export const PAT_PREFIX = 'sup_pat_';
 export const DEFAULT_WAIT_SECONDS = 1800;

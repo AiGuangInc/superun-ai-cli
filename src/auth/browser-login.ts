@@ -45,7 +45,7 @@ export async function ensurePat(options: {
       '未配置 PAT，请执行 superun-ai auth login；脚本中请设置 SUPERUN_PAT 或使用 auth login --stdin',
     );
   // 认证统一使用 Superun 站点，业务地址不影响登录与凭据签发。
-  const loginConfig = { ...config, endpoint: DEFAULT_ENDPOINT, gatewayToken: undefined };
+  const loginConfig = { ...config, endpoint: DEFAULT_ENDPOINT };
   const uuid = randomUUID();
   const loginUrl = new URL('/web/cli-token-callback', loginConfig.endpoint);
   loginUrl.searchParams.set('uuid', uuid);

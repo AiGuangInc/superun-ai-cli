@@ -1,26 +1,15 @@
 /** 本次命令的连接配置。@author xiuyu.yi */
-import { DEFAULT_ENDPOINT, PRE_ENDPOINT } from './constants.js';
+import { DEFAULT_ENDPOINT } from './constants.js';
 import { CliError } from '../output/exit-codes.js';
 
 export type RuntimeConfig = {
   endpoint: string;
   locale: string;
   timeoutMs: number;
-  gatewayToken?: string;
 };
 
-function environmentEndpoint(environment: string): string {
-  if (environment === 'pre') return PRE_ENDPOINT;
-  if (environment === 'prod') return DEFAULT_ENDPOINT;
-  throw new CliError('INVALID_ARGUMENT', 'env 必须为 prod 或 pre');
-}
-
-export function runtimeConfig(options: { endpoint?: string; locale?: string; env?: string }): RuntimeConfig {
-  const endpoint =
-    options.endpoint ??
-    (options.env !== undefined
-      ? environmentEndpoint(options.env)
-      : (process.env.SUPERUN_ENDPOINT ?? environmentEndpoint(process.env.SUPERUN_ENV ?? 'prod')));
+export function runtimeConfig(options: { endpoint?: string; locale?: string }): RuntimeConfig {
+  const endpoint = options.endpoint ?? process.env.SUPERUN_ENDPOINT ?? DEFAULT_ENDPOINT;
   let url: URL;
   try {
     url = new URL(endpoint);
@@ -42,6 +31,5 @@ export function runtimeConfig(options: { endpoint?: string; locale?: string; env
     endpoint: url.origin,
     locale: options.locale ?? 'zh-CN',
     timeoutMs: 65_000,
-    ...(url.origin === PRE_ENDPOINT ? { gatewayToken: process.env.PRIVATE_TOKEN?.trim() } : {}),
   };
 }

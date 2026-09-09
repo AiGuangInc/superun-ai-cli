@@ -35,9 +35,7 @@ async function loadCredentialContext(
   const config = runtimeConfig({
     endpoint: text(options.endpoint),
     locale: text(options.locale),
-    env: text(options.env),
   });
-  if (config.gatewayToken) context.output.registerSecret(config.gatewayToken);
   const credential = await ensurePat({
     store: context.patStore,
     config,
