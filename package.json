@@ -4,7 +4,6 @@
   "description": "superun-ai-cli 命令行工具，支持项目管理、对话创作、交互问答和应用发布",
   "author": "xiuyu.yi",
   "license": "UNLICENSED",
-  "private": true,
   "type": "module",
   "bin": {
     "superun-ai": "dist/cli.js"
@@ -21,7 +20,8 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "tsc",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli.js",
     "dev": "npm run build --silent && node dist/development.js",
