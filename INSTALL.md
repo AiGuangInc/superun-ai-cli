@@ -20,25 +20,25 @@ npm --version
 
 如果 `superun-ai` 已存在，先检查其路径及 `superun-ai version`，区分 npm 安装和源码目录链接。保留现有凭据及用户未提交的代码，不卸载或覆盖其他工具。
 
-## 2. 确认可用的安装方式
+## 2. 通过 npm 安装
 
-当前仓库尚未正式发布到 npm。执行安装时应重新查询，避免依赖过时的发布状态：
-
-```bash
-npm view superun-ai-cli name version repository.url dist.tarball --registry=https://registry.npmjs.org --json
-```
-
-- 查询成功：核对包名和官方仓库归属后，使用 npm 安装。若包归属无法确认，先停止并说明，不安装同名的未知来源包。
-- 明确返回该包的 `E404`：说明 npm 安装尚不可用。有官方仓库访问权限时，从源码安装；没有权限时，请用户提供可访问的官方源码或等待发布。
-- 网络、证书、认证或其他错误：保留真实错误并先排查，不把它们当成“包未发布”，也不要反复重试安装。
-
-### 已发布：从 npm 安装
+`superun-ai-cli` 已发布到 npm，默认安装公开包，无需 Git、源码构建或 npm 发布账号：
 
 ```bash
 npm install -g superun-ai-cli --registry=https://registry.npmjs.org
 ```
 
-### 未发布：从源码安装
+需要核对当前发布版本时，可以只读查询：
+
+```bash
+npm view superun-ai-cli name version dist-tags --registry=https://registry.npmjs.org --json
+```
+
+- 安装成功后继续验证命令，再引导用户登录 Superun。
+- 如果返回 `E404`、网络、证书、权限或其他错误，如实说明并检查 npm 官方 Registry 的访问情况，不自动切换包名、镜像源或源码安装方式。
+- 更新现有安装时，保留用户的 Superun 凭据；不要求重新导入 PAT。
+
+### 可选：用户明确要求从源码安装
 
 需要 Git 和仓库访问权限。先确认安装目录；若已有本仓库，复用该目录并检查 `git status` 和 remote，不覆盖未提交改动、不强制切换分支。
 
@@ -52,9 +52,9 @@ npm run build
 npm install -g .
 ```
 
-逐条执行，失败即停。仓库访问失败时，说明需要的访问权限，不索取 GitHub 凭据明文。不要修改 `private`、包名或版本号，不执行 `npm publish`，也不要绕过发行版的版本校验。
+逐条执行，失败即停。`npm run build` 会先清理 `dist` 再构建。仓库访问失败时，说明需要的访问权限，不索取 GitHub 凭据明文。安装任务不修改包名、版本或发包配置，也不执行 `npm publish`。
 
-源码安装可能把全局命令链接到当前目录，因此应保留源码目录。以后更新源码时，先确认工作区干净再同步代码、安装匹配依赖并重新构建；全局命令若不是源码链接，再执行 `npm install -g .`。不要用 `superun-ai update` 获取尚未发布的版本。
+源码安装可能把全局命令链接到当前目录，因此应保留源码目录。以后修改源码时重新构建；全局命令若不是源码链接，再执行 `npm install -g .`。源码安装与 npm 安装均遵循 npm `latest` 版本检查，不绕过校验。
 
 ## 3. 单独验证命令安装
 
@@ -66,6 +66,8 @@ superun-ai version
 ```
 
 确认命令可以启动。若提示找不到命令，检查当前终端的 `PATH`、所用 Node.js 安装及 npm 全局目录；不要把它误判为业务登录失败。不要通过全量打印环境变量来排查，避免泄露凭据。
+
+业务命令会先检查 npm `latest`，本地版本不一致时自动安装并继续；也可以用 `superun-ai update` 主动同步。若版本校验失败，先处理 Registry 访问或安装错误，不清除 Superun 凭据。
 
 ## 4. 引导用户登录
 

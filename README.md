@@ -8,21 +8,31 @@ superun-ai-cli 命令行工具，支持项目管理、对话创作、交互问�
 
 需要 Node.js 22 或更新版本，以及 npm。
 
-> 当前版本尚未在 npm 正式发布。有仓库访问权限的用户可以先从源码安装；npm 安装方式在正式发布后可用。
+> 已发布到 [npm](https://www.npmjs.com/package/superun-ai-cli)，默认通过 npm 安装，无需克隆源码或自行编译。
 
 ### 🤖 通过 AI Agent 安装配置（推荐）
 
 把下面这段话发给 Claude Code、Codex 或其他 AI 编码 Agent，它会根据[安装指南](INSTALL.md)检查环境、安装 CLI，并引导你完成登录与验证：
 
 ```text
-请阅读 https://raw.githubusercontent.com/AiGuangInc/superun-ai-cli/refs/heads/main/INSTALL.md，帮我安装并配置 superun-ai-cli。请先确认可用的安装方式，登录时让我在浏览器完成操作，不要索取或展示 PAT 明文。
+请阅读 https://raw.githubusercontent.com/AiGuangInc/superun-ai-cli/refs/heads/main/INSTALL.md，帮我安装并配置 superun-ai-cli。请通过 npm 安装，登录 Superun 时让我在浏览器完成操作，不要索取或展示 PAT 明文。
 ```
 
 如果 Agent 已经打开本仓库，也可以直接让它阅读根目录的 `INSTALL.md`。
 
 ### 手动安装
 
-当前从源码安装需要 Git 和仓库访问权限。在准备存放代码的目录执行：
+```bash
+npm install -g superun-ai-cli --registry=https://registry.npmjs.org
+```
+
+`-g` 表示全局安装。全局命令目录在 `PATH` 中时，可以在任意目录使用 `superun-ai`。安装公开包不需要 npm 发布账号；安装后登录的是 Superun 账号。
+
+安装包名为 `superun-ai-cli`，使用时的命令名为 `superun-ai`。
+
+### 可选：从源码安装
+
+需要修改 CLI 源码时，可以使用 Git 克隆仓库并构建：
 
 ```bash
 git clone https://github.com/AiGuangInc/superun-ai-cli.git
@@ -32,17 +42,7 @@ npm run build
 npm install -g .
 ```
 
-如果本地已有仓库，请使用已有目录，不要覆盖未提交的改动。
-
-正式发布到 npm 后，可直接安装，无需源码和自行编译：
-
-```bash
-npm install -g superun-ai-cli
-```
-
-`-g` 表示全局安装。全局命令目录在 `PATH` 中时，可以在任意目录使用 `superun-ai`。
-
-安装包名为 `superun-ai-cli`，使用时的命令名为 `superun-ai`。
+如果本地已有仓库，请使用已有目录，不要覆盖未提交的改动。构建会先清理 `dist` 再生成产物；全局命令若链接到源码目录，应保留该目录。
 
 ## 查看帮助
 
@@ -239,9 +239,9 @@ superun-ai chat publish visibility <sessionId> private
 
 ## 更新
 
-正式发行版会在执行业务命令前检查版本，需要更新时自动安装指定版本后继续执行。更新或校验失败时会停止执行，请根据错误提示处理后重试。帮助、`version` 和 `auth logout` 可离线使用。
+CLI 会在执行业务命令前检查 npm `latest` 版本，与本地版本不同时自动安装该版本并继续执行。更新或校验失败时会停止执行，请根据错误提示处理后重试。帮助、`version` 和 `auth logout` 可离线使用。
 
-当前从源码安装的版本，请在源码目录重新构建；如果全局命令不是链接到该目录，再执行 `npm install -g .`。不要使用 `superun-ai update` 获取尚未发布的版本。
+可以执行 `superun-ai update` 主动同步 npm `latest`。从源码安装也遵循相同的版本校验；修改源码后需要重新构建，如果全局命令不是链接到该目录，再执行 `npm install -g .`。
 
 ```bash
 superun-ai version

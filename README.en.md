@@ -8,21 +8,31 @@ superun-ai-cli is a command-line tool for project management, conversational cre
 
 Requires Node.js 22 or newer and npm.
 
-> The package has not yet been officially published to npm. Users with repository access can install from source now; registry installation will be available after publication.
+> Available on [npm](https://www.npmjs.com/package/superun-ai-cli). Install with npm by default; cloning or compiling the source is not required.
 
 ### 🤖 Install and configure with an AI agent (recommended)
 
 Send the following prompt to Claude Code, Codex, or another AI coding agent. The agent will follow the [installation guide](INSTALL.md) to check your environment, install the CLI, and guide you through login and verification:
 
 ```text
-Read https://raw.githubusercontent.com/AiGuangInc/superun-ai-cli/refs/heads/main/INSTALL.md and help me install and configure superun-ai-cli. Check which installation method is available first. Let me complete login in my browser; do not request or display my PAT in plain text.
+Read https://raw.githubusercontent.com/AiGuangInc/superun-ai-cli/refs/heads/main/INSTALL.md and help me install and configure superun-ai-cli. Install from npm. Let me complete Superun login in my browser; do not request or display my PAT in plain text.
 ```
 
 If the agent already has this repository open, ask it to read `INSTALL.md` in the repository root.
 
 ### Manual installation
 
-Source installation currently requires Git and repository access. Run these commands in the directory where you want to keep the source:
+```bash
+npm install -g superun-ai-cli --registry=https://registry.npmjs.org
+```
+
+`-g` installs the package globally. Once the global command directory is on your `PATH`, you can run `superun-ai` from any directory. Installing this public package does not require an npm publishing account; sign in to Superun after installation.
+
+The package name is `superun-ai-cli`; the shell command is `superun-ai`.
+
+### Optional: install from source
+
+If you need to change the CLI source, clone the repository with Git and build it:
 
 ```bash
 git clone https://github.com/AiGuangInc/superun-ai-cli.git
@@ -32,17 +42,7 @@ npm run build
 npm install -g .
 ```
 
-If you already have a local checkout, use that directory and preserve any uncommitted changes.
-
-After the package is published to npm, install it directly without cloning or compiling the source:
-
-```bash
-npm install -g superun-ai-cli
-```
-
-`-g` installs the package globally. Once the global command directory is on your `PATH`, you can run `superun-ai` from any directory.
-
-The package name is `superun-ai-cli`; the shell command is `superun-ai`.
+If you already have a local checkout, use that directory and preserve any uncommitted changes. The build clears `dist` before generating files. Keep the source directory if your global command is linked to it.
 
 ## Help
 
@@ -239,9 +239,9 @@ Business commands write one JSON result to stdout. Diagnostics and update progre
 
 ## Updates
 
-Published releases check the required version before business commands and install it when needed, then resume the command. If an update or verification fails, the CLI stops; resolve the reported issue before retrying. Help, `version`, and `auth logout` work offline.
+The CLI checks npm's `latest` version before business commands. If it differs from the local version, the CLI installs that version and resumes the command. If an update or verification fails, the CLI stops; resolve the reported issue before retrying. Help, `version`, and `auth logout` work offline.
 
-For the current source installation, rebuild in the source directory. If the global command is not linked to that checkout, run `npm install -g .` again. Do not use `superun-ai update` to retrieve an unpublished version.
+Run `superun-ai update` to sync with npm `latest` explicitly. Source installations use the same version check. Rebuild after changing the source; if the global command is not linked to that checkout, run `npm install -g .` again.
 
 ```bash
 superun-ai version
