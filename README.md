@@ -250,6 +250,10 @@ superun-ai update
 
 ## 卸载
 
+先清除本地 PAT，成功后再卸载程序：
+
 ```bash
-npm uninstall -g superun-ai-cli
+superun-ai auth logout && npm uninstall -g superun-ai-cli
 ```
+
+`npm uninstall` 不会自动执行 `logout`。如果设置过 `SUPERUN_PAT`，还需在当前终端执行 `unset SUPERUN_PAT`，并从设置它的 Shell 配置或运行环境中移除。`logout` 不会注销浏览器登录，也不会撤销服务端 PAT。

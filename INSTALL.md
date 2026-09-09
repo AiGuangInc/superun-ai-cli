@@ -117,4 +117,14 @@ superun-ai --help
 
 只在用户随后提出创作需求时才调用 `chat create`。安装配置本身不代表用户授权创建项目、启用插件、发布应用、改变站点可见性或发 npm 包。
 
+## 7. 用户要求卸载时
+
+仅在用户明确要求卸载时执行。先清除本地 PAT，成功后再卸载程序；清理失败时先处理错误，不跳过清理：
+
+```bash
+superun-ai auth logout && npm uninstall -g superun-ai-cli
+```
+
+`npm uninstall` 不会自动执行 `logout`。如果配置过 `SUPERUN_PAT`，提醒用户在自己的终端执行 `unset SUPERUN_PAT`，并从设置它的 Shell 配置或运行环境中移除；子进程无法替用户清除父终端的环境变量。不要输出变量值。此流程不注销浏览器登录，也不撤销服务端 PAT。
+
 <!-- @author xiuyu.yi -->

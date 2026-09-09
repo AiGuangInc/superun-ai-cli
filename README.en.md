@@ -250,8 +250,12 @@ superun-ai update
 
 ## Uninstalling
 
+Clear the local PAT first, then uninstall only if logout succeeds:
+
 ```bash
-npm uninstall -g superun-ai-cli
+superun-ai auth logout && npm uninstall -g superun-ai-cli
 ```
+
+`npm uninstall` does not run `logout` automatically. If you configured `SUPERUN_PAT`, also run `unset SUPERUN_PAT` in the current shell and remove it from the shell configuration or environment that sets it. Logging out does not sign you out of the browser or revoke the server-side PAT.
 
 <!-- @author xiuyu.yi -->
