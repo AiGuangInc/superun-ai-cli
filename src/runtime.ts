@@ -39,6 +39,8 @@ import { SessionWaiter } from './conversation/session-waiter.js';
 import type { WaitOptions } from './conversation/session-waiter.js';
 import { CliError } from './output/exit-codes.js';
 import { dispatchReply } from './interactions/handlers/index.js';
+import { TaskProgressReader } from './conversation/task-progress-reader.js';
+import { submittedTaskProgress, taskProgressSnapshot } from './conversation/task-progress.js';
 
 // 只限制完成结果的短暂同步，不限制用户回答或研发任务的总等待时间。
 const DEVELOPMENT_SNAPSHOT_SYNC_MS = 15_000;
@@ -53,6 +55,7 @@ export class CreationRuntime {
   readonly publish: PublishApi;
   readonly previewVersions: PreviewVersionApi;
   readonly waiter: SessionWaiter;
+  readonly taskProgress: TaskProgressReader;
   private snapshotSync?: { key: string; startedAt: number };
   constructor(
     readonly client: ApiClient,
@@ -66,11 +69,13 @@ export class CreationRuntime {
     this.plugin = new PluginApi(client);
     this.publish = new PublishApi(client);
     this.previewVersions = new PreviewVersionApi(client);
+    this.taskProgress = new TaskProgressReader(client);
     this.waiter = new SessionWaiter({
       conversation: this.conversation,
       command: this.command,
       load: (id) => this.load(id),
       inspect: (view, styleTarget) => this.inspect(view, styleTarget),
+      onProgress: (result) => this.output.progress(result),
       signal: client.signal,
     });
   }
@@ -111,12 +116,29 @@ export class CreationRuntime {
       if (['ENABLING', 'RESTORING', 'PAUSING', 'DISABLING'].includes(String(state.integrationStatus)))
         processingIds.add(binding.interaction.interactionId);
     }
-    const result = resolveState(
-      { ...view, automaticWork: processingIds.size > 0 },
-      bindings.filter((binding) => !processingIds.has(binding.interaction.interactionId)),
-      choices,
-      styleTarget,
+    const visibleBindings = bindings.filter(
+      (binding) => !processingIds.has(binding.interaction.interactionId),
     );
+    const taskProgress = await this.taskProgress.read(
+      view,
+      choices,
+      visibleBindings.map((binding) => binding.interaction),
+    );
+    let result: CreationResult;
+    try {
+      result = resolveState(
+        { ...view, automaticWork: processingIds.size > 0 },
+        visibleBindings,
+        choices,
+        styleTarget,
+      );
+    } catch (error) {
+      if (error instanceof CliError)
+        throw new CliError(error.code, error.message, { ...error.details, taskProgress });
+      throw error;
+    }
+    result.taskProgress = taskProgress;
+    result.cursor = { ...result.cursor, progressRevision: taskProgress.revision };
     const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
     const planningChoiceId = text(roundExtra.cliPlanAfterStyle);
     if (
@@ -229,7 +251,10 @@ export class CreationRuntime {
     return this.withGuidance(await this.inspect(await this.load(sessionId)));
   }
   withGuidance<T extends GuidanceResult>(result: T) {
-    return { ...result, nextActions: buildNextActions(result, this.client.config) };
+    const output = result.taskProgress
+      ? { ...result, cursor: { ...result.cursor, progressRevision: result.taskProgress.revision } }
+      : result;
+    return { ...output, nextActions: buildNextActions(output, this.client.config) };
   }
   async wait(sessionId: string, options: WaitOptions): Promise<CreationResult> {
     const deadline = options.timeout === undefined ? undefined : Date.now() + options.timeout * 1000;
@@ -250,6 +275,7 @@ export class CreationRuntime {
       pending = {
         messageId: text(response.messageId),
         requiredMessageId: text(response.messageId) ?? text(response.replyMessageId),
+        progressRevision: result.taskProgress?.revision,
       };
       result = await this.waiter.wait(sessionId, { ...pending, timeout: remaining() });
     }
@@ -272,6 +298,35 @@ export class CreationRuntime {
         requiredMessageId: text(response.messageId) ?? text(response.replyMessageId),
         styleTarget: styleWaitTarget(response) ?? options.styleTarget,
       });
+    const receipt = submittedTaskProgress(
+      id,
+      text(response.replyMessageId) ?? text(response.messageId) ?? id,
+      text(response.planningNotice) ?? text(response.progressTitle) ?? '任务已提交',
+    );
+    let taskProgress = receipt;
+    try {
+      // 接受回执也展示同一项目的其他活跃任务；仅查进度，不推进任务或读取功能清单。
+      const view: SessionView = { ...(await this.conversation.recently(id)), extra: {} };
+      const snapshot = await this.taskProgress.read(view, await this.choices(id, undefined, view));
+      const responseIds = [text(response.messageId), text(response.replyMessageId)].filter(Boolean);
+      const round = view.pipeline.render?.rounds.find(
+        (item) =>
+          responseIds.includes(item.anchorUserMessageId) ||
+          [...item.userItems, ...item.agentItems].some((content) =>
+            responseIds.includes(content.source?.messageId),
+          ),
+      );
+      const observed = round && snapshot.tasks.some((task) => task.roundId === round.roundId);
+      taskProgress = taskProgressSnapshot(
+        id,
+        [...snapshot.tasks, ...(observed ? [] : receipt.tasks)],
+        snapshot.warnings,
+      );
+    } catch {
+      taskProgress = taskProgressSnapshot(id, receipt.tasks, [
+        '请求已接受，其他任务进度暂未读取，请继续查询。',
+      ]);
+    }
     return this.withGuidance({
       state: 'ACCEPTED',
       sessionId: id,
@@ -282,6 +337,7 @@ export class CreationRuntime {
         : [],
       progress: [],
       interactions: [],
+      taskProgress,
       ...(text(response.planningChoiceId)
         ? { stylePlanning: { choiceId: String(response.planningChoiceId) } }
         : {}),

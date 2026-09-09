@@ -12,6 +12,7 @@ export function registerState(chat: Command, context: CommandContext): void {
     .command('state <sessionId>')
     .description('查询当前任务和交互')
     .option('--message-id <messageId>', '刷新指定消息快照')
+    .option('--progress-revision <revision>', '上次已展示的任务进度版本')
     .option('--include-file <name>', '包含指定可见附件正文，可重复使用', appendValue, [])
     .action(async (sessionId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command),
@@ -23,6 +24,8 @@ export function registerState(chat: Command, context: CommandContext): void {
       }
       const result = await service.inspect(view),
         names = z.array(z.string()).parse(options.includeFile);
+      if (result.taskProgress)
+        result.taskProgress.changed = result.taskProgress.revision !== options.progressRevision;
       if (names.length) result.attachments = await service.query.attachments(sessionId, names);
       context.output.write(service.withGuidance(result));
     });

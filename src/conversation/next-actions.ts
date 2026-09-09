@@ -12,7 +12,14 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
   Partial<
     Pick<
       CreationResult,
-      'interactions' | 'choices' | 'messageId' | 'cursor' | 'demo' | 'development' | 'stylePlanning'
+      | 'interactions'
+      | 'choices'
+      | 'messageId'
+      | 'cursor'
+      | 'demo'
+      | 'development'
+      | 'stylePlanning'
+      | 'taskProgress'
     >
   >;
 
@@ -44,14 +51,20 @@ export function buildNextActions(
   result: GuidanceResult,
   config: Pick<RuntimeConfig, 'endpoint' | 'locale'>,
 ): Array<NextAction> {
-  return nextActionsForState(result, config).map((action) =>
-    action.requiresUserInput
-      ? {
-          ...action,
-          instruction: `${action.instruction} 等待用户明确响应，不设置答题倒计时；未收到响应时保持当前步骤，不自动选择、提交、跳过或继续。`,
-        }
-      : action,
-  );
+  return nextActionsForState(result, config).map((action) => {
+    const progressInstruction = result.taskProgress
+      ? result.taskProgress.changed === false
+        ? '任务进度未变化，不重复展示进度卡；仍按下方引导处理结果。'
+        : '先展示 taskProgress.markdown 进度卡，完整展示全部任务，不只展示最后一个。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则只在进度变化时展示新快照。保留状态待同步提示，不虚构阶段或百分比。'
+      : '';
+    const waitInstruction = action.requiresUserInput
+      ? '等待用户明确响应，不设置答题倒计时；未收到响应时保持当前步骤，不自动选择、提交、跳过或继续。'
+      : '';
+    return {
+      ...action,
+      instruction: [progressInstruction, action.instruction, waitInstruction].filter(Boolean).join(' '),
+    };
+  });
 }
 
 function nextActionsForState(
@@ -60,6 +73,8 @@ function nextActionsForState(
 ): Array<NextAction> {
   // 显式保留连接地址，避免调用方执行下一步时切回默认环境；凭据不进入命令。
   const command = [COMMAND_NAME, '--endpoint', config.endpoint, '--locale', config.locale, 'chat'];
+  const progressRevision = result.taskProgress?.revision ?? result.cursor?.progressRevision;
+  const progressOptions = progressRevision ? ['--progress-revision', progressRevision] : [];
   if (result.stylePlanning && ['ACCEPTED', 'RUNNING', 'QUEUED', 'COMPLETED'].includes(result.state))
     return [
       {
@@ -67,7 +82,7 @@ function nextActionsForState(
         instruction:
           '用户已选定风格，提示已采用该方案、正在生成研发规划。继续等待，CLI 会内部完成演示状态衔接并生成规划；不展示演示完成提示、使用场景说明或演示链接，不询问是否查看演示或是否开始研发。不要声称用户已实际查看演示。生成规划后沿用原有规划展示和确认引导；遇到问题或错误原样展示，不自动确认规划或选择开发功能。',
         requiresUserInput: false,
-        command: [...command, 'wait', '--', result.sessionId],
+        command: [...command, 'wait', ...progressOptions, '--', result.sessionId],
       },
     ];
   if (result.development?.snapshot?.status === 'PENDING')
@@ -77,7 +92,7 @@ function nextActionsForState(
         instruction:
           '本轮任务已结束，正在同步对应的研发快照；继续查询，不重复提交研发需求，不使用旧演示链接代替本轮快照。',
         requiresUserInput: false,
-        command: [...command, 'wait', '--', result.sessionId],
+        command: [...command, 'wait', ...progressOptions, '--', result.sessionId],
       },
     ];
   if (result.state === 'NEEDS_INPUT' || result.state === 'NEEDS_SELECTION') {
@@ -217,10 +232,11 @@ function nextActionsForState(
           : '任务尚未结束，继续等待下一步问题或结果；不要重复提交。',
         requiresUserInput: false,
         command: anchor
-          ? [...command, 'style', 'list', '--anchor', anchor, '--', result.sessionId]
+          ? [...command, 'style', 'list', '--anchor', anchor, ...progressOptions, '--', result.sessionId]
           : [
               ...command,
               'wait',
+              ...progressOptions,
               ...(result.messageId ? ['--message-id', result.messageId] : []),
               '--',
               result.sessionId,

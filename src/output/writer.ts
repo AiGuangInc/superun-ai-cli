@@ -1,5 +1,6 @@
 /** stdout 单结果输出，敏感值统一脱敏。@author xiuyu.yi */
 import { SCHEMA_VERSION } from '../config/constants.js';
+import type { CreationResult } from '../contracts/cli-output.js';
 import { CliError, EXIT_CODES } from './exit-codes.js';
 
 const SENSITIVE_KEY =
@@ -28,6 +29,24 @@ export class OutputWriter {
     this.stderr(`${this.redact(text)}\n`);
   }
 
+  /** stderr 输出过程事件，stdout 仍只输出一次最终结果。 */
+  progress(data: Pick<CreationResult, 'sessionId' | 'messageId' | 'taskProgress'>): void {
+    if (!data.taskProgress) return;
+    this.stderr(
+      `${this.serialize({
+        schemaVersion: SCHEMA_VERSION,
+        event: 'task_progress',
+        data: {
+          sessionId: data.sessionId,
+          messageId: data.messageId,
+          taskProgress: data.taskProgress,
+        },
+        instruction:
+          '展示 data.taskProgress.markdown 中的全部任务进度；按卡片 id 更新，避免重复展示。这是过程更新，继续等待当前命令的最终结果，不代表整个任务结束，不重复提交任务。',
+      })}\n`,
+    );
+  }
+
   write(data: unknown): void {
     this.emit({ schemaVersion: SCHEMA_VERSION, ok: true, data });
   }
@@ -52,9 +71,13 @@ export class OutputWriter {
   private emit(value: unknown): void {
     if (this.written) return;
     this.written = true;
+    this.stdout(`${this.serialize(value)}\n`);
+  }
+
+  private serialize(value: unknown): string {
     const serialized = JSON.stringify(value, (key, item: unknown) =>
       SENSITIVE_KEY.test(key) ? undefined : typeof item === 'string' ? this.redact(item) : item,
     );
-    this.stdout(`${this.redact(serialized)}\n`);
+    return this.redact(serialized);
   }
 }

@@ -88,6 +88,40 @@ export type DevelopmentProgress = {
   /** 当前研发轮的快照；规划与问答轮不要求产生快照。 */
   snapshot?: DevelopmentSnapshot;
 };
+export type TaskProgressStatus =
+  | 'submitted'
+  | 'queued'
+  | 'running'
+  | 'waiting'
+  | 'needs_input'
+  | 'completed'
+  | 'failed'
+  | 'interrupted'
+  | 'unknown';
+export type TaskProgressItem = {
+  id: string;
+  kind: 'message' | 'consult' | 'subtask' | 'style' | 'other-member' | 'request';
+  title: string;
+  status: TaskProgressStatus;
+  detail?: string;
+  activity?: { readCount?: number; editCount?: number; deployCount?: number; toolCount?: number };
+  messageId?: string;
+  roundId?: string;
+  agentId?: string;
+};
+export type TaskProgressSnapshot = {
+  /** 同一项目始终更新同一张卡片。 */
+  id: string;
+  revision: string;
+  activeCount: number;
+  tasks: Array<TaskProgressItem>;
+  /** 可直接展示的 Markdown 进度卡，不包含估算百分比。 */
+  markdown: string;
+  /** 进度来源是否完整读取，不代表任务是否完成。 */
+  complete: boolean;
+  warnings: Array<string>;
+  changed?: boolean;
+};
 export type CreationResult = {
   state: CreationState;
   sessionId: string;
@@ -96,13 +130,14 @@ export type CreationResult = {
   topic?: string;
   messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
   progress: Array<{ id: string; text: string; status?: string }>;
+  taskProgress?: TaskProgressSnapshot;
   interactions: Array<Interaction>;
   choices?: Array<Choice>;
   /** 用户选定风格后，自动衔接演示状态与研发规划；不代表已确认规划。 */
   stylePlanning?: { choiceId: string };
   demo?: DemoPreview;
   development?: DevelopmentProgress;
-  cursor?: { messageId?: string; etag?: string; branchAnchor?: string };
+  cursor?: { messageId?: string; etag?: string; branchAnchor?: string; progressRevision?: string };
   attachments?: Array<Record<string, unknown>>;
   waitTimedOut?: boolean;
   nextActions?: Array<NextAction>;

@@ -34,22 +34,28 @@ export function registerStyle(chat: Command, context: CommandContext): void {
     .command('list <sessionId>')
     .description('查询全部风格批次')
     .option('--anchor <preReplyMessageId>', '分支查询锚点')
+    .option('--progress-revision <revision>', '上次已展示的任务进度版本')
     .action(async (sessionId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command),
         view = await service.load(sessionId),
         currentAnchor = styleBranchAnchor(view),
         anchor = text(object(command.opts()).anchor) ?? currentAnchor,
         choices = await service.choices(sessionId, anchor, view);
+      const taskProgress = await service.taskProgress.read(view, choices);
+      taskProgress.changed = taskProgress.revision !== object(command.opts()).progressRevision;
       const result = service.withGuidance({
         state: choices.length ? styleBatchState(latestStyleChoices(choices)) : 'COMPLETED',
         sessionId,
         choices,
+        taskProgress,
         cursor: { branchAnchor: anchor },
       });
       context.output.write({
         state: result.state,
         sessionId,
         choices,
+        taskProgress,
+        cursor: result.cursor,
         // 历史批次只供查看；选择命令仅接受当前未决批次。
         nextActions: anchor === currentAnchor ? result.nextActions : [],
       });

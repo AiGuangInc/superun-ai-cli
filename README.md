@@ -147,6 +147,12 @@ superun-ai chat stop <sessionId>
 
 写命令支持 `--no-wait`：请求被接受后立即返回。`chat wait` 等待到需要输入、需要选择或任务结束；达到本地等待时限后返回当前状态和 `waitTimedOut: true`，可以继续查询。按 Ctrl+C 只结束本地等待；远端停止需要显式执行 `chat stop`。
 
+聊天任务的响应还包含 `taskProgress`：`tasks` 汇总当前项目中可确认的主任务、咨询、后台任务和风格方案，`markdown` 是可直接展示的可视化进度卡，`revision` 标识本次可见进度。多个活跃任务全部展示，同一后台任务按身份去重；其他成员或归属未知的任务仅展示状态。消息过程文案和工具活动来自 Glow 消息接口，后台任务状态独立刷新，不为进度新增功能清单或 Todo 查询，也不估算百分比。读取不完整时通过 `complete: false` 和 `warnings` 明示。
+
+`chat wait` 及写命令的默认等待期间，有变化的进度通过 stderr 逐行输出 JSON 事件：`event: "task_progress"`，卡片位于 `data.taskProgress.markdown`。接入 Agent 应持续读取运行中命令的输出并展示全部任务；支持原位更新时按 `taskProgress.id` 更新同一张卡，否则只展示变化的快照。进度事件不是最终结果，应继续等待当前进程，不中断或重新提交任务。stdout 仍只输出一次命令结果。
+
+整体结束判断沿用原有会话、消息、交互和后台工作状态逻辑，`taskProgress` 仅用于展示；单项完成或进度卡更新不会结束等待，也不以进度条目数量推断整轮完成。原有单个风格方案就绪提示、本地等待超时及用户问答行为保持不变。`--progress-revision` 可传入上次已展示版本，避免跨命令重复展示；`chat state` 与 `chat style list` 同样支持该参数。
+
 默认连接 Superun 服务。全局参数 `--endpoint <URL>` 可指定 API 地址，`--locale <language>` 可指定响应语言。
 
 ## 回答交互

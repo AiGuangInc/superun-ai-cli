@@ -68,12 +68,18 @@ export function positive(value: string): number {
   if (!Number.isSafeInteger(number) || number < 1) throw new InvalidArgumentError('参数必须是正整数');
   return number;
 }
-export function waitOptions(command: Command): { timeout?: number; interval?: number; messageId?: string } {
+export function waitOptions(command: Command): {
+  timeout?: number;
+  interval?: number;
+  messageId?: string;
+  progressRevision?: string;
+} {
   const options = object(command.opts());
   return {
     timeout: typeof options.timeout === 'number' ? options.timeout : undefined,
     interval: typeof options.interval === 'number' ? options.interval : undefined,
     messageId: text(options.messageId),
+    progressRevision: text(options.progressRevision),
   };
 }
 export function withWait(command: Command, noWaitDescription = '服务端接受请求后立即返回'): Command {

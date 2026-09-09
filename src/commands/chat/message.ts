@@ -86,9 +86,14 @@ export async function sendMessage(
     }),
   );
   context.output.write(
-    await service.accepted(object(response), sessionId, options.wait !== false, {
-      ...waitOptions(command),
-      previousMessageId,
-    }),
+    await service.accepted(
+      { ...object(response), progressTitle: content },
+      sessionId,
+      options.wait !== false,
+      {
+        ...waitOptions(command),
+        previousMessageId,
+      },
+    ),
   );
 }

@@ -147,6 +147,12 @@ superun-ai chat stop <sessionId>
 
 Write commands support `--no-wait`, returning as soon as the request is accepted. `chat wait` waits for input, a selection, or task completion. When an explicit local waiting limit is reached, it returns the current state with `waitTimedOut: true`; you can continue querying. Ctrl+C only ends local waiting. Use `chat stop` explicitly to stop a remote task.
 
+Chat task responses also include `taskProgress`. Its `tasks` list contains all known active main tasks, consultations, background tasks, and style candidates in the current project; `markdown` is a ready-to-display progress card, and `revision` identifies the visible progress snapshot. Background tasks are deduplicated by identity. Tasks belonging to other members or with unknown ownership expose status only. Progress uses Glow message text and tool activity, with independent background-task refreshes; it does not add feature-list or Todo queries or estimate percentages. Incomplete reads are marked with `complete: false` and `warnings`.
+
+While `chat wait` or a write command is waiting, changed progress is emitted as newline-delimited JSON on stderr with `event: "task_progress"`; the card is in `data.taskProgress.markdown`. Host agents should read output from the running command and display every task. Update the same card using `taskProgress.id` when supported; otherwise display only changed snapshots. Progress events are not final results: continue waiting on the same process without interrupting or resubmitting the task. stdout still emits a single command result.
+
+Overall completion retains the existing session, message, interaction, and background-work rules. `taskProgress` is display-only: a completed item or changed card does not end the wait, and item counts do not determine overall completion. Existing early style-preview notifications, local timeouts, and user-input behavior remain unchanged. Pass `--progress-revision` with the last displayed revision to avoid duplicates across commands; `chat state` and `chat style list` also accept this option.
+
 The CLI connects to Superun by default. Use the global `--endpoint <URL>` option to specify an API endpoint and `--locale <language>` to choose the response language.
 
 ## Answering interactions

@@ -11,6 +11,7 @@ import { CliError } from '../output/exit-codes.js';
 import { pendingTool } from '../interactions/context.js';
 import type { StyleWaitTarget } from '../interactions/parsers/style-selection.js';
 import { readyStyleChoices } from '../interactions/parsers/style-selection.js';
+import { submittedTaskProgress } from './task-progress.js';
 
 function hasReadyStylePreview(result: CreationResult, styleTarget?: StyleWaitTarget): boolean {
   return (
@@ -26,6 +27,7 @@ export type WaitOptions = {
   timeout?: number;
   interval?: number;
   messageId?: string;
+  progressRevision?: string;
   /** 写请求返回的消息须先进入轮次模型，避免把旧规划当作本次结果。 */
   requiredMessageId?: string;
   /** 排队响应没有新消息 ID 时，仍须等到旧轮次发生切换。 */
@@ -87,6 +89,8 @@ export class SessionWaiter {
       command: AgentCommandApi;
       load: (sessionId: string) => Promise<SessionView>;
       inspect: (view: SessionView, styleTarget?: StyleWaitTarget) => Promise<CreationResult>;
+      /** 只展示过程，不结束等待，也不参与整体状态判断。 */
+      onProgress?: (result: CreationResult) => void;
       signal?: AbortSignal;
     },
   ) {}
@@ -102,6 +106,7 @@ export class SessionWaiter {
     const replied = new Set<string>(),
       messages = new Map<string, CreationResult['messages'][number]>();
     const progress = new Map<string, CreationResult['progress'][number]>();
+    let progressRevision = options.progressRevision;
     let responseObserved = !options.requiredMessageId && !options.previousMessageId;
     const inspect = async (): Promise<CreationResult> => {
       if (!responseObserved) {
@@ -134,6 +139,10 @@ export class SessionWaiter {
           messages: [],
           progress: [],
           interactions: [],
+          taskProgress: submittedTaskProgress(
+            sessionId,
+            options.requiredMessageId ?? options.previousMessageId ?? sessionId,
+          ),
         };
       return this.dependencies.inspect(view, options.styleTarget);
     };
@@ -169,6 +178,10 @@ export class SessionWaiter {
       }
       for (const item of result.messages) messages.set(item.id, item);
       for (const item of result.progress) progress.set(item.id, item);
+      if (result.taskProgress) {
+        result.taskProgress.changed = result.taskProgress.revision !== progressRevision;
+        result.cursor = { ...result.cursor, progressRevision: result.taskProgress.revision };
+      }
       // 单个方案可预览就交还进度，调用方按 QUERY_STYLES 继续查询，不停止远端生成。
       if (!['RUNNING', 'QUEUED'].includes(result.state) || hasReadyStylePreview(result, options.styleTarget))
         return {
@@ -185,6 +198,10 @@ export class SessionWaiter {
           waitTimedOut: true,
           cursor: { ...result.cursor, etag },
         };
+      if (result.taskProgress?.changed && this.dependencies.onProgress) {
+        this.dependencies.onProgress(result);
+        progressRevision = result.taskProgress.revision;
+      }
       const hint = view.pipeline.pollingHint;
       const interval = Math.max(
         (options.interval ?? 0) * 1000,
