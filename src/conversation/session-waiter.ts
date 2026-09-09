@@ -10,6 +10,17 @@ import { replyReadLogs } from '../auto-tools/read-logs.js';
 import { CliError } from '../output/exit-codes.js';
 import { pendingTool } from '../interactions/context.js';
 import type { StyleWaitTarget } from '../interactions/parsers/style-selection.js';
+import { readyStyleChoices } from '../interactions/parsers/style-selection.js';
+
+function hasReadyStylePreview(result: CreationResult, styleTarget?: StyleWaitTarget): boolean {
+  return (
+    result.state === 'RUNNING' &&
+    !!result.cursor?.branchAnchor &&
+    (!styleTarget ||
+      styleTarget.choiceIds.every((id) => result.choices?.some((choice) => choice.choiceId === id))) &&
+    readyStyleChoices(result.choices ?? []).length > 0
+  );
+}
 
 export type WaitOptions = {
   timeout?: number;
@@ -148,14 +159,18 @@ export class SessionWaiter {
         return { ...value, interactions, state: interactions.length ? 'NEEDS_INPUT' : 'RUNNING' };
       };
       result = suppressSubmitted(result);
-      if (!['RUNNING', 'QUEUED'].includes(result.state)) {
-        // 终态和交互退出前重读全量，防止快照漏掉新轮或服务端刚完成的交接。
+      if (
+        !['RUNNING', 'QUEUED'].includes(result.state) ||
+        hasReadyStylePreview(result, options.styleTarget)
+      ) {
+        // 终态、交互或单个风格就绪时重读全量，防止漏掉新轮或服务端刚完成的交接。
         view = await this.dependencies.load(sessionId);
         result = suppressSubmitted(await inspect());
       }
       for (const item of result.messages) messages.set(item.id, item);
       for (const item of result.progress) progress.set(item.id, item);
-      if (!['RUNNING', 'QUEUED'].includes(result.state))
+      // 单个方案可预览就交还进度，调用方按 QUERY_STYLES 继续查询，不停止远端生成。
+      if (!['RUNNING', 'QUEUED'].includes(result.state) || hasReadyStylePreview(result, options.styleTarget))
         return {
           ...result,
           messages: [...messages.values()],

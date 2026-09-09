@@ -26,6 +26,19 @@ export function latestStyleChoices(choices: Array<Choice>): Array<Choice> {
   return choices.filter((choice) => (choice.batchVersion ?? 0) === version);
 }
 
+/** 只有成功状态与截图同时就绪，才向用户报告方案已生成。 */
+export function readyStyleChoices(choices: Array<Choice>): Array<Choice> {
+  return latestStyleChoices(choices).filter(
+    (choice) =>
+      choice.status === 'success' && !!choice.screenshotUrl && !choice.errorType && !choice.selected,
+  );
+}
+
+/** 方案编号跟随原始 index，不随异步完成顺序变化。 */
+export function styleChoiceLabel(choice: Pick<Choice, 'index'>): string {
+  return `方案 ${String.fromCharCode(65 + choice.index)}`;
+}
+
 export function isStyleSelected(view: SessionView, choices: Array<Choice> = []): boolean {
   const flag = roundMessage(view, currentRound(view))?.roundExtra?.hasSelectedStyle;
   // 当前轮明确回到未选态时，不能被旧批次的已选记录覆盖。

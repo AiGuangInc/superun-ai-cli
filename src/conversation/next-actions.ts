@@ -2,7 +2,11 @@
 import { COMMAND_NAME } from '../config/constants.js';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import type { CreationResult, InteractionKind, NextAction } from '../contracts/cli-output.js';
-import { latestStyleChoices } from '../interactions/parsers/style-selection.js';
+import {
+  latestStyleChoices,
+  readyStyleChoices,
+  styleChoiceLabel,
+} from '../interactions/parsers/style-selection.js';
 
 export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
   Partial<Pick<CreationResult, 'interactions' | 'choices' | 'messageId' | 'cursor' | 'demo' | 'development'>>;
@@ -133,7 +137,7 @@ function nextActionsForState(
       return [
         {
           action: 'SELECT_STYLE',
-          instruction: `请向用户展示 choices 中的 screenshotUrl；仅在用户选择风格 ${choice.index + 1} 后执行此命令，继续创作。`,
+          instruction: `请按原始 index 对应的 A/B/C/D 展示本批方案及 screenshotUrl 可点击链接；仅在用户选择${styleChoiceLabel(choice)}（风格 ${choice.index + 1}）后执行此命令，继续创作。`,
           requiresUserInput: true,
           choiceId: choice.choiceId,
           command: [...command, 'style', 'select', '--', result.sessionId, choice.choiceId],
@@ -180,11 +184,21 @@ function nextActionsForState(
   }
   if (['ACCEPTED', 'RUNNING', 'QUEUED'].includes(result.state)) {
     const anchor = result.cursor?.branchAnchor;
+    const styles = latestStyleChoices(result.choices ?? []);
+    const ready = readyStyleChoices(styles).sort((left, right) => left.index - right.index);
+    const pending = styles
+      .filter(
+        (choice) => choice.status === 'running' || (choice.status === 'success' && !choice.screenshotUrl),
+      )
+      .sort((left, right) => left.index - right.index);
+    const styleProgress = ready.length
+      ? `已生成${ready.map(styleChoiceLabel).join('、')}。${pending.length ? `继续等待${pending.map(styleChoiceLabel).join('、')}。` : ''}`
+      : '风格仍在生成。';
     return [
       {
         action: anchor ? 'QUERY_STYLES' : 'WAIT',
         instruction: anchor
-          ? '风格仍在生成，继续查询本批候选直到截图就绪，再交给用户选择；不要重复生成。'
+          ? `${styleProgress} 请立即提示本次新完成的方案，并展示对应 screenshotUrl 的可点击链接，不要等整批完成后才提示。按原始 index 固定对应 A/B/C/D，以 choiceId 区分候选，同一候选已提示过就不重复提示；没有新完成方案时继续等待。继续查询本批剩余候选，全部结束后再展示本批结果并等待用户选择，不自动选中已完成方案，不重复生成。`
           : '任务尚未结束，继续等待下一步问题或结果；不要重复提交。',
         requiresUserInput: false,
         command: anchor
