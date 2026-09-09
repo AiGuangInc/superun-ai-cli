@@ -4,7 +4,7 @@ import type { Choice, DemoPreview } from '../contracts/cli-output.js';
 import { parseWire } from '../contracts/node-wire.js';
 import type { SessionView } from '../contracts/node-wire.js';
 import type { AgentQueryApi } from '../api/agent-query-api.js';
-import { enabled, list, text } from '../contracts/value.js';
+import { enabled, list, text, object } from '../contracts/value.js';
 import { currentRound, roundMessage } from './round-selector.js';
 import { findDevelopmentSnapshot } from './development-snapshot.js';
 
@@ -22,6 +22,16 @@ export function isInitialDemoRound(view: SessionView): boolean {
   return ['choose_style_v2', 'fake_confirm_generate_more_demo'].includes(
     String(message?.roundExtra?.business_type),
   );
+}
+
+export function demoGenerationStatus(view: SessionView): number {
+  const message = roundMessage(view, currentRound(view));
+  // Node 把演示进度放在当前消息内容中；Session extra 可能尚未由网页回写。
+  // 当前轮的生成中标记优先于旧的 Session 完成标记，避免新演示被提前放行。
+  const statuses = (message?.displayContents ?? [])
+    .map((content) => Number(object(content.extra).demoGenerateStatus))
+    .filter((status) => status === 1 || status === 2);
+  return statuses.length ? Math.max(...statuses) : Number(view.extra.demoGenerateStatus);
 }
 
 export function projectDemoPreview(

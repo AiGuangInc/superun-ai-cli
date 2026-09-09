@@ -26,6 +26,7 @@ import type { StyleWaitTarget } from './interactions/parsers/style-selection.js'
 import { resolveState } from './conversation/state-resolver.js';
 import { buildNextActions } from './conversation/next-actions.js';
 import {
+  demoGenerationStatus,
   findModifiedDemoPreview,
   isInitialDemoRound,
   projectDemoPreview,
@@ -117,10 +118,7 @@ export class CreationRuntime {
     );
     if (result.state === 'COMPLETED' && isStyleSelected(view, choices) && isInitialDemoRound(view)) {
       const message = roundMessage(view, currentRound(view));
-      if (
-        Number(view.extra.demoGenerateStatus) !== 2 ||
-        Number(message?.roundExtra?.demoReadyAt) > Date.now()
-      )
+      if (demoGenerationStatus(view) !== 2 || Number(message?.roundExtra?.demoReadyAt) > Date.now())
         return { ...result, state: 'RUNNING' };
       const demo = projectDemoPreview(await this.query.snapshots(view.session.sessionId), view, choices);
       // 不能用“消息完成”代替演示就绪，也不能拿另一种风格的最新快照兜底。
@@ -324,8 +322,8 @@ export class CreationRuntime {
     if (result.state !== 'COMPLETED' || !result.demo)
       throw new CliError('INVALID_ARGUMENT', '当前演示尚不可查看，请先查询并等待当前任务完成', { sessionId });
     // 查看与选择是两个动作；只在取得对应演示快照后记录已查看。
-    if (!enabled(view.extra.hasViewedDemo))
-      await this.command.sessionExtra(sessionId, { hasViewedDemo: '1' });
+    if (!enabled(view.extra.hasViewedDemo) || Number(view.extra.demoGenerateStatus) !== 2)
+      await this.command.sessionExtra(sessionId, { hasViewedDemo: '1', demoGenerateStatus: '2' });
     if (
       Number(view.extra.version) >= 4 &&
       !enabled(extra.showConfirmGenerateMoreDemo) &&
