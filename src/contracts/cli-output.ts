@@ -85,7 +85,7 @@ export type DevelopmentProgress = {
     | 'COMPLETED';
   started: boolean;
   planApproved: boolean;
-  /** 当前研发轮的快照；规划与问答轮不要求产生快照。 */
+  /** 可用研发预览；内部优先匹配本轮，无匹配时使用最新快照。 */
   snapshot?: DevelopmentSnapshot;
 };
 export type TaskProgressStatus =

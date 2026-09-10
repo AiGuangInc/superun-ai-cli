@@ -24,6 +24,17 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
     >
   >;
 
+/** 研发结束后选择后续功能仍是本轮完成结果，不能退回过程卡或漏掉工具统计。 */
+export function hasCompletedCreationResult(result: GuidanceResult): boolean {
+  return (
+    result.state === 'COMPLETED' ||
+    (result.state === 'NEEDS_INPUT' &&
+      result.development?.stage === 'FEATURE_SELECTION' &&
+      (result.interactions ?? []).every((item) => item.kind === 'SELECT_FEATURES') &&
+      ['READY', 'UNAVAILABLE'].includes(result.development.snapshot?.status ?? ''))
+  );
+}
+
 const QUESTIONNAIRE_INSTRUCTION =
   '请一次性向用户完整展示当前交互 questions 中的全部问题和选项：保留原始问题、选项标签及说明，标明题号、选项编号、multiSelect 单选/多选规则和 allowOther 自定义回答能力；展示编号须与 question.id、options.index 对应，不要只概括问题、逐题提问或省略选项。提示用户“请按题号回答，例如1A、2B，也可以补充自己的要求”，示例不代表固定题数或默认答案。收集整份问卷的回答；若用户仅回答部分题目，保留已答内容并一次性展示剩余问题及选项，不要替用户选择推荐项，答案齐全后再统一提交';
 
@@ -52,13 +63,13 @@ export function buildNextActions(
   result: GuidanceResult,
   config: Pick<RuntimeConfig, 'endpoint' | 'locale'>,
 ): Array<NextAction> {
+  const completed = hasCompletedCreationResult(result);
   return nextActionsForState(result, config).map((action) => {
-    const progressInstruction =
-      result.state === 'COMPLETED'
-        ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、快照链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
-        : result.taskProgress
-          ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
-          : '';
+    const progressInstruction = completed
+      ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、快照链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
+      : result.taskProgress
+        ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
+        : '';
     const waitInstruction = action.requiresUserInput
       ? '等待用户明确响应，不设置答题倒计时；未收到响应时保持当前步骤，不自动选择、提交、跳过或继续。'
       : '';
@@ -68,7 +79,7 @@ export function buildNextActions(
         progressInstruction,
         action.instruction,
         waitInstruction,
-        ...(result.state === 'COMPLETED' && result.toolUsage
+        ...(completed && result.toolUsage
           ? [
               '只在原始完成说明之后补充 toolUsage.markdown，继续保留原有预览链接及后续操作引导；不展示读取、修改或部署次数。',
             ]
@@ -264,11 +275,11 @@ function developmentActions(result: GuidanceResult, command: Array<string>): Arr
   const snapshot = result.development?.snapshot;
   const previewInstruction =
     snapshot?.status === 'READY'
-      ? '先展示本轮原始结果和 development.snapshot.url 中对应本轮的快照链接，不使用旧演示链接，也不将快照称为已正式发布。'
+      ? '先展示本轮原始结果和 development.snapshot.url，链接统一命名为“查看预览”。快照选择由 CLI 内部处理，不向用户解释匹配过程或兜底策略，不标注兜底版本，也不将预览称为已正式发布。'
       : snapshot?.status === 'UNAVAILABLE'
         ? `先展示原始结果，并如实说明：${snapshot.reason} 不伪造快照链接，不宣称本轮没有产出。`
         : '先按 messages 顺序展示原始对话，不把规划确认当作研发完成，也不要求规划轮产生新快照。';
-  const instruction = `${previewInstruction} 然后展示：\n- **继续创作**：直接告诉我想新增或调整的内容。\n- **上线运营**：回复 **“上线运营”**，我会发布最新版本并返回访问链接。`;
+  const instruction = `${previewInstruction} 然后按以下两条独立列表原样展示，不合并或改名：\n- **继续创作**：直接告诉我想新增或调整的内容。\n- **上线运营**：回复 **“上线运营”**，我会发布最新版本并返回访问链接。`;
   return [
     {
       action: 'CONTINUE_CHAT',

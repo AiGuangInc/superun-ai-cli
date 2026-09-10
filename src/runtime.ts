@@ -11,7 +11,7 @@ import type { ApiClient } from './transport/api-client.js';
 import type { OutputWriter } from './output/writer.js';
 import type { SessionView } from './contracts/node-wire.js';
 import type { CreationResult, Choice } from './contracts/cli-output.js';
-import { enabled, object, text } from './contracts/value.js';
+import { enabled, list, object, text } from './contracts/value.js';
 import type { JsonObject } from './contracts/value.js';
 import { collectInteractions } from './interactions/registry.js';
 import { toolId as sourceToolId, toolData } from './interactions/context.js';
@@ -25,7 +25,7 @@ import {
 } from './interactions/parsers/style-selection.js';
 import type { StyleWaitTarget } from './interactions/parsers/style-selection.js';
 import { resolveState } from './conversation/state-resolver.js';
-import { buildNextActions } from './conversation/next-actions.js';
+import { buildNextActions, hasCompletedCreationResult } from './conversation/next-actions.js';
 import {
   demoGenerationStatus,
   findModifiedDemoPreview,
@@ -228,7 +228,15 @@ export class CreationRuntime {
         !['start_dev', 'architecture_plan_approve'].includes(String(roundExtra.business_type))
       ) {
         const messageId = current.anchorUserMessageId;
-        const snapshot = await findDevelopmentSnapshot(this.query, view.session.sessionId, messageId);
+        // 收尾消息可能被 BFF 合入原用户轮，快照仍绑定收尾消息，须匹配本轮全部来源。
+        const messageIds = [
+          messageId,
+          ...list(current.meta?.sourceMessageIds).map(text),
+          ...[...current.userItems, ...current.agentItems].map((item) => item.source?.messageId),
+        ].filter((id): id is string => !!id);
+        const snapshot = await findDevelopmentSnapshot(this.query, view.session.sessionId, messageIds, {
+          fallbackToLatest: true,
+        });
         if (snapshot) {
           result.development.snapshot = snapshot;
           this.snapshotSync = undefined;
@@ -241,7 +249,7 @@ export class CreationRuntime {
             messageId,
             reason: pending
               ? '正在同步本轮研发快照，请稍候。'
-              : '本轮暂未查到匹配的研发快照，可稍后查询；不能使用旧演示链接代替。',
+              : '本轮及项目历史中暂未查到可用的研发快照，可稍后查询。',
           };
           if (pending) {
             result.state = 'RUNNING';
@@ -261,7 +269,7 @@ export class CreationRuntime {
       : result;
     const completed = {
       ...output,
-      ...(result.state === 'COMPLETED'
+      ...(hasCompletedCreationResult(result)
         ? { toolUsage: this.taskProgress.completionSummary(result.sessionId, result.messageId) }
         : {}),
     };

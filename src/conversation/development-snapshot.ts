@@ -1,4 +1,4 @@
-/** 按研发主线和本轮用户消息匹配快照，不使用历史演示兜底。@author xiuyu.yi */
+/** 优先匹配研发轮所属消息，可显式使用项目最新可用快照兜底。@author xiuyu.yi */
 import { z } from 'zod';
 import type { AgentQueryApi } from '../api/agent-query-api.js';
 import type { DevelopmentSnapshot } from '../contracts/cli-output.js';
@@ -18,14 +18,35 @@ const pageSchema = z.union([
   // 公共响应信封已解包为列表时，仍按页长判断是否还有下一页。
   snapshotsSchema,
 ]);
+type SnapshotRecord = z.infer<typeof snapshotsSchema>[number];
+type ReadySnapshot = Extract<DevelopmentSnapshot, { status: 'READY' }>;
+
+function readySnapshot(snapshot: SnapshotRecord): ReadySnapshot {
+  let url: URL;
+  try {
+    url = new URL(snapshot.visitUrl ?? '');
+  } catch {
+    throw new CliError('PROTOCOL_ERROR', '研发快照地址无效');
+  }
+  if (url.protocol !== 'https:' || url.username || url.password)
+    throw new CliError('PROTOCOL_ERROR', '研发快照未提供安全的 HTTPS 地址');
+  return {
+    status: 'READY',
+    snapshotId: snapshot.encryptedId,
+    messageId: snapshot.messageId,
+    url: snapshot.visitUrl!,
+  };
+}
 
 export async function findDevelopmentSnapshot(
   query: AgentQueryApi,
   sessionId: string,
   messageId: string | Array<string>,
-): Promise<Extract<DevelopmentSnapshot, { status: 'READY' }> | undefined> {
+  options: { fallbackToLatest?: boolean } = {},
+): Promise<ReadySnapshot | undefined> {
   const messageIds = new Set(Array.isArray(messageId) ? messageId : [messageId]);
   const seen = new Set<string>();
+  let latest: SnapshotRecord | undefined;
   for (let page = 1; ; page++) {
     const response = parseWire(pageSchema, await query.developmentSnapshots(sessionId, page));
     const items = Array.isArray(response) ? response : response.data;
@@ -33,24 +54,14 @@ export async function findDevelopmentSnapshot(
       .filter((item) => messageIds.has(item.messageId))
       .sort((left, right) => right.createdAt - left.createdAt)[0];
     if (snapshot) {
-      if (!snapshot.visitUrl) return undefined;
-      let url: URL;
-      try {
-        url = new URL(snapshot.visitUrl);
-      } catch {
-        throw new CliError('PROTOCOL_ERROR', '本轮研发快照地址无效');
-      }
-      if (url.protocol !== 'https:' || url.username || url.password)
-        throw new CliError('PROTOCOL_ERROR', '本轮研发快照未提供安全的 HTTPS 地址');
-      return {
-        status: 'READY',
-        snapshotId: snapshot.encryptedId,
-        messageId: snapshot.messageId,
-        url: snapshot.visitUrl,
-      };
+      if (snapshot.visitUrl) return readySnapshot(snapshot);
+      if (!options.fallbackToLatest) return undefined;
     }
+    // 查完所有分页后才允许兜底，避免第一页面的新快照遮住后续页面的本轮匹配。
+    for (const item of items)
+      if (item.visitUrl && (!latest || item.createdAt > latest.createdAt)) latest = item;
     if (!items.length || (Array.isArray(response) ? items.length < 50 : page * 50 >= response.totalCount))
-      return undefined;
+      return options.fallbackToLatest && latest ? readySnapshot(latest) : undefined;
     if (items.every((item) => seen.has(item.encryptedId)))
       throw new CliError('PROTOCOL_ERROR', '研发快照分页未前进，请稍后重试查询');
     for (const item of items) seen.add(item.encryptedId);
