@@ -1,4 +1,4 @@
-/** 读取 Glow 同源功能与 Todo，以真实功能 ID 组装步骤进度。@author xiuyu.yi */
+/** 对齐 Glow 开发中列表：排除已完成功能，按 featureId 关联执行中功能的步骤。@author xiuyu.yi */
 import { z } from 'zod';
 import type { TaskProgressItem } from '../contracts/cli-output.js';
 import { parseWire } from '../contracts/node-wire.js';
@@ -30,33 +30,43 @@ export function projectFeatureTasks(
   rawTodos: unknown,
 ): Array<TaskProgressItem> {
   const features = attachmentArray(rawFeatures)
-    .filter((item) => object(item).checked === true || object(item).status === 'completed')
-    .map((item) => parseWire(featureSchema, item));
+    // 对齐 Glow useFeatureListModel.inProgressFeatures：历史已实现项不属于当前进度。
+    .filter((item) => object(item).checked === true && object(item).status !== 'completed')
+    .map((item) => parseWire(featureSchema, item))
+    .sort((a, b) => Number(b.status === 'in_progress') - Number(a.status === 'in_progress'));
   const ids = new Set(features.map((feature) => feature.id));
   // 功能 ID 冲突时不能凭标题或数组下标猜关联。
   if (ids.size !== features.length) throw new Error('功能 ID 重复');
+  const stepIds = new Set(
+    features.filter((feature) => feature.status === 'in_progress').map((feature) => feature.id),
+  );
   const stepsByFeature = new Map<number, NonNullable<TaskProgressItem['steps']>>();
-  for (const raw of attachmentArray(rawTodos)) {
+  for (const raw of stepIds.size ? attachmentArray(rawTodos) : []) {
     // 与 Glow 一致：旧版未关联功能的 Todo 不混入任意功能。
-    if (!ids.has(object(raw).featureId as number)) continue;
+    if (!stepIds.has(object(raw).featureId as number)) continue;
     const step = parseWire(stepSchema, raw);
     const steps = stepsByFeature.get(step.featureId) ?? [];
     steps.push({ content: step.content, status: step.status });
     stepsByFeature.set(step.featureId, steps);
   }
   return features.map((feature) => {
+    // Glow 的 pending 功能只显示标题和等待状态，不展开可能残留的旧 Todo。
+    if (feature.status === 'pending') {
+      return {
+        id: `feature:${sessionId}:${feature.id}`,
+        kind: 'feature',
+        featureId: feature.id,
+        title: feature.title,
+        status: 'waiting',
+      };
+    }
     const steps = stepsByFeature.get(feature.id) ?? [];
     return {
       id: `feature:${sessionId}:${feature.id}`,
       kind: 'feature',
       featureId: feature.id,
       title: feature.title,
-      status:
-        feature.status === 'completed'
-          ? 'completed'
-          : feature.status === 'in_progress'
-            ? 'running'
-            : 'waiting',
+      status: 'running',
       steps,
       ...(steps.length
         ? {

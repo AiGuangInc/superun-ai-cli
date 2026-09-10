@@ -250,7 +250,8 @@ export class TaskProgressReader {
           );
           return projectFeatureTasks(sessionId, featureData, todoData);
         });
-        if (features.length) return taskProgressSnapshot(sessionId, features, warnings);
+        // 查询成功但没有开发中功能时，不回填上一轮的已完成任务。
+        return taskProgressSnapshot(sessionId, features, warnings);
       } catch {
         if (this.client.signal?.aborted) throw new CliError('INTERRUPTED', '已停止本地进度查询');
         warnings.push('功能步骤暂不可用，当前显示执行状态，不能据此判断步骤完成情况。');

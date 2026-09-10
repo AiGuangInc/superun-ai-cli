@@ -194,7 +194,8 @@ export function taskProgressSnapshot(
       ]),
     ).values(),
   ].sort((a, b) =>
-    a.kind === 'feature' && b.kind === 'feature' ? a.featureId! - b.featureId! : a.id.localeCompare(b.id),
+    // 功能已按 Glow 的开发中优先规则排列，保留同状态功能的服务端顺序。
+    a.kind === 'feature' && b.kind === 'feature' ? 0 : a.id.localeCompare(b.id),
   );
   const notices = [...new Set(warnings)].sort();
   const activeCount = unique.filter((task) => activeTask(task.status)).length;
@@ -240,8 +241,12 @@ export function taskProgressSnapshot(
               '| --- | --- |',
               ...steps.map((step) => `| ${safeCell(step.content)} | ${stepLabels[step.status]} |`),
             ].join('\n')
-          : '步骤尚未生成。',
-      ].join('\n\n');
+          : task.status === 'waiting'
+            ? ''
+            : '步骤尚未生成。',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
     });
   const markdown = [
     `**任务进度 · ${activeCount} 项进行中**`,

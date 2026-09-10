@@ -159,9 +159,9 @@ superun-ai chat stop <sessionId>
 
 写命令支持 `--no-wait`：请求被接受后立即返回。`chat wait` 等待到需要输入、需要选择或任务结束；达到本地等待时限后返回当前状态和 `waitTimedOut: true`，可以继续查询。按 Ctrl+C 只结束本地等待；远端停止需要显式执行 `chat stop`。
 
-聊天任务的响应还包含 `taskProgress`。当前用户已确认规划的研发阶段，`tasks` 优先展示功能和内部步骤：从 Glow 同源的 `internal/features.json`、`internal/todos.json` 独立读取，按真实 `featureId` 关联；`steps` 保留步骤原文、顺序和 `pending / in_progress / completed` 状态，`stepProgress` 返回实际完成数和总数。仅展示已选择或已完成的功能，未关联功能的旧版 Todo 不混入其他功能；尚无步骤时明确提示，不显示虚构的 0/0。不再展示“执行详情”和重复的主任务、子任务表格，过程卡也不展示工具次数。整轮状态为 `COMPLETED` 后，保持原来的完成回复：原样展示 `messages` 中的完成说明，保留预览链接、“继续创作 / 上线运营”等原有引导，不用步骤表或结束卡片替代。只在完成说明后补充 `toolUsage.markdown`（如“已生成：10 次工具调用”），次数与 Glow 完成气泡同源，读取当前轮 `activity.summary.toolCount`，不累加子任务次数，也不拆分读取、修改或部署次数；统计缺失时明确提示不可用。
+聊天任务的响应还包含 `taskProgress`。当前用户已确认规划的研发阶段，`tasks` 优先展示功能和内部步骤：从 Glow 同源的 `internal/features.json`、`internal/todos.json` 独立读取，按真实 `featureId` 关联；`steps` 保留步骤原文、顺序和 `pending / in_progress / completed` 状态，`stepProgress` 返回实际完成数和总数。与 Glow 的开发中列表一致，只展示 `checked=true` 且未完成的功能，执行中优先、同状态保持服务端顺序。历史已完成项及其步骤不进入当前进度；已选但等待中的功能只显示标题和状态，不展开旧 Todo。未关联功能的旧版 Todo 不混入其他功能；执行中尚无步骤时明确提示，不显示虚构的 0/0。不再展示“执行详情”和重复的主任务、子任务表格，过程卡也不展示工具次数。整轮状态为 `COMPLETED` 后，保持原来的完成回复：原样展示 `messages` 中的完成说明，保留预览链接、“继续创作 / 上线运营”等原有引导，不用步骤表或结束卡片替代。只在完成说明后补充 `toolUsage.markdown`（如“已生成：10 次工具调用”），次数与 Glow 完成气泡同源，读取当前轮 `activity.summary.toolCount`，不累加子任务次数，也不拆分读取、修改或部署次数；统计缺失时明确提示不可用。
 
-其他阶段或没有可展示的功能时，`tasks` 保留主任务、咨询、后台任务和风格方案。后台任务按身份去重，其他成员或归属未知的后台任务仅展示状态。`markdown` 是可直接展示的进度卡，`revision` 标识可见步骤和状态的变化（工具次数变化不影响进度卡版本），父消息未变化时仍独立刷新功能进度。读取失败或数据损坏时使用执行状态兜底，并通过 `complete: false` 和 `warnings` 明示；不把缺失步骤当作完成，也不估算百分比。
+其他阶段的 `tasks` 保留主任务、咨询、后台任务和风格方案。研发阶段查询成功但没有开发中功能时返回空列表，不回填上一轮已完成任务。后台任务按身份去重，其他成员或归属未知的后台任务仅展示状态。`markdown` 是可直接展示的进度卡，`revision` 标识可见步骤和状态的变化（工具次数变化不影响进度卡版本），父消息未变化时仍独立刷新功能进度。读取失败或数据损坏时使用执行状态兜底，并通过 `complete: false` 和 `warnings` 明示；不把缺失步骤当作完成，也不估算百分比。
 
 `chat wait` 及写命令的默认等待期间，每轮查询的进度都通过 stderr 逐行输出 JSON 事件：`event: "task_progress"`，卡片位于 `data.taskProgress.markdown`。接入 Agent 应持续读取运行中命令的输出并展示全部任务；支持原位更新时按 `taskProgress.id` 更新同一张卡，否则每次展示当前快照，即使 `changed: false` 也不省略。进度事件不是最终结果，应继续等待当前进程，不中断或重新提交任务。stdout 仍只输出一次命令结果。
 

@@ -57,7 +57,7 @@ export function buildNextActions(
       result.state === 'COMPLETED'
         ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、快照链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
         : result.taskProgress
-          ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。完整展示全部功能及内部步骤状态和完成数，不只展示最后一个。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
+          ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
           : '';
     const waitInstruction = action.requiresUserInput
       ? '等待用户明确响应，不设置答题倒计时；未收到响应时保持当前步骤，不自动选择、提交、跳过或继续。'
