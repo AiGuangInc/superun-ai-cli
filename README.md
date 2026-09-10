@@ -52,7 +52,7 @@ npm install -g .
 npm run release
 ```
 
-脚本按顺序显示上一版本、执行 `npm version patch`、显示本次版本、发布到 npm 的 `latest` 标签，最后执行 `git push origin main --follow-tags`。`npm version patch` 会自动更新版本文件并创建 Git 提交及标签；`npm publish` 沿用已有 `prepack`，自动进行类型检查和构建。发布使用本机 npm 登录凭据，若账号启用双重验证，npm 可能要求输入验证码。
+脚本先显示上一版本，通过 `npm whoami` 验证 npm 登录状态；认证未通过时自动进入 `npm login`，登录后再次验证，失败则在递增版本前停止。认证通过后执行 `npm version patch`、显示本次版本、发布到 npm 的 `latest` 标签，最后执行 `git push origin main --follow-tags`。`npm version patch` 会自动更新版本文件并创建 Git 提交及标签；`npm publish` 沿用已有 `prepack`，自动进行类型检查和构建。登录有效不等于拥有包发布权限，请使用有发布权限的账号；若账号启用双重验证，npm 可能要求输入验证码。
 
 任何一步失败都会停止。npm 未确认成功时，先查询该版本的远端状态；若已经发布成功但 Git 推送失败，只补执行 `git push origin main --follow-tags`，不要重新运行脚本。发布到 `latest` 后，现有 CLI 用户会按内置更新逻辑升级。
 

@@ -52,7 +52,7 @@ Commit current changes, switch to `main`, and run:
 npm run release
 ```
 
-The script prints the previous version, runs `npm version patch`, prints the new version, publishes to npm with the `latest` tag, and runs `git push origin main --follow-tags`. Versioning creates a Git commit and tag. Publishing uses the existing `prepack` type check and build, and your local npm credentials; npm may prompt for two-factor authentication.
+The script prints the previous version and verifies npm authentication with `npm whoami`. If authentication fails, it runs `npm login` and verifies again; failure stops the process before changing the version. It then runs `npm version patch`, prints the new version, publishes to npm with the `latest` tag, and runs `git push origin main --follow-tags`. Versioning creates a Git commit and tag. Publishing uses the existing `prepack` type check and build. Valid authentication does not guarantee package publishing permission; use an authorized account. npm may prompt for two-factor authentication.
 
 Each failure stops the sequence. If publication is uncertain, check the target version on npm first. If npm publication succeeded but Git push failed, retry only `git push origin main --follow-tags`. Publishing to `latest` affects existing CLI users through its built-in update logic.
 

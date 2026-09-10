@@ -20,6 +20,17 @@ previous_version="$(node -p "require('./package.json').version")"
 echo "包名：${package_name}"
 echo "上个版本：${previous_version}"
 
+# 先验证认证，避免凭据失效时已经生成新的版本提交和标签。
+echo "检查 npm 登录状态……"
+if ! npm whoami --registry=https://registry.npmjs.org/; then
+  echo "npm 身份验证未通过，请完成登录后继续。"
+  if ! npm login --registry=https://registry.npmjs.org/ ||
+    ! npm whoami --registry=https://registry.npmjs.org/; then
+    echo "npm 登录或身份验证失败，发布已停止，版本号尚未修改。" >&2
+    exit 1
+  fi
+fi
+
 npm version patch
 
 current_version="$(node -p "require('./package.json').version")"
