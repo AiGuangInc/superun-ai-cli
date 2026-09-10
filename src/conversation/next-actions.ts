@@ -45,14 +45,14 @@ const FEATURE_SELECTION_INSTRUCTION =
   '请按 messages 顺序展示原始对话和功能清单，保留展示编号与 details.features 中真实 id 的对应关系；无需额外生成或链接功能清单文档，也不追加勾选状态提示。此时功能尚待选择开发，不展示“继续创作”或“上线运营”入口。最后只提示：“请回复要开发的功能编号或具体需求。”';
 
 const INTERACTION_INSTRUCTIONS: Record<InteractionKind, string> = {
-  PRD_CLARIFICATION: `${QUESTIONNAIRE_INSTRUCTION}；提交后直接生成风格并默认等待风格截图供用户选择，不再额外询问是否生成`,
+  PRD_CLARIFICATION: `${QUESTIONNAIRE_INSTRUCTION}；提交后直接生成风格并默认等待风格预览页面供用户选择，不再额外询问是否生成`,
   ASK_USER_TOOL: `${QUESTIONNAIRE_INSTRUCTION}；提交后等待实际返回的问题或方案，不自动确认规划`,
   ASK_USER_MESSAGE: `${QUESTIONNAIRE_INSTRUCTION}；提交后等待实际返回的问题或方案，不自动确认规划`,
   SECRET_INPUT: '请用户安全提供当前要求的密钥，不要回显密钥内容',
   PLUGIN_SECRET_INPUT: '请用户安全提供插件所需配置，不要回显密钥内容',
   PLUGIN_ACTION: '请用户确认是否启用当前插件及相关配置',
   DDL_CONFIRMATION: '请用户阅读并确认数据库变更',
-  STYLE_SELECTION: '请用户查看风格截图并选择候选',
+  STYLE_SELECTION: '请用户打开风格预览页面并选择候选，只展示页面链接',
   ENTER_IDEATION: '请用户确认进入构想阶段',
   APPROVE_ARCHITECTURE_PLAN: `${PLAN_REVIEW_INSTRUCTION} 只有用户明确确认当前规划时才执行 APPROVE；包含新增或修改要求时先按调整功能处理，不自动确认`,
   SELECT_FEATURES: `${FEATURE_SELECTION_INSTRUCTION} 只有用户明确从清单中选择时才将对应真实 id 填入 featureIds。支持明确多选或全选，不默认勾选，不用展示序号代替真实 id；用户直接提出新需求时应继续对话，不强制选择推荐功能`,
@@ -186,12 +186,11 @@ function nextActionsForState(
   if (result.state === 'NEEDS_SELECTION') {
     if (latestStyleChoices(result.choices ?? []).some((choice) => choice.selected)) return [];
     return latestStyleChoices(result.choices ?? []).flatMap((choice): Array<NextAction> => {
-      if (choice.selected || choice.status !== 'success' || !choice.screenshotUrl || choice.errorType)
-        return [];
+      if (choice.selected || choice.status !== 'success' || !choice.previewUrl || choice.errorType) return [];
       return [
         {
           action: 'SELECT_STYLE',
-          instruction: `请按原始 index 对应的 A/B/C/D 展示本批方案及 screenshotUrl 可点击链接，说明选定风格后会生成研发规划供用户确认；仅在用户选择${styleChoiceLabel(choice)}（风格 ${choice.index + 1}）后执行此命令。CLI 会静默完成演示衔接并生成研发规划，不再询问是否查看演示或是否开始研发；规划仍按原流程展示并等待确认。`,
+          instruction: `请按原始 index 对应的 A/B/C/D 展示本批方案及 previewUrl 可点击页面链接，不展示截图或截图 URL，说明选定风格后会生成研发规划供用户确认；仅在用户选择${styleChoiceLabel(choice)}（风格 ${choice.index + 1}）后执行此命令。CLI 会静默完成演示衔接并生成研发规划，不再询问是否查看演示或是否开始研发；规划仍按原流程展示并等待确认。`,
           requiresUserInput: true,
           choiceId: choice.choiceId,
           command: [...command, 'style', 'select', '--', result.sessionId, choice.choiceId],
@@ -241,9 +240,7 @@ function nextActionsForState(
     const styles = latestStyleChoices(result.choices ?? []);
     const ready = readyStyleChoices(styles).sort((left, right) => left.index - right.index);
     const pending = styles
-      .filter(
-        (choice) => choice.status === 'running' || (choice.status === 'success' && !choice.screenshotUrl),
-      )
+      .filter((choice) => choice.status === 'running' || (choice.status === 'success' && !choice.previewUrl))
       .sort((left, right) => left.index - right.index);
     const styleProgress = ready.length
       ? `已生成${ready.map(styleChoiceLabel).join('、')}。${pending.length ? `继续等待${pending.map(styleChoiceLabel).join('、')}。` : ''}`
@@ -252,7 +249,7 @@ function nextActionsForState(
       {
         action: anchor ? 'QUERY_STYLES' : 'WAIT',
         instruction: anchor
-          ? `${styleProgress} 请立即提示本次新完成的方案，并展示对应 screenshotUrl 的可点击链接，不要等整批完成后才提示。按原始 index 固定对应 A/B/C/D，以 choiceId 区分候选，同一候选已提示过就不重复提示；没有新完成方案时继续等待。继续查询本批剩余候选，全部结束后再展示本批结果并等待用户选择，不自动选中已完成方案，不重复生成。`
+          ? `${styleProgress} 请立即提示本次新完成的方案，并展示对应 previewUrl 的可点击页面链接，不展示截图或截图 URL，不要等整批完成后才提示。按原始 index 固定对应 A/B/C/D，以 choiceId 区分候选，同一候选已提示过就不重复提示；没有新完成方案时继续等待。继续查询本批剩余候选，全部结束后再展示本批结果并等待用户选择，不自动选中已完成方案，不重复生成。`
           : '任务尚未结束，继续等待下一步问题或结果；不要重复提交。',
         requiresUserInput: false,
         command: anchor

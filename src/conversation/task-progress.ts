@@ -164,10 +164,10 @@ export function projectStyleTasks(choices: Array<Choice>): Array<TaskProgressIte
       status:
         choice.errorType || choice.status === 'failed'
           ? 'failed'
-          : choice.status === 'success' && choice.screenshotUrl
+          : choice.status === 'success' && choice.previewUrl
             ? 'completed'
             : 'running',
-      detail: choice.status === 'success' && !choice.screenshotUrl ? '正在准备截图' : undefined,
+      detail: choice.status === 'success' && !choice.previewUrl ? '正在准备预览页面' : undefined,
     }));
 }
 

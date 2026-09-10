@@ -102,7 +102,11 @@ export class CreationRuntime {
     const accessible = view ?? (await this.load(sessionId));
     const preReplyMessageId = anchor ?? styleBranchAnchor(accessible);
     if (!preReplyMessageId) return [];
-    return projectChoices(await this.query.parallel(sessionId, preReplyMessageId), preReplyMessageId);
+    return projectChoices(
+      await this.query.parallel(sessionId, preReplyMessageId),
+      preReplyMessageId,
+      this.client.config.endpoint,
+    );
   }
   async inspect(view: SessionView, styleTarget?: StyleWaitTarget): Promise<CreationResult> {
     const anchor = styleTarget?.preReplyMessageId ?? styleBranchAnchor(view);

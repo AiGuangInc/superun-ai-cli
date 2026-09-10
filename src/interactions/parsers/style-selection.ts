@@ -5,6 +5,7 @@ import { currentRound, roundMessage } from '../../conversation/round-selector.js
 import type { JsonObject } from '../../contracts/value.js';
 import type { Choice } from '../../contracts/cli-output.js';
 import { CliError } from '../../output/exit-codes.js';
+import { DEFAULT_ENDPOINT } from '../../config/constants.js';
 
 export type StyleWaitTarget = { preReplyMessageId: string; choiceIds: Array<string> };
 
@@ -26,11 +27,10 @@ export function latestStyleChoices(choices: Array<Choice>): Array<Choice> {
   return choices.filter((choice) => (choice.batchVersion ?? 0) === version);
 }
 
-/** 只有成功状态与截图同时就绪，才向用户报告方案已生成。 */
+/** 只有成功状态与预览页面同时就绪，才向用户报告方案已生成。 */
 export function readyStyleChoices(choices: Array<Choice>): Array<Choice> {
   return latestStyleChoices(choices).filter(
-    (choice) =>
-      choice.status === 'success' && !!choice.screenshotUrl && !choice.errorType && !choice.selected,
+    (choice) => choice.status === 'success' && !!choice.previewUrl && !choice.errorType && !choice.selected,
   );
 }
 
@@ -63,14 +63,42 @@ export function styleBatchState(
   if (
     !choices.length ||
     choices.some(
-      (choice) => choice.status === 'running' || (choice.status === 'success' && !choice.screenshotUrl),
+      (choice) => choice.status === 'running' || (choice.status === 'success' && !choice.previewUrl),
     )
   )
     return 'RUNNING';
   return choices.some((choice) => choice.status === 'success') ? 'NEEDS_SELECTION' : 'FAILED';
 }
 
-export function projectChoices(response: unknown, anchor: string): Array<Choice> {
+/** 与 Glow 的分支 iframe 同源，snapshotUrl 是图片，snapshotId 才用于生成页面地址。 */
+function stylePreviewUrl(item: JsonObject, endpoint: string): string | undefined {
+  const snapshotId =
+    typeof item.snapshotId === 'number' && Number.isSafeInteger(item.snapshotId) && item.snapshotId > 0
+      ? String(item.snapshotId)
+      : text(item.snapshotId)?.trim();
+  if (!snapshotId || !/^[a-zA-Z0-9_-]+$/.test(snapshotId)) return undefined;
+  const hostname = new URL(endpoint).hostname;
+  const china =
+    ['superun.com', 'suxiaoqiang.com'].some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+    ) ||
+    ['superun.pre.qima-inc.com', 'localhost', '127.0.0.1', '[::1]'].includes(hostname) ||
+    hostname.startsWith('172.18.');
+  const url = new URL(`https://snapshot--${snapshotId}.${china ? 'superun.yun' : 'superun.app'}`);
+  if (
+    typeof item.updateTimestamp === 'number' &&
+    Number.isSafeInteger(item.updateTimestamp) &&
+    item.updateTimestamp > 0
+  )
+    url.searchParams.set('t', String(item.updateTimestamp));
+  return url.toString();
+}
+
+export function projectChoices(
+  response: unknown,
+  anchor: string,
+  endpoint = DEFAULT_ENDPOINT,
+): Array<Choice> {
   return list(object(response).items).flatMap((batch) => {
     const entry = object(batch);
     const info = object(entry.parallelInfo);
@@ -94,8 +122,7 @@ export function projectChoices(response: unknown, anchor: string): Array<Choice>
             : item.status === 1
               ? ('success' as const)
               : ('running' as const),
-        // 风格阶段只返回截图，不推导页面快照链接。
-        screenshotUrl: text(item.snapshotUrl)?.trim() || undefined,
+        previewUrl: stylePreviewUrl(item, endpoint),
         errorType,
         selected: info.selectedReplyMessageId === reply,
       };

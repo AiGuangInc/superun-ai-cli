@@ -50,7 +50,6 @@ export type Choice = {
   lastReplyMessageId?: string;
   status: 'running' | 'success' | 'failed';
   previewUrl?: string;
-  screenshotUrl?: string;
   errorType?: string;
   selected?: boolean;
 };
