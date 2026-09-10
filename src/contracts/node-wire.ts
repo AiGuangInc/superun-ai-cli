@@ -101,6 +101,8 @@ export type SessionView = NodeRecently & {
   extra: Record<string, unknown>;
   features?: Array<Record<string, unknown>>;
   automaticWork?: boolean;
+  /** 当前权威子任务列表的运行态，独立于功能进度附件。 */
+  activeSubagentWork?: boolean;
 };
 
 export function parseWire<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, data: unknown): T {

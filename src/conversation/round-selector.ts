@@ -11,11 +11,8 @@ export function currentRound(view: SessionView, messageId?: string): NodeRound |
     );
     if (found) return found;
   }
-  const active = rounds
-    .filter((round) => !round.meta?.consult && !round.meta?.passive)
-    .sort((a, b) => a.time.timestamp - b.time.timestamp);
-  // 最近窗口可能只剩主任务处理子任务回执的轮次；不能把真正的收尾轮全部过滤掉。
-  return active.filter((round) => !round.meta?.subAgentReport).at(-1) ?? active.at(-1);
+  // 对齐 Glow 的末轮判定：按 BFF 展示顺序取最后一个非咨询、非被动轮，包含最终回执。
+  return rounds.filter((round) => !round.meta?.consult && !round.meta?.passive).at(-1);
 }
 
 export function roundMessage(view: SessionView, round?: NodeRound): NodeMessage | undefined {

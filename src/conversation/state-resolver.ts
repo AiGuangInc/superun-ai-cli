@@ -6,7 +6,6 @@ import { currentRound, roundMessage } from './round-selector.js';
 import { projectText } from './text-projector.js';
 import { pendingAutomaticTools, hasServerAutomaticWork } from '../auto-tools/registry.js';
 import { CliError } from '../output/exit-codes.js';
-import { enabled } from '../contracts/value.js';
 import {
   isStyleSelected,
   latestStyleChoices,
@@ -16,20 +15,12 @@ import type { StyleWaitTarget } from '../interactions/parsers/style-selection.js
 
 /** 统一判断自动任务是否仍在进行，避免未选功能打断当前创作。 */
 export function hasPendingCreationWork(view: SessionView): boolean {
-  if (view.automaticWork || pendingAutomaticTools(view).length || hasServerAutomaticWork(view)) return true;
-  const round = currentRound(view),
-    message = roundMessage(view, round);
-  // 回执窗口可能没有工作卡，仍需核对已选功能的完成状态。
-  return (
-    view.session.status === 3 &&
-    round?.status === 'completed' &&
-    enabled(message?.roundExtra?.startDevelopment) &&
-    view.features?.some(
-      (feature) =>
-        enabled(feature.checked) &&
-        typeof feature.status === 'string' &&
-        !['completed', 'cancelled', 'skipped'].includes(feature.status),
-    ) === true
+  // 与 Glow 一样由实际运行任务门控结束；功能清单不参与会话生命周期判定。
+  return !!(
+    view.automaticWork ||
+    view.activeSubagentWork ||
+    pendingAutomaticTools(view).length ||
+    hasServerAutomaticWork(view)
   );
 }
 
@@ -97,7 +88,11 @@ export function resolveState(
   if (view.session.status === 10) result.state = 'QUEUED';
   else if (view.session.status === 2) result.state = 'PAUSED';
   else if (round?.status === 'interrupted') result.state = 'INTERRUPTED';
-  else if (view.session.status === 3 && round?.status === 'completed') {
+  else if (
+    view.session.status === 3 &&
+    round?.status === 'completed' &&
+    ![0, 4, 10].includes(message?.status ?? 1)
+  ) {
     // 交接轮结束后还有后续任务，必须继续查询会话状态。
     if (message?.roundExtra?.business_type !== 'stage0_handoff_generate') result.state = 'COMPLETED';
   }

@@ -93,7 +93,8 @@ export class CreationRuntime {
       message?.roundExtra?.hasSelectedStyle === '1' &&
       !enabled(object(message.extra).featureListConfirmed)
     ) {
-      view.features = await this.query.features(sessionId, round?.anchorUserMessageId);
+      // 对齐 Glow 的功能面板，读取当前文件而不是旧用户轮次的附件快照。
+      view.features = await this.query.features(sessionId);
     }
     return view;
   }
@@ -106,6 +107,10 @@ export class CreationRuntime {
   async inspect(view: SessionView, styleTarget?: StyleWaitTarget): Promise<CreationResult> {
     const anchor = styleTarget?.preReplyMessageId ?? styleBranchAnchor(view);
     const choices = anchor ? await this.choices(view.session.sessionId, anchor, view) : [];
+    view = {
+      ...view,
+      activeSubagentWork: await this.taskProgress.hasPendingSubagentWork(view.session.sessionId),
+    };
     const bindings = collectInteractions(view, !styleTarget && isStyleSelected(view, choices));
     const processingIds = new Set<string>();
     for (const binding of bindings) {

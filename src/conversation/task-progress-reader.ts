@@ -69,6 +69,43 @@ export class TaskProgressReader {
     return value;
   }
 
+  private discovery(sessionId: string): Promise<z.infer<typeof discoverySchema>> {
+    return this.cached(`tasks:${sessionId}`, async () =>
+      parseWire(
+        discoverySchema,
+        await this.client.call('/web-api/conversation-v2/subagent-message-stream-discovery', {
+          parentSessionId: sessionId,
+          previewVersionId: 0,
+          includeTaskTitle: true,
+        }),
+      ),
+    );
+  }
+
+  async hasPendingSubagentWork(sessionId: string): Promise<boolean> {
+    try {
+      const discovery = await this.discovery(sessionId);
+      if (discovery.truncated) return true;
+      const removed = new Set(
+        (discovery.causalAssociations ?? [])
+          .filter((association) => association.associationStatus === 1)
+          .map((association) => association.childSessionId)
+          .filter((id): id is string => !!id),
+      );
+      // 对齐 Glow 的权威 task 表：只有消息 END / EXCEPTION_END 是子任务终态。
+      return discovery.tasks.some(
+        (task) =>
+          task.associationStatus !== 1 &&
+          !removed.has(task.childSessionId || task.agentId || task.taskKey) &&
+          ![1, -1].includes(task.status ?? 0),
+      );
+    } catch {
+      if (this.client.signal?.aborted) throw new CliError('INTERRUPTED', '已停止本地进度查询');
+      // 不把读取失败当成没有子任务；read 会复用本次失败并输出进度警告。
+      return true;
+    }
+  }
+
   async read(
     view: SessionView,
     choices: Array<Choice>,
@@ -110,16 +147,7 @@ export class TaskProgressReader {
       }
     }
     try {
-      const discovery = await this.cached(`tasks:${sessionId}`, async () =>
-        parseWire(
-          discoverySchema,
-          await this.client.call('/web-api/conversation-v2/subagent-message-stream-discovery', {
-            parentSessionId: sessionId,
-            previewVersionId: 0,
-            includeTaskTitle: true,
-          }),
-        ),
-      );
+      const discovery = await this.discovery(sessionId);
       if (discovery.truncated) warnings.push('后台任务列表尚未完整返回，已展示当前可确认的任务。');
       const seen = new Map<string, TaskMetadata>();
       const removed = new Set<string>();

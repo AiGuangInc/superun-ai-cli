@@ -40,16 +40,21 @@ export function applySnapshot(view: SessionView, pipeline: NodePipeline): Sessio
   const messages = new Map(view.pipeline.messages.map((message) => [message.messageId, message]));
   for (const message of pipeline.messages) messages.set(message.messageId, message);
   let rounds = [...(view.pipeline.render?.rounds ?? [])];
+  const upsertRound = (round: (typeof rounds)[number]) => {
+    const index = rounds.findIndex((item) => item.roundId === round.roundId);
+    // 刷新旧轮不能把它移到最终回执后面；新轮才按 BFF 时间戳插入。
+    if (index >= 0) rounds[index] = round;
+    else rounds = [...rounds, round].sort((a, b) => a.time.timestamp - b.time.timestamp);
+  };
   if (pipeline.render)
     for (const round of pipeline.render.rounds) {
-      rounds = [...rounds.filter((item) => item.roundId !== round.roundId), round];
+      upsertRound(round);
     }
   const update = pipeline.roundPatch;
   if (update) {
     const { patch } = update;
     const previous = rounds.find((round) => round.roundId === update.roundId);
-    if (patch.operation === 'upsert-round' && patch.round)
-      rounds = [...rounds.filter((round) => round.roundId !== update.roundId), patch.round];
+    if (patch.operation === 'upsert-round' && patch.round) upsertRound(patch.round);
     else if (previous) {
       const merged = {
         ...previous,

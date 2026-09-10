@@ -23,7 +23,9 @@ export function hasServerAutomaticWork(view: SessionView): boolean {
     (view.pipeline.render?.rounds ?? []).some((round) =>
       round.agentItems.some(
         (item) =>
-          (item.variant === 'work_block' && ['running', 'unknown'].includes(String(item.payload.status))) ||
+          (view.activeSubagentWork === undefined &&
+            item.variant === 'work_block' &&
+            ['running', 'unknown'].includes(String(item.payload.status))) ||
           (item.variant === 'tool_execute_ddl' &&
             item.payload.toolStatus === 0 &&
             item.payload.autoApprove === true),
@@ -35,6 +37,8 @@ export function hasServerAutomaticWork(view: SessionView): boolean {
           data = object(tool.toolData);
         return (
           tool.toolStatus === 0 &&
+          !tool.toolCancelled &&
+          !tool.terminalReason &&
           (data.toolName === 'AskMainAgent' || enabled(object(content.extra).AUTO_APPROVE))
         );
       }),
