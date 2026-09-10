@@ -20,6 +20,7 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
       | 'development'
       | 'stylePlanning'
       | 'taskProgress'
+      | 'toolUsage'
     >
   >;
 
@@ -52,17 +53,29 @@ export function buildNextActions(
   config: Pick<RuntimeConfig, 'endpoint' | 'locale'>,
 ): Array<NextAction> {
   return nextActionsForState(result, config).map((action) => {
-    const progressInstruction = result.taskProgress
-      ? result.taskProgress.changed === false
-        ? '任务进度未变化，不重复展示进度卡；仍按下方引导处理结果。'
-        : '先展示 taskProgress.markdown 进度卡，完整展示全部任务，不只展示最后一个。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则只在进度变化时展示新快照。保留状态待同步提示，不虚构阶段或百分比。'
-      : '';
+    const progressInstruction =
+      result.state === 'COMPLETED'
+        ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、快照链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
+        : result.taskProgress
+          ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。完整展示全部功能及内部步骤状态和完成数，不只展示最后一个。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
+          : '';
     const waitInstruction = action.requiresUserInput
       ? '等待用户明确响应，不设置答题倒计时；未收到响应时保持当前步骤，不自动选择、提交、跳过或继续。'
       : '';
     return {
       ...action,
-      instruction: [progressInstruction, action.instruction, waitInstruction].filter(Boolean).join(' '),
+      instruction: [
+        progressInstruction,
+        action.instruction,
+        waitInstruction,
+        ...(result.state === 'COMPLETED' && result.toolUsage
+          ? [
+              '只在原始完成说明之后补充 toolUsage.markdown，继续保留原有预览链接及后续操作引导；不展示读取、修改或部署次数。',
+            ]
+          : []),
+      ]
+        .filter(Boolean)
+        .join(' '),
     };
   });
 }

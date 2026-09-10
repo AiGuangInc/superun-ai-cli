@@ -100,7 +100,7 @@ export type TaskProgressStatus =
   | 'unknown';
 export type TaskProgressItem = {
   id: string;
-  kind: 'message' | 'consult' | 'subtask' | 'style' | 'other-member' | 'request';
+  kind: 'feature' | 'message' | 'consult' | 'subtask' | 'style' | 'other-member' | 'request';
   title: string;
   status: TaskProgressStatus;
   detail?: string;
@@ -108,6 +108,10 @@ export type TaskProgressItem = {
   messageId?: string;
   roundId?: string;
   agentId?: string;
+  featureId?: number;
+  /** 与 Glow 同源的功能步骤，保留服务端顺序和状态。 */
+  steps?: Array<{ content: string; status: 'pending' | 'in_progress' | 'completed' }>;
+  stepProgress?: { completed: number; total: number };
 };
 export type TaskProgressSnapshot = {
   /** 同一项目始终更新同一张卡片。 */
@@ -131,6 +135,8 @@ export type CreationResult = {
   messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
   progress: Array<{ id: string; text: string; status?: string }>;
   taskProgress?: TaskProgressSnapshot;
+  /** 整轮完成后附加 Glow 同源的工具调用次数，原始完成说明及后续引导保持不变。 */
+  toolUsage?: { toolCount?: number; complete: boolean; markdown: string };
   interactions: Array<Interaction>;
   choices?: Array<Choice>;
   /** 用户选定风格后，自动衔接演示状态与研发规划；不代表已确认规划。 */

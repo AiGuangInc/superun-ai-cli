@@ -27,6 +27,7 @@
     "dev": "npm run build --silent && node dist/development.js",
     "format": "prettier --write src package.json tsconfig.json",
     "format:check": "prettier --check src package.json tsconfig.json",
+    "release": "bash scripts/release.sh",
     "prepack": "npm run typecheck && npm run build"
   },
   "dependencies": {

@@ -44,6 +44,18 @@ npm install -g .
 
 If you already have a local checkout, use that directory and preserve any uncommitted changes. The build clears `dist` before generating files. Keep the source directory if your global command is linked to it.
 
+## Publish to npm
+
+Commit current changes, switch to `main`, and run:
+
+```bash
+npm run release
+```
+
+The script prints the previous version, runs `npm version patch`, prints the new version, publishes to npm with the `latest` tag, and runs `git push origin main --follow-tags`. Versioning creates a Git commit and tag. Publishing uses the existing `prepack` type check and build, and your local npm credentials; npm may prompt for two-factor authentication.
+
+Each failure stops the sequence. If publication is uncertain, check the target version on npm first. If npm publication succeeded but Git push failed, retry only `git push origin main --follow-tags`. Publishing to `latest` affects existing CLI users through its built-in update logic.
+
 ## Help
 
 After installation, run help separately. These commands do not start login or create a project:
@@ -147,11 +159,13 @@ superun-ai chat stop <sessionId>
 
 Write commands support `--no-wait`, returning as soon as the request is accepted. `chat wait` waits for input, a selection, or task completion. When an explicit local waiting limit is reached, it returns the current state with `waitTimedOut: true`; you can continue querying. Ctrl+C only ends local waiting. Use `chat stop` explicitly to stop a remote task.
 
-Chat task responses also include `taskProgress`. Its `tasks` list contains all known active main tasks, consultations, background tasks, and style candidates in the current project; `markdown` is a ready-to-display progress card, and `revision` identifies the visible progress snapshot. Background tasks are deduplicated by identity. Tasks belonging to other members or with unknown ownership expose status only. Progress uses Glow message text and tool activity, with independent background-task refreshes; it does not add feature-list or Todo queries or estimate percentages. Incomplete reads are marked with `complete: false` and `warnings`.
+Chat task responses also include `taskProgress`. During development with an approved plan in the current user’s round, `tasks` primarily contains selected or completed features and their internal steps, read independently from the same `internal/features.json` and `internal/todos.json` used by Glow. Steps are joined by the actual `featureId`; `steps` preserves their text, order, and `pending / in_progress / completed` status, while `stepProgress` contains the actual completed and total counts. Legacy Todos without a feature ID are not assigned to another feature. Features without steps display a pending-generation notice rather than a fabricated 0/0. The card no longer includes execution details, duplicate message/subtask tables, or tool counts. After the whole round reaches `COMPLETED`, preserve the original completion text in `messages`, preview links, and existing continue-creation / launch guidance. Do not replace the reply with a step table or completion card. Only append `toolUsage.markdown` after the completion text. The count uses the same current-round `activity.summary.toolCount` as Glow’s completion bubble, without adding subtask counts. Read, edit, and deployment counts are not displayed separately; missing statistics are explicitly reported as unavailable.
 
-While `chat wait` or a write command is waiting, changed progress is emitted as newline-delimited JSON on stderr with `event: "task_progress"`; the card is in `data.taskProgress.markdown`. Host agents should read output from the running command and display every task. Update the same card using `taskProgress.id` when supported; otherwise display only changed snapshots. Progress events are not final results: continue waiting on the same process without interrupting or resubmitting the task. stdout still emits a single command result.
+Other stages, or projects without displayable features, retain the original task list. Background tasks are deduplicated by identity; other-member or unknown-owner background tasks expose status only. `markdown` is a ready-to-display card. `revision` tracks visible step and status changes (tool counts do not affect the card revision), and feature progress refreshes even when the parent message is unchanged. Failed reads or malformed data fall back to execution status with `complete: false` and `warnings`; missing steps are never treated as completed, and percentages are not estimated.
 
-Overall completion retains the existing session, message, interaction, and background-work rules. `taskProgress` is display-only: a completed item or changed card does not end the wait, and item counts do not determine overall completion. Existing early style-preview notifications, local timeouts, and user-input behavior remain unchanged. Pass `--progress-revision` with the last displayed revision to avoid duplicates across commands; `chat state` and `chat style list` also accept this option.
+While `chat wait` or a write command is waiting, progress from every polling iteration is emitted as newline-delimited JSON on stderr with `event: "task_progress"`; the card is in `data.taskProgress.markdown`. Host agents should read output from the running command and display every task. Update the same card using `taskProgress.id` when supported; otherwise display the current snapshot on every query, including when `changed: false`. Progress events are not final results: continue waiting on the same process without interrupting or resubmitting the task. stdout still emits a single command result.
+
+Overall completion retains the existing session, message, interaction, and background-work rules. `taskProgress` is display-only: a completed item or changed card does not end the wait, and item counts do not determine overall completion. Existing early style-preview notifications, local timeouts, and user-input behavior remain unchanged. Pass `--progress-revision` with the previous revision to compute `changed`; it does not suppress progress output on subsequent queries, and `chat state` and `chat style list` also accept this option.
 
 The CLI connects to Superun by default. Use the global `--endpoint <URL>` option to specify an API endpoint and `--locale <language>` to choose the response language.
 

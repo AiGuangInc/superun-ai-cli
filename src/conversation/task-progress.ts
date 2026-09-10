@@ -188,45 +188,73 @@ export function taskProgressSnapshot(
 ): TaskProgressSnapshot {
   const unique = [
     ...new Map(
-      tasks.map((task) => [
+      tasks.map(({ activity: _activity, ...task }) => [
         task.id,
         !activeTask(task.status) && task.status !== 'unknown' ? { ...task, detail: undefined } : task,
       ]),
     ).values(),
-  ].sort((a, b) => a.id.localeCompare(b.id));
+  ].sort((a, b) =>
+    a.kind === 'feature' && b.kind === 'feature' ? a.featureId! - b.featureId! : a.id.localeCompare(b.id),
+  );
   const notices = [...new Set(warnings)].sort();
   const activeCount = unique.filter((task) => activeTask(task.status)).length;
-  const visibleTasks = unique.map(({ id, kind, title, status, detail, activity }) => ({
+  const visibleTask = ({
     id,
     kind,
     title,
     status,
     detail,
-    activity,
-  }));
-  const revision = createHash('sha256')
-    .update(JSON.stringify({ tasks: visibleTasks, warnings: notices }))
-    .digest('hex');
-  const rows = unique.map((task) => {
-    const counts = task.activity
-      ? [
-          task.activity.toolCount ? `工具 ${task.activity.toolCount}` : '',
-          task.activity.readCount ? `读取 ${task.activity.readCount}` : '',
-          task.activity.editCount ? `修改 ${task.activity.editCount}` : '',
-          task.activity.deployCount ? `部署 ${task.activity.deployCount}` : '',
-        ]
-          .filter(Boolean)
-          .join(' · ')
-      : '';
-    return `| ${safeCell(task.title)} | ${LABELS[task.status]} | ${safeCell([task.detail, counts].filter(Boolean).join(' · ')) || '—'} |`;
+    featureId,
+    steps,
+    stepProgress,
+  }: TaskProgressItem) => ({
+    id,
+    kind,
+    title,
+    status,
+    detail,
+    featureId,
+    steps,
+    stepProgress,
   });
+  const revision = createHash('sha256')
+    .update(JSON.stringify({ tasks: unique.map(visibleTask), warnings: notices }))
+    .digest('hex');
+  const rows = unique
+    .filter((task) => task.kind !== 'feature')
+    .map(
+      (task) =>
+        `| ${safeCell(task.title)} | ${LABELS[task.status]} | ${safeCell(task.detail ?? '') || '—'} |`,
+    );
+  const stepLabels = { pending: '⏳ 待开始', in_progress: '🔄 进行中', completed: '✅ 已完成' };
+  const featureSections = unique
+    .filter((task) => task.kind === 'feature')
+    .map((task) => {
+      const steps = task.steps ?? [];
+      const progress = task.stepProgress;
+      return [
+        `**${safeCell(task.title)}** · ${LABELS[task.status]}${progress ? ` · 已完成 ${progress.completed}/${progress.total}` : ''}`,
+        steps.length
+          ? [
+              '| 步骤 | 状态 |',
+              '| --- | --- |',
+              ...steps.map((step) => `| ${safeCell(step.content)} | ${stepLabels[step.status]} |`),
+            ].join('\n')
+          : '步骤尚未生成。',
+      ].join('\n\n');
+    });
   const markdown = [
     `**任务进度 · ${activeCount} 项进行中**`,
+    ...featureSections,
     rows.length
       ? ['| 任务 | 状态 | 当前进度 |', '| --- | --- | --- |', ...rows].join('\n')
-      : '暂无进行中的任务。',
+      : featureSections.length
+        ? ''
+        : '暂无进行中的任务。',
     ...notices.map((notice) => `ℹ️ ${safeCell(notice)}`),
-  ].join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
   return {
     id: `tasks:${sessionId}`,
     revision,

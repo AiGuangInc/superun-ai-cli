@@ -42,7 +42,7 @@ export class OutputWriter {
           taskProgress: data.taskProgress,
         },
         instruction:
-          '展示 data.taskProgress.markdown 中的全部任务进度；按卡片 id 更新，避免重复展示。这是过程更新，继续等待当前命令的最终结果，不代表整个任务结束，不重复提交任务。',
+          '每次查询都展示 data.taskProgress.markdown 中的全部功能及步骤进度，即使 changed 为 false 也展示；支持原位更新时按卡片 id 更新，否则每次展示当前快照。不追加执行详情或工具次数。这是过程更新，继续等待当前命令的最终结果，不代表整个任务结束，不重复提交任务。',
       })}\n`,
     );
   }

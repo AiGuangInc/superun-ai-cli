@@ -254,7 +254,13 @@ export class CreationRuntime {
     const output = result.taskProgress
       ? { ...result, cursor: { ...result.cursor, progressRevision: result.taskProgress.revision } }
       : result;
-    return { ...output, nextActions: buildNextActions(output, this.client.config) };
+    const completed = {
+      ...output,
+      ...(result.state === 'COMPLETED'
+        ? { toolUsage: this.taskProgress.completionSummary(result.sessionId, result.messageId) }
+        : {}),
+    };
+    return { ...completed, nextActions: buildNextActions(completed, this.client.config) };
   }
   async wait(sessionId: string, options: WaitOptions): Promise<CreationResult> {
     const deadline = options.timeout === undefined ? undefined : Date.now() + options.timeout * 1000;

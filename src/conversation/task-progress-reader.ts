@@ -1,12 +1,19 @@
 /** 独立读取全部后台任务，避免父消息 ETag 不变时漏掉进度。@author xiuyu.yi */
 import { z } from 'zod';
 import type { ApiClient } from '../transport/api-client.js';
-import type { Choice, Interaction, TaskProgressItem, TaskProgressSnapshot } from '../contracts/cli-output.js';
+import type {
+  Choice,
+  CreationResult,
+  Interaction,
+  TaskProgressItem,
+  TaskProgressSnapshot,
+} from '../contracts/cli-output.js';
 import { parseWire, recentlySchema } from '../contracts/node-wire.js';
 import type { SessionView } from '../contracts/node-wire.js';
-import { text } from '../contracts/value.js';
+import { enabled, text } from '../contracts/value.js';
 import { CliError } from '../output/exit-codes.js';
 import { currentRound, roundMessage } from './round-selector.js';
+import { projectFeatureTasks } from './feature-progress.js';
 import {
   activeTask,
   messageTaskStatus,
@@ -41,7 +48,16 @@ const REFRESH_MS = 2_000;
 
 export class TaskProgressReader {
   private readonly cache = new Map<string, { expires: number; value: Promise<unknown> }>();
+  private readonly toolUsage = new Map<
+    string,
+    { messageId?: string; summary: NonNullable<CreationResult['toolUsage']> }
+  >();
   constructor(private readonly client: ApiClient) {}
+
+  completionSummary(sessionId: string, messageId?: string): CreationResult['toolUsage'] {
+    const usage = this.toolUsage.get(sessionId);
+    return messageId && usage?.messageId === messageId ? usage.summary : undefined;
+  }
 
   private cached<T>(key: string, read: () => Promise<T>): Promise<T> {
     const cached = this.cache.get(key);
@@ -60,6 +76,7 @@ export class TaskProgressReader {
   ): Promise<TaskProgressSnapshot> {
     if (this.client.signal?.aborted) throw new CliError('INTERRUPTED', '已停止本地进度查询');
     const sessionId = view.session.sessionId;
+    this.toolUsage.delete(sessionId);
     const current = currentRound(view);
     const currentUser = ownerId(view.pipeline.render?.currentUserId);
     const warnings: Array<string> = [];
@@ -197,8 +214,48 @@ export class TaskProgressReader {
         }
       }),
     );
+    // 与 Glow 完成气泡同源，只取当前轮 activity.summary.toolCount。
+    // 子任务有自己的工具摘要，不能累加到主任务气泡上。
+    if (current && currentUser && roundOwner(view, current) === currentUser) {
+      const toolCount = roundProgressDetail(view, current).activity?.toolCount;
+      const complete = toolCount !== undefined;
+      this.toolUsage.set(sessionId, {
+        messageId: roundMessage(view, current)?.messageId,
+        summary: {
+          ...(toolCount !== undefined ? { toolCount } : {}),
+          complete,
+          markdown: complete
+            ? `已生成：${toolCount} 次工具调用`
+            : '本轮工具调用次数暂不可用（统计数据未完整返回）。',
+        },
+      });
+    }
     tasks.push(...children.map((entry) => entry.item), ...projectStyleTasks(choices));
     if (!currentUser && tasks.length) warnings.push('当前用户归属信息未返回，部分任务仅展示状态。');
+    const extra = roundMessage(view, current)?.roundExtra ?? {};
+    // 仅在当前用户的已确认研发阶段读取内部进度；咨询、风格和归属未知时保留原展示。
+    if (
+      current &&
+      currentUser &&
+      roundOwner(view, current) === currentUser &&
+      enabled(extra.startDevelopment) &&
+      enabled(extra.architecturePlanApproved)
+    ) {
+      try {
+        const features = await this.cached(`features:${sessionId}`, async () => {
+          const [featureData, todoData] = await Promise.all(
+            ['internal/features.json', 'internal/todos.json'].map((name) =>
+              this.client.call('/api/uxa-center/agent/AgentQuery/queryAttachment', { sessionId, name }),
+            ),
+          );
+          return projectFeatureTasks(sessionId, featureData, todoData);
+        });
+        if (features.length) return taskProgressSnapshot(sessionId, features, warnings);
+      } catch {
+        if (this.client.signal?.aborted) throw new CliError('INTERRUPTED', '已停止本地进度查询');
+        warnings.push('功能步骤暂不可用，当前显示执行状态，不能据此判断步骤完成情况。');
+      }
+    }
     return taskProgressSnapshot(sessionId, tasks, warnings);
   }
 }

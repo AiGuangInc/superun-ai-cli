@@ -198,7 +198,7 @@ export class SessionWaiter {
           waitTimedOut: true,
           cursor: { ...result.cursor, etag },
         };
-      if (result.taskProgress?.changed && this.dependencies.onProgress) {
+      if (result.taskProgress && this.dependencies.onProgress) {
         this.dependencies.onProgress(result);
         progressRevision = result.taskProgress.revision;
       }
