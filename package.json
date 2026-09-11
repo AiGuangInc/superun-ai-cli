@@ -1,6 +1,6 @@
 {
   "name": "superun-ai-cli",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "通过需求梳理、架构设计与开发协作，将网站和应用的想法转化为可持续迭代、可部署运维的生产级系统。",
   "author": "xiuyu.yi",
   "license": "UNLICENSED",
