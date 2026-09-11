@@ -267,6 +267,8 @@ superun-ai chat publish visibility <sessionId> private
 
 CLI 会在执行业务命令前检查 npm `latest` 版本，与本地版本不同时自动安装该版本并继续执行。更新或校验失败时会停止执行，请根据错误提示处理后重试。帮助、`version` 和 `auth logout` 可离线使用。
 
+版本预检和安装统一通过 npm 执行，沿用 npm 的代理和证书配置，并自动重试短暂的网络故障。官方 Registry 不可用时，会尝试用户已配置的 Registry，安装沿用查询成功的源；恢复过程不输出报错或安装日志。所有源均失败时才返回错误，`error.checks` 包含各次检查的原因码，不包含原始 npm 日志或凭据。不会通过关闭证书校验或忽略版本检查来放行业务请求。
+
 可以执行 `superun-ai update` 主动同步 npm `latest`。从源码安装也遵循相同的版本校验；修改源码后需要重新构建，如果全局命令不是链接到该目录，再执行 `npm install -g .`。
 
 ```bash

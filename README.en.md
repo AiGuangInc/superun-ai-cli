@@ -267,6 +267,8 @@ Business commands write one JSON result to stdout. Diagnostics and update progre
 
 The CLI checks npm's `latest` version before business commands. If it differs from the local version, the CLI installs that version and resumes the command. If an update or verification fails, the CLI stops; resolve the reported issue before retrying. Help, `version`, and `auth logout` work offline.
 
+Version checks and installation both run through npm, inheriting its proxy and certificate configuration and retrying transient network failures. If the official Registry is unavailable, the CLI tries the user's configured Registry and uses the successful source for installation. Recovery does not print errors or installation logs. If all sources fail, `error.checks` provides reason codes without raw npm logs or credentials. The CLI does not disable certificate verification or skip the version check to allow business requests.
+
 Run `superun-ai update` to sync with npm `latest` explicitly. Source installations use the same version check. Rebuild after changing the source; if the global command is not linked to that checkout, run `npm install -g .` again.
 
 ```bash
