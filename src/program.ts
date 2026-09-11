@@ -18,7 +18,9 @@ export function createProgram(
 ): Command {
   const program = new Command()
     .name(COMMAND_NAME)
-    .description('superun-ai 项目管理、对话创作和应用发布')
+    .description(
+      '通过需求梳理、架构设计与开发协作，将网站和应用的想法转化为可持续迭代、可部署运维的生产级系统。',
+    )
     .version(PACKAGE_VERSION)
     .option('--endpoint <URL>', 'API 地址')
     .option('--locale <language>', '回复语言', 'zh-CN')

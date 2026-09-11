@@ -1,7 +1,7 @@
 {
   "name": "superun-ai-cli",
   "version": "0.1.9",
-  "description": "superun-ai-cli 命令行工具，支持项目管理、对话创作、交互问答和应用发布",
+  "description": "通过需求梳理、架构设计与开发协作，将网站和应用的想法转化为可持续迭代、可部署运维的生产级系统。",
   "author": "xiuyu.yi",
   "license": "UNLICENSED",
   "type": "module",
