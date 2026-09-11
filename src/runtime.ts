@@ -11,7 +11,8 @@ import type { ApiClient } from './transport/api-client.js';
 import type { OutputWriter } from './output/writer.js';
 import type { SessionView } from './contracts/node-wire.js';
 import type { CreationResult, Choice } from './contracts/cli-output.js';
-import { enabled, list, object, text } from './contracts/value.js';
+import { enabled, object, text } from './contracts/value.js';
+import { getSuperunHostingDomain } from './config/runtime-config.js';
 import type { JsonObject } from './contracts/value.js';
 import { collectInteractions } from './interactions/registry.js';
 import { toolId as sourceToolId, toolData } from './interactions/context.js';
@@ -32,7 +33,6 @@ import {
   isInitialDemoRound,
   projectDemoPreview,
 } from './conversation/demo-preview.js';
-import { findDevelopmentSnapshot } from './conversation/development-snapshot.js';
 import type { GuidanceResult } from './conversation/next-actions.js';
 import { currentRound, roundMessage } from './conversation/round-selector.js';
 import { SessionWaiter } from './conversation/session-waiter.js';
@@ -42,8 +42,8 @@ import { dispatchReply } from './interactions/handlers/index.js';
 import { TaskProgressReader } from './conversation/task-progress-reader.js';
 import { submittedTaskProgress, taskProgressSnapshot } from './conversation/task-progress.js';
 
-// 只限制完成结果的短暂同步，不限制用户回答或研发任务的总等待时间。
-const DEVELOPMENT_SNAPSHOT_SYNC_MS = 15_000;
+// 仅独立演示版本等待快照同步，研发主线直接使用稳定预览地址。
+const DEMO_SNAPSHOT_SYNC_MS = 15_000;
 
 export class CreationRuntime {
   readonly command: AgentCommandApi;
@@ -56,7 +56,7 @@ export class CreationRuntime {
   readonly previewVersions: PreviewVersionApi;
   readonly waiter: SessionWaiter;
   readonly taskProgress: TaskProgressReader;
-  private snapshotSync?: { key: string; startedAt: number };
+  private demoSnapshotSync?: { key: string; startedAt: number };
   constructor(
     readonly client: ApiClient,
     readonly output: OutputWriter,
@@ -191,11 +191,11 @@ export class CreationRuntime {
       enabled(roundExtra.showConfirmGenerateMoreDemo);
     if (modifiedDemo) {
       result.demo = await findModifiedDemoPreview(this.query, view);
-      if (result.demo) this.snapshotSync = undefined;
+      if (result.demo) this.demoSnapshotSync = undefined;
       else {
         const key = `demo:${view.session.sessionId}:${currentRound(view)?.roundId}`;
-        if (this.snapshotSync?.key !== key) this.snapshotSync = { key, startedAt: Date.now() };
-        if (Date.now() - this.snapshotSync.startedAt < DEVELOPMENT_SNAPSHOT_SYNC_MS)
+        if (this.demoSnapshotSync?.key !== key) this.demoSnapshotSync = { key, startedAt: Date.now() };
+        if (Date.now() - this.demoSnapshotSync.startedAt < DEMO_SNAPSHOT_SYNC_MS)
           return { ...result, state: 'RUNNING' };
       }
     }
@@ -231,35 +231,10 @@ export class CreationRuntime {
         ['COMPLETED', 'NEEDS_INPUT'].includes(result.state) &&
         !['start_dev', 'architecture_plan_approve'].includes(String(roundExtra.business_type))
       ) {
-        const messageId = current.anchorUserMessageId;
-        // 收尾消息可能被 BFF 合入原用户轮，快照仍绑定收尾消息，须匹配本轮全部来源。
-        const messageIds = [
-          messageId,
-          ...list(current.meta?.sourceMessageIds).map(text),
-          ...[...current.userItems, ...current.agentItems].map((item) => item.source?.messageId),
-        ].filter((id): id is string => !!id);
-        const snapshot = await findDevelopmentSnapshot(this.query, view.session.sessionId, messageIds, {
-          fallbackToLatest: true,
-        });
-        if (snapshot) {
-          result.development.snapshot = snapshot;
-          this.snapshotSync = undefined;
-        } else {
-          const key = `${view.session.sessionId}:${messageId}`;
-          if (this.snapshotSync?.key !== key) this.snapshotSync = { key, startedAt: Date.now() };
-          const pending = Date.now() - this.snapshotSync.startedAt < DEVELOPMENT_SNAPSHOT_SYNC_MS;
-          result.development.snapshot = {
-            status: pending ? 'PENDING' : 'UNAVAILABLE',
-            messageId,
-            reason: pending
-              ? '正在同步本轮研发快照，请稍候。'
-              : '本轮及项目历史中暂未查到可用的研发快照，可稍后查询。',
-          };
-          if (pending) {
-            result.state = 'RUNNING';
-            result.interactions = [];
-          }
-        }
+        const sessionId = view.session.sessionId;
+        if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,57}[a-zA-Z0-9])?$/.test(sessionId))
+          throw new CliError('PROTOCOL_ERROR', '会话标识无法生成有效的预览地址');
+        result.development.previewUrl = `https://id--${sessionId}.${getSuperunHostingDomain(this.client.config.endpoint)}`;
       }
     }
     return result;

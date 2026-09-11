@@ -8,6 +8,18 @@ export type RuntimeConfig = {
   timeoutMs: number;
 };
 
+/** 与 Glow 一致，按当前连接环境选择预览托管域名。 */
+export function getSuperunHostingDomain(endpoint: string): string {
+  const hostname = new URL(endpoint).hostname;
+  const china =
+    ['superun.com', 'suxiaoqiang.com'].some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+    ) ||
+    ['superun.pre.qima-inc.com', 'localhost', '127.0.0.1', '[::1]'].includes(hostname) ||
+    hostname.startsWith('172.18.');
+  return china ? 'superun.yun' : 'superun.app';
+}
+
 export function runtimeConfig(options: { endpoint?: string; locale?: string }): RuntimeConfig {
   const endpoint = options.endpoint ?? process.env.SUPERUN_ENDPOINT ?? DEFAULT_ENDPOINT;
   let url: URL;

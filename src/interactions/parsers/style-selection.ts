@@ -6,6 +6,7 @@ import type { JsonObject } from '../../contracts/value.js';
 import type { Choice } from '../../contracts/cli-output.js';
 import { CliError } from '../../output/exit-codes.js';
 import { DEFAULT_ENDPOINT } from '../../config/constants.js';
+import { getSuperunHostingDomain } from '../../config/runtime-config.js';
 
 export type StyleWaitTarget = { preReplyMessageId: string; choiceIds: Array<string> };
 
@@ -77,14 +78,7 @@ function stylePreviewUrl(item: JsonObject, endpoint: string): string | undefined
       ? String(item.snapshotId)
       : text(item.snapshotId)?.trim();
   if (!snapshotId || !/^[a-zA-Z0-9_-]+$/.test(snapshotId)) return undefined;
-  const hostname = new URL(endpoint).hostname;
-  const china =
-    ['superun.com', 'suxiaoqiang.com'].some(
-      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
-    ) ||
-    ['superun.pre.qima-inc.com', 'localhost', '127.0.0.1', '[::1]'].includes(hostname) ||
-    hostname.startsWith('172.18.');
-  const url = new URL(`https://snapshot--${snapshotId}.${china ? 'superun.yun' : 'superun.app'}`);
+  const url = new URL(`https://snapshot--${snapshotId}.${getSuperunHostingDomain(endpoint)}`);
   if (
     typeof item.updateTimestamp === 'number' &&
     Number.isSafeInteger(item.updateTimestamp) &&

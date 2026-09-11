@@ -70,9 +70,6 @@ export type DemoPreview = {
   url: string;
   viewed: boolean;
 };
-export type DevelopmentSnapshot =
-  | { status: 'READY'; snapshotId: string; messageId: string; url: string }
-  | { status: 'PENDING' | 'UNAVAILABLE'; messageId: string; reason: string };
 export type DevelopmentProgress = {
   stage:
     | 'READY'
@@ -84,8 +81,8 @@ export type DevelopmentProgress = {
     | 'COMPLETED';
   started: boolean;
   planApproved: boolean;
-  /** 可用研发预览；内部优先匹配本轮，无匹配时使用最新快照。 */
-  snapshot?: DevelopmentSnapshot;
+  /** 研发主线的稳定预览地址，随主线构建结果更新。 */
+  previewUrl?: string;
 };
 export type TaskProgressStatus =
   | 'submitted'

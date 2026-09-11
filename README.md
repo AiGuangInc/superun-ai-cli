@@ -217,6 +217,8 @@ superun-ai chat publish visibility <sessionId> private
 
 风格等待会在单个方案成功且预览页面就绪时提前返回进度，整批状态仍为 `RUNNING`。候选通过 `previewUrl` 返回与 Glow 分支预览相同的可交互页面，不返回截图链接，也不等待截图生成。调用方应立即提示该方案及页面链接，再按 `QUERY_STYLES` 继续查询剩余方案，例如“方案 B 已生成，继续等待方案 A”。方案 A/B/C/D 固定对应原始 `index` 0/1/2/3，同一 `choiceId` 只提示一次；全部结束后再等待用户选择。
 
+研发完成后的“查看预览”使用 `development.previewUrl`，返回与 Glow 研发主线一致的稳定地址 `https://id--<sessionId>.<托管域名>`，随主线构建结果更新。研发主线不再查找或等待快照；风格候选和独立演示版本继续使用各自的快照页面。上线运营返回正式发布域名。
+
 用户选择风格后，`chat style select` 默认内部完成演示就绪等待、演示状态衔接和版本保留，再生成研发规划。调用方只提示“已采用方案 B，正在生成研发规划，完成后请你确认”，不展示演示阶段的提示或额外询问。研发规划内容及“确认规划 / 调整功能”引导保持原样，确认规划后才生成供用户选择的开发功能清单。`--no-wait` 或等待超时返回时，按 `CONTINUE_STYLE_PLANNING` 继续执行 `chat wait`；它会核对当前状态后继续衔接。`chat state` 仍只读，旧项目仍可使用 `chat demo` 和 `chat develop`。
 
 用户明确回复“上线运营”后，使用 `chat publish status <sessionId> --for-launch` 获取 Glow 发布面板的最新待发布版本，原样展示该版本的 `changeLog`，再按返回的命令直接发布，无需二次确认。发布中的版本只跟踪进度；部署后尚未公开的站点继续执行上线动作，完成后返回正式链接。`status` 始终只读，普通状态查询不会自动获得发布授权。

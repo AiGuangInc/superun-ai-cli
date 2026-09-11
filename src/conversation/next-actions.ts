@@ -31,7 +31,7 @@ export function hasCompletedCreationResult(result: GuidanceResult): boolean {
     (result.state === 'NEEDS_INPUT' &&
       result.development?.stage === 'FEATURE_SELECTION' &&
       (result.interactions ?? []).every((item) => item.kind === 'SELECT_FEATURES') &&
-      ['READY', 'UNAVAILABLE'].includes(result.development.snapshot?.status ?? ''))
+      !!result.development.previewUrl)
   );
 }
 
@@ -66,7 +66,7 @@ export function buildNextActions(
   const completed = hasCompletedCreationResult(result);
   return nextActionsForState(result, config).map((action) => {
     const progressInstruction = completed
-      ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、快照链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
+      ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
       : result.taskProgress
         ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
         : '';
@@ -105,16 +105,6 @@ function nextActionsForState(
         action: 'CONTINUE_STYLE_PLANNING',
         instruction:
           '用户已选定风格，提示已采用该方案、正在生成研发规划。继续等待，CLI 会内部完成演示状态衔接并生成规划；不展示演示完成提示、使用场景说明或演示链接，不询问是否查看演示或是否开始研发。不要声称用户已实际查看演示。生成规划后沿用原有规划展示和确认引导；遇到问题或错误原样展示，不自动确认规划或选择开发功能。',
-        requiresUserInput: false,
-        command: [...command, 'wait', ...progressOptions, '--', result.sessionId],
-      },
-    ];
-  if (result.development?.snapshot?.status === 'PENDING')
-    return [
-      {
-        action: 'WAIT',
-        instruction:
-          '本轮任务已结束，正在同步对应的研发快照；继续查询，不重复提交研发需求，不使用旧演示链接代替本轮快照。',
         requiresUserInput: false,
         command: [...command, 'wait', ...progressOptions, '--', result.sessionId],
       },
@@ -170,9 +160,7 @@ function nextActionsForState(
         interactions.every((interaction) => interaction.kind === 'SELECT_FEATURES')
       ) {
         // 已有本轮研发结果时保留完成后的引导；首次功能清单只引导选择开发内容。
-        const snapshot = result.development.snapshot;
-        if (snapshot?.status === 'READY' || snapshot?.status === 'UNAVAILABLE')
-          return developmentActions(result, command);
+        if (result.development.previewUrl) return developmentActions(result, command);
         nextActions.push({
           action: 'CONTINUE_CHAT',
           instruction: `${FEATURE_SELECTION_INSTRUCTION} 用户直接给出开发需求时，将用户原文不经改写或扩充地放入 content，通过 --input - 提交 JSON；用户明确选择清单条目时使用 SELECT 和对应的真实 featureIds，不把确认规划当作全选。`,
@@ -269,13 +257,9 @@ function nextActionsForState(
 }
 
 function developmentActions(result: GuidanceResult, command: Array<string>): Array<NextAction> {
-  const snapshot = result.development?.snapshot;
-  const previewInstruction =
-    snapshot?.status === 'READY'
-      ? '先展示本轮原始结果和 development.snapshot.url，链接统一命名为“查看预览”。快照选择由 CLI 内部处理，不向用户解释匹配过程或兜底策略，不标注兜底版本，也不将预览称为已正式发布。'
-      : snapshot?.status === 'UNAVAILABLE'
-        ? `先展示原始结果，并如实说明：${snapshot.reason} 不伪造快照链接，不宣称本轮没有产出。`
-        : '先按 messages 顺序展示原始对话，不把规划确认当作研发完成，也不要求规划轮产生新快照。';
+  const previewInstruction = result.development?.previewUrl
+    ? '先展示本轮原始结果和 development.previewUrl，链接统一命名为“查看预览”，不将预览称为已正式发布。'
+    : '先按 messages 顺序展示原始对话，不把规划确认当作研发完成。';
   const instruction = `${previewInstruction} 然后按以下两条独立列表原样展示，不合并或改名：\n- **继续创作**：直接告诉我想新增或调整的内容。\n- **上线运营**：回复 **“上线运营”**，我会发布最新版本并返回访问链接。`;
   return [
     {

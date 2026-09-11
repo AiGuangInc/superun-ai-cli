@@ -1,7 +1,7 @@
-/** 优先匹配研发轮所属消息，可显式使用项目最新可用快照兜底。@author xiuyu.yi */
+/** 按独立演示轮所属消息匹配快照。@author xiuyu.yi */
 import { z } from 'zod';
 import type { AgentQueryApi } from '../api/agent-query-api.js';
-import type { DevelopmentSnapshot } from '../contracts/cli-output.js';
+import type { DemoPreview } from '../contracts/cli-output.js';
 import { parseWire } from '../contracts/node-wire.js';
 import { CliError } from '../output/exit-codes.js';
 
@@ -19,7 +19,7 @@ const pageSchema = z.union([
   snapshotsSchema,
 ]);
 type SnapshotRecord = z.infer<typeof snapshotsSchema>[number];
-type ReadySnapshot = Extract<DevelopmentSnapshot, { status: 'READY' }>;
+type ReadySnapshot = Pick<DemoPreview, 'snapshotId' | 'messageId' | 'url'>;
 
 function readySnapshot(snapshot: SnapshotRecord): ReadySnapshot {
   let url: URL;
@@ -31,7 +31,6 @@ function readySnapshot(snapshot: SnapshotRecord): ReadySnapshot {
   if (url.protocol !== 'https:' || url.username || url.password)
     throw new CliError('PROTOCOL_ERROR', '研发快照未提供安全的 HTTPS 地址');
   return {
-    status: 'READY',
     snapshotId: snapshot.encryptedId,
     messageId: snapshot.messageId,
     url: snapshot.visitUrl!,
@@ -42,11 +41,9 @@ export async function findDevelopmentSnapshot(
   query: AgentQueryApi,
   sessionId: string,
   messageId: string | Array<string>,
-  options: { fallbackToLatest?: boolean } = {},
 ): Promise<ReadySnapshot | undefined> {
   const messageIds = new Set(Array.isArray(messageId) ? messageId : [messageId]);
   const seen = new Set<string>();
-  let latest: SnapshotRecord | undefined;
   for (let page = 1; ; page++) {
     const response = parseWire(pageSchema, await query.developmentSnapshots(sessionId, page));
     const items = Array.isArray(response) ? response : response.data;
@@ -55,13 +52,10 @@ export async function findDevelopmentSnapshot(
       .sort((left, right) => right.createdAt - left.createdAt)[0];
     if (snapshot) {
       if (snapshot.visitUrl) return readySnapshot(snapshot);
-      if (!options.fallbackToLatest) return undefined;
+      return undefined;
     }
-    // 查完所有分页后才允许兜底，避免第一页面的新快照遮住后续页面的本轮匹配。
-    for (const item of items)
-      if (item.visitUrl && (!latest || item.createdAt > latest.createdAt)) latest = item;
     if (!items.length || (Array.isArray(response) ? items.length < 50 : page * 50 >= response.totalCount))
-      return options.fallbackToLatest && latest ? readySnapshot(latest) : undefined;
+      return undefined;
     if (items.every((item) => seen.has(item.encryptedId)))
       throw new CliError('PROTOCOL_ERROR', '研发快照分页未前进，请稍后重试查询');
     for (const item of items) seen.add(item.encryptedId);
