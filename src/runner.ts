@@ -21,7 +21,11 @@ export type RunnerOptions = {
 export async function runCli(argv: Array<string>, options: RunnerOptions = {}): Promise<number> {
   const output = options.output ?? new OutputWriter(),
     controller = new AbortController();
-  const interrupt = () => controller.abort();
+  let afterInput: (() => void) | undefined;
+  const interrupt = () => {
+    output.dispose();
+    controller.abort();
+  };
   process.once('SIGINT', interrupt);
   process.once('SIGTERM', interrupt);
   const checkVersion = options.checkVersion ?? versionGate;
@@ -39,6 +43,17 @@ export async function runCli(argv: Array<string>, options: RunnerOptions = {}): 
       },
       update: () => versionGate(argv, output, true),
     });
+    // 认证完成后，仅为持续等待的业务命令启用旁路提醒；不改动各命令的执行逻辑。
+    program.hook('preAction', (_root, command) => {
+      const commandOptions = command.opts();
+      if (!(commandOptions.wait === true || (command.name() === 'wait' && command.parent?.name() === 'chat')))
+        return;
+      // 等待用户从标准输入提供需求或回答时不计时，也不额外读取输入流。
+      if (commandOptions.input === '-' && !process.stdin.readableEnded) {
+        afterInput = () => output.startTaskReminder();
+        process.stdin.once('end', afterInput);
+      } else output.startTaskReminder();
+    });
     await program.parseAsync(argv, { from: 'user' });
     return 0;
   } catch (error) {
@@ -49,6 +64,8 @@ export async function runCli(argv: Array<string>, options: RunnerOptions = {}): 
     }
     return output.fail(error);
   } finally {
+    output.dispose();
+    if (afterInput) process.stdin.off('end', afterInput);
     process.off('SIGINT', interrupt);
     process.off('SIGTERM', interrupt);
   }

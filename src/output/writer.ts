@@ -2,6 +2,7 @@
 import { SCHEMA_VERSION } from '../config/constants.js';
 import type { CreationResult } from '../contracts/cli-output.js';
 import { CliError, EXIT_CODES } from './exit-codes.js';
+import { TaskReminder } from './task-reminder.js';
 
 const SENSITIVE_KEY =
   /^(?:pat|token|access[-_]?token|private[-_]?token|gatewayToken|authorization|password|secret|secrets|secretValues|apiKey|api_key|rowKey|authToken)$/i;
@@ -10,6 +11,18 @@ export class OutputWriter {
   private written = false;
   private readonly secrets = new Set<string>();
   private readonly shownMessages = new Map<string, string>();
+  private disposed = false;
+  private readonly taskReminder = new TaskReminder((data) => {
+    this.stderr(
+      `${this.serialize({
+        schemaVersion: SCHEMA_VERSION,
+        event: 'task_reminder',
+        data,
+        instruction:
+          '立即原样展示 data.message，将 superun.ai 链接到 data.url。同一 data.id 不重复展示；不同 ID 是每隔 5 分钟的再次提醒，文案相同也要展示。继续等待当前任务，不结束等待、不重新提交任务。',
+      })}\n`,
+    );
+  });
 
   constructor(
     private readonly stdout: (text: string) => void = (text) => process.stdout.write(text),
@@ -28,6 +41,15 @@ export class OutputWriter {
 
   log(text: string): void {
     this.stderr(`${this.redact(text)}\n`);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.taskReminder.stop();
+  }
+
+  startTaskReminder(): void {
+    if (!this.written && !this.disposed) this.taskReminder.start();
   }
 
   /** stderr 输出过程事件，stdout 仍只输出一次最终结果。 */
@@ -95,6 +117,7 @@ export class OutputWriter {
 
   private emit(value: unknown): void {
     if (this.written) return;
+    this.dispose();
     this.written = true;
     this.stdout(`${this.serialize(value)}\n`);
   }

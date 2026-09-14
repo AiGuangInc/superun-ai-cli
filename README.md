@@ -169,6 +169,10 @@ superun-ai chat stop <sessionId>
 
 `chat wait` 及写命令的默认等待期间，每轮查询的进度都通过 stderr 逐行输出 JSON 事件：`event: "task_progress"`，卡片位于 `data.taskProgress.markdown`。接入 Agent 应持续读取运行中命令的输出并展示全部任务；支持原位更新时按 `taskProgress.id` 更新同一张卡，否则每次展示当前快照，即使 `changed: false` 也不省略。进度事件不是最终结果，应继续等待当前进程，不中断或重新提交任务。stdout 仍只输出一次命令结果。
 
+顶层在认证完成、进入等待型业务命令后启动独立的通用定时器，每隔 5 分钟通过 stderr 输出 `task_reminder`，固定文案为“任务还在进行中，可以去 superun.ai 查看详情。”。接入 Agent 应立即原样展示 `data.message`，将 `superun.ai` 链接到 `data.url`；同一 `data.id` 去重，不同 ID 即使文案相同也要再次展示。进度更新不重置计时；命令返回结果（包括需要用户回答、本地等待超时）、报错或中断时统一清理定时器。计时范围为当前 CLI 持续等待的进程，重新启动进程会重新计时。定时器只输出提醒，不参与业务查询、状态判断、超时或重试；`--no-wait` 和只读查询不会启动定时器，业务命令无需额外参数。
+
+需要用户回答或选择时停止计时，用户处理问题的时间不计入下一轮等待。使用 `--input -` 等待输入需求或回答期间也不启动定时器；输入完成并继续执行后重新从 0 计时。
+
 整体结束判断沿用原有会话、消息、交互和后台工作状态逻辑，`taskProgress` 仅用于展示；单项完成或进度卡更新不会结束等待，也不以进度条目数量推断整轮完成。原有单个风格方案就绪提示、本地等待超时及用户问答行为保持不变。`--progress-revision` 可传入上次版本用于计算 `changed`，但不抑制每次查询的进度输出；`chat state` 与 `chat style list` 同样支持该参数。
 
 默认连接 Superun 服务。全局参数 `--endpoint <URL>` 可指定 API 地址，`--locale <language>` 可指定响应语言。
