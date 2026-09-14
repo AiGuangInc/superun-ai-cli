@@ -69,15 +69,21 @@ export class AutoTestTasks {
     return ids.size === 1 ? [...ids][0] : undefined;
   }
 
-  async reportParent(view: SessionView): Promise<string | undefined> {
-    const round = currentRound(view);
+  async reportParent(view: SessionView, anchorMessageId?: string): Promise<string | undefined> {
+    const round = anchorMessageId
+      ? view.pipeline.render?.rounds.find((item) => item.anchorUserMessageId === anchorMessageId)
+      : currentRound(view);
     if (!round) return undefined;
     const taskId = await this.reportTaskId(view, round.anchorUserMessageId);
     if (!taskId) return undefined;
+    return this.parentForTask(view.session.sessionId, taskId);
+  }
+
+  async parentForTask(sessionId: string, taskId: number): Promise<string | undefined> {
     const rows = parseWire(
       associationsSchema,
       await this.client.call('/api/uxa-center/agent/AgentQuery/batchQueryBackgroundTaskAssociations', {
-        parentSessionId: view.session.sessionId,
+        parentSessionId: sessionId,
         taskIds: [taskId],
       }),
     );

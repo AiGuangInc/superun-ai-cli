@@ -9,7 +9,7 @@ import { PublishApi } from './api/publish-api.js';
 import { PreviewVersionApi } from './api/preview-version-api.js';
 import type { ApiClient } from './transport/api-client.js';
 import type { OutputWriter } from './output/writer.js';
-import type { SessionView } from './contracts/node-wire.js';
+import type { NodeRound, SessionView } from './contracts/node-wire.js';
 import type { CreationResult, Choice } from './contracts/cli-output.js';
 import { enabled, object, text } from './contracts/value.js';
 import { getSuperunHostingDomain } from './config/runtime-config.js';
@@ -34,17 +34,20 @@ import {
   projectDemoPreview,
 } from './conversation/demo-preview.js';
 import type { GuidanceResult } from './conversation/next-actions.js';
-import { currentRound, roundMessage } from './conversation/round-selector.js';
+import { currentRound, roundMessage, roundContainingMessage } from './conversation/round-selector.js';
 import { SessionWaiter } from './conversation/session-waiter.js';
 import type { WaitOptions } from './conversation/session-waiter.js';
 import { CliError } from './output/exit-codes.js';
 import { dispatchReply } from './interactions/handlers/index.js';
 import { TaskProgressReader } from './conversation/task-progress-reader.js';
 import { submittedTaskProgress, taskProgressSnapshot } from './conversation/task-progress.js';
-import { autoTestContext } from './conversation/auto-test.js';
+import { autoTestContext, AUTO_TEST_SPEC } from './conversation/auto-test.js';
 import { projectText } from './conversation/text-projector.js';
 import { applySnapshot } from './conversation/session-waiter.js';
 import { AutoTestTasks } from './conversation/auto-test-tasks.js';
+import { codeReviewContext, CODE_REVIEW_SPEC } from './conversation/code-review.js';
+import { readCheckQuestionContext } from './conversation/check-question-context.js';
+import { checkContextFromExtra, reportReference } from './conversation/check-context.js';
 
 // 仅独立演示版本等待快照同步，研发主线直接使用稳定预览地址。
 const DEMO_SNAPSHOT_SYNC_MS = 15_000;
@@ -115,17 +118,22 @@ export class CreationRuntime {
     );
   }
   async inspect(view: SessionView, styleTarget?: StyleWaitTarget): Promise<CreationResult> {
-    const autoTest = await this.resolveAutoTest(view);
+    const { autoTest, codeReview } = await this.resolveChecks(view);
+    const check = codeReview ?? autoTest;
     const anchor = styleTarget?.preReplyMessageId ?? styleBranchAnchor(view);
     const choices = anchor ? await this.choices(view.session.sessionId, anchor, view) : [];
     view = {
       ...view,
       activeSubagentWork: await this.taskProgress.hasPendingSubagentWork(view.session.sessionId),
     };
-    const backgroundTests = autoTest ? await this.autoTestTasks.pending(view) : [];
-    if (backgroundTests.length) view.activeSubagentWork = true;
+    const pendingReports = codeReview
+      ? await this.taskProgress.pendingReviewReports(view, codeReview.previousSourceMessageId)
+      : autoTest
+        ? await this.autoTestTasks.pending(view)
+        : [];
+    if (pendingReports.length) view.activeSubagentWork = true;
     const bindings = collectInteractions(view, !styleTarget && isStyleSelected(view, choices)).filter(
-      (binding) => !autoTest || binding.interaction.kind !== 'SELECT_FEATURES',
+      (binding) => !check || binding.interaction.kind !== 'SELECT_FEATURES',
     );
     const processingIds = new Set<string>();
     for (const binding of bindings) {
@@ -143,7 +151,7 @@ export class CreationRuntime {
       view,
       choices,
       visibleBindings.map((binding) => binding.interaction),
-      { autoTest: !!autoTest },
+      { autoTest: !!autoTest, codeReview: !!codeReview },
     );
     let result: CreationResult;
     try {
@@ -154,32 +162,46 @@ export class CreationRuntime {
         styleTarget,
       );
     } catch (error) {
-      if (autoTest && error instanceof CliError && error.code === 'BUSINESS_ERROR') {
+      if (check && error instanceof CliError && error.code === 'BUSINESS_ERROR') {
         result = {
           state: 'FAILED',
           sessionId: view.session.sessionId,
           messageId: roundMessage(view, currentRound(view))?.messageId,
           replyMessageId: currentRound(view)?.anchorUserMessageId,
-          messages: autoTest.reportMessages,
+          messages: check.reportMessages,
           progress: [],
           interactions: [],
         };
-        autoTest.error = text(error.details.errorType) ?? error.message;
+        check.error = text(error.details.errorType) ?? error.message;
       } else if (error instanceof CliError)
         throw new CliError(error.code, error.message, { ...error.details, taskProgress });
       else throw error;
     }
-    result.taskProgress = backgroundTests.length
+    result.taskProgress = pendingReports.length
       ? taskProgressSnapshot(
           view.session.sessionId,
-          [...taskProgress.tasks, ...backgroundTests],
+          [...new Map([...taskProgress.tasks, ...pendingReports].map((task) => [task.id, task])).values()],
           taskProgress.warnings,
         )
       : taskProgress;
     result.cursor = { ...result.cursor, progressRevision: result.taskProgress.revision };
-    if (autoTest) {
-      // 自动测试独立于开发阶段和功能推荐，不能落到普通研发完成菜单。
-      result.autoTest = autoTest;
+    if (check) {
+      // 审查和测试独立于开发阶段和功能推荐，不能落到普通研发完成菜单。
+      const questionContext = await readCheckQuestionContext(this.client, view, result.interactions);
+      if (questionContext.length) {
+        result.messages = [
+          ...new Map(
+            [...result.messages, ...questionContext].map((message) => [message.id, message]),
+          ).values(),
+        ];
+        check.reportMessages = [
+          ...new Map(
+            [...check.reportMessages, ...questionContext].map((message) => [message.id, message]),
+          ).values(),
+        ];
+      }
+      if (autoTest) result.autoTest = autoTest;
+      if (codeReview) result.codeReview = codeReview;
       return result;
     }
     const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
@@ -273,51 +295,86 @@ export class CreationRuntime {
     }
     return result;
   }
-  private async resolveAutoTest(view: SessionView): Promise<CreationResult['autoTest']> {
-    const direct = autoTestContext(view);
-    if (direct) {
-      if (direct.previousSourceMessageId) {
-        // 来源可能是孤立后台回执，按已验证的精确锚点读报告，不要求重复携带业务标记。
-        const readPrevious = (source: SessionView) => {
-          const round = source.pipeline.render?.rounds.find(
-            (item) => item.anchorUserMessageId === direct.previousSourceMessageId,
-          );
-          return round
-            ? projectText([round]).messages.filter((item) => item.role === 'assistant')
-            : undefined;
-        };
-        let previous = readPrevious(view);
-        if (!previous) {
-          const snapshot = await this.conversation.snapshot(
-            view.session.sessionId,
-            direct.previousSourceMessageId,
-          );
-          if (snapshot.pipeline) previous = readPrevious(applySnapshot(view, snapshot.pipeline));
+  async resolveChecks(view: SessionView): Promise<Pick<CreationResult, 'autoTest' | 'codeReview'>> {
+    const current = currentRound(view);
+    if (!current) return {};
+    let sourceId = current.anchorUserMessageId;
+    let sourceRound: NodeRound | undefined = current;
+    const visited = new Set<string>();
+    // 审查回投后可能再委派修复；逐层沿真实关联回溯，不能取最近的历史审查轮。
+    for (let depth = 0; depth < 8; depth++) {
+      if (visited.has(sourceId)) break;
+      visited.add(sourceId);
+      // 隐藏或并入其他轮的用户消息仍有持久化来源；单消息快照不保证返回渲染轮。
+      const source: Awaited<ReturnType<AgentQueryApi['messageReferenceSource']>> | undefined = sourceRound
+        ? undefined
+        : await this.query.messageReferenceSource(view.session.sessionId, sourceId);
+      const contexts = source
+        ? {
+            autoTest: checkContextFromExtra(source.roundExtra, AUTO_TEST_SPEC, sourceId),
+            codeReview: checkContextFromExtra(source.roundExtra, CODE_REVIEW_SPEC, sourceId),
+          }
+        : {
+            autoTest: autoTestContext(view, sourceId),
+            codeReview: codeReviewContext(view, sourceId),
+          };
+      if (contexts.autoTest && contexts.codeReview)
+        throw new CliError('PROTOCOL_ERROR', '当前结果同时关联审查与测试，无法确认来源');
+      const check = contexts.codeReview ?? contexts.autoTest;
+      if (check) {
+        if (check.previousSourceMessageId) {
+          const readPrevious = (source: SessionView) => {
+            const round = roundContainingMessage(source, check.previousSourceMessageId!);
+            return round
+              ? projectText([round]).messages.filter((item) => item.role === 'assistant')
+              : undefined;
+          };
+          let previous = readPrevious(view);
+          if (!previous) {
+            const snapshot = await this.conversation.snapshot(
+              view.session.sessionId,
+              check.previousSourceMessageId,
+            );
+            if (snapshot.pipeline) previous = readPrevious(applySnapshot(view, snapshot.pipeline));
+          }
+          check.previousReportMessages = previous;
         }
-        direct.previousReportMessages = previous;
+        check.sourceMessageId = current.anchorUserMessageId;
+        check.reportMessages = projectText([current]).messages.filter((item) => item.role === 'assistant');
+        return contexts;
       }
-      return direct;
-    }
-    const round = currentRound(view);
-    const childId = text(round?.meta?.subAgentReportFrom);
-    if (!round) return undefined;
-    const parentId =
-      round.meta?.subAgentReport && childId
+      const reference: ReturnType<typeof reportReference> = source ? reportReference(source) : undefined;
+      const childId: string | undefined =
+        reference && 'childId' in reference
+          ? reference.childId
+          : sourceRound?.meta?.subAgentReport
+            ? text(sourceRound.meta.subAgentReportFrom)
+            : undefined;
+      const parentId: string | undefined = childId
         ? await this.taskProgress.parentReplyMessageId(view.session.sessionId, childId)
-        : await this.autoTestTasks.reportParent(view);
-    if (!parentId) return undefined;
-    let source = autoTestContext(view, parentId);
-    if (!source) {
-      const snapshot = await this.conversation.snapshot(view.session.sessionId, parentId);
-      if (snapshot.pipeline) source = autoTestContext(applySnapshot(view, snapshot.pipeline), parentId);
+        : reference && 'taskId' in reference
+          ? await this.autoTestTasks.parentForTask(view.session.sessionId, reference.taskId)
+          : sourceRound
+            ? await this.autoTestTasks.reportParent(view, sourceId)
+            : undefined;
+      if (!parentId) {
+        const businessType =
+          source?.roundExtra.business_type ??
+          view.pipeline.messages.find((message) => message.messageId === sourceId)?.roundExtra?.business_type;
+        if (
+          reference ||
+          sourceRound?.meta?.subAgentReport ||
+          businessType === 'background_task_report' ||
+          businessType === 'sub_agent_report'
+        )
+          throw new CliError('PROTOCOL_ERROR', '暂时无法读取后台回执的来源，请重新查询当前状态');
+        return {};
+      }
+      sourceId = parentId;
+      // 合并轮内可能有多次委派；此时按精确消息回溯，不能用宿主轮覆盖它的来源。
+      sourceRound = view.pipeline.render?.rounds.find((round) => round.anchorUserMessageId === parentId);
     }
-    return source
-      ? {
-          ...source,
-          sourceMessageId: round.anchorUserMessageId,
-          reportMessages: projectText([round]).messages.filter((item) => item.role === 'assistant'),
-        }
-      : undefined;
+    throw new CliError('PROTOCOL_ERROR', '后台回执的来源链存在循环或层数过多，无法确认当前结果');
   }
   async state(sessionId: string): Promise<CreationResult> {
     return this.withGuidance(await this.inspect(await this.load(sessionId)));
@@ -387,6 +444,7 @@ export class CreationRuntime {
       const view: SessionView = { ...(await this.conversation.recently(id)), extra: {} };
       const snapshot = await this.taskProgress.read(view, await this.choices(id, undefined, view), [], {
         autoTest: ['test', 'repair'].includes(String(response.autoTestPhase)),
+        codeReview: ['review', 'repair'].includes(String(response.codeReviewPhase)),
       });
       const responseIds = [text(response.messageId), text(response.replyMessageId)].filter(Boolean);
       const round = view.pipeline.render?.rounds.find(
@@ -426,6 +484,15 @@ export class CreationRuntime {
         ? {
             autoTest: {
               phase: response.autoTestPhase as 'test' | 'repair',
+              sourceMessageId: text(response.replyMessageId) ?? text(response.messageId) ?? '',
+              reportMessages: [],
+            },
+          }
+        : {}),
+      ...(['review', 'repair'].includes(String(response.codeReviewPhase))
+        ? {
+            codeReview: {
+              phase: response.codeReviewPhase as 'review' | 'repair',
               sourceMessageId: text(response.replyMessageId) ?? text(response.messageId) ?? '',
               reportMessages: [],
             },

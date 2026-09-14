@@ -9,6 +9,10 @@ export function registerSend(chat: Command, context: CommandContext): void {
       '--test-followup <messageId>',
       '回复当前自动测试报告，保留修复结果引导；使用结果中的 sourceMessageId',
     )
+    .option(
+      '--review-followup <messageId>',
+      '回复当前代码审查报告，保留修复结果引导；使用结果中的 sourceMessageId',
+    )
     .action(async (sessionId: string, _options: unknown, command: Command) =>
       sendMessage(context, sessionId, command),
     );

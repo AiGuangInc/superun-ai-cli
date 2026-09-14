@@ -3,6 +3,7 @@ import { COMMAND_NAME } from '../config/constants.js';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import type { CreationResult, InteractionKind, NextAction } from '../contracts/cli-output.js';
 import { AUTO_TEST_RESULT_INSTRUCTION } from './auto-test.js';
+import { CODE_REVIEW_RESULT_INSTRUCTION } from './code-review.js';
 import {
   latestStyleChoices,
   readyStyleChoices,
@@ -23,6 +24,7 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
       | 'taskProgress'
       | 'toolUsage'
       | 'autoTest'
+      | 'codeReview'
       | 'replyMessageId'
     >
   >;
@@ -68,15 +70,19 @@ export function buildNextActions(
 ): Array<NextAction> {
   const completed = hasCompletedCreationResult(result);
   return nextActionsForState(result, config).map((action) => {
-    const progressInstruction = result.autoTest
-      ? AUTO_TEST_RESULT_INSTRUCTION
-      : completed
-        ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
-        : result.taskProgress
-          ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
-          : '';
+    const progressInstruction = result.codeReview
+      ? CODE_REVIEW_RESULT_INSTRUCTION
+      : result.autoTest
+        ? AUTO_TEST_RESULT_INSTRUCTION
+        : completed
+          ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
+          : result.taskProgress
+            ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
+            : '';
     const waitInstruction = action.requiresUserInput
-      ? '等待用户明确响应，不设置答题倒计时；未收到响应时保持当前步骤，不自动选择、提交、跳过或继续。'
+      ? result.codeReview
+        ? '后续动作需要用户明确授权；若用户已明确要求审查后接着测试，满足当前结果条件后沿用该授权，无需重复确认。否则等待用户选择，不自动修复未确认的业务规则或发布。'
+        : '等待用户明确响应，不设置答题倒计时；未收到响应时保持当前步骤，不自动选择、提交、跳过或继续。'
       : '';
     return {
       ...action,
@@ -104,13 +110,14 @@ function nextActionsForState(
   const command = [COMMAND_NAME, '--endpoint', config.endpoint, '--locale', config.locale, 'chat'];
   const progressRevision = result.taskProgress?.revision ?? result.cursor?.progressRevision;
   const progressOptions = progressRevision ? ['--progress-revision', progressRevision] : [];
-  if (result.autoTest && !result.interactions?.length) {
+  if ((result.autoTest || result.codeReview) && !result.interactions?.length) {
     if (['ACCEPTED', 'RUNNING', 'QUEUED'].includes(result.state))
       return [
         {
           action: 'WAIT',
-          instruction:
-            '自动测试或后续修复仍在进行。及时展示新的 conversation_message 事件及实际测试、发现问题、修复进度。继续等待最终汇报；不重复触发、不自动开始下一次测试、不展示操作菜单。',
+          instruction: result.codeReview
+            ? '代码审查或后续修复仍在进行。及时展示 conversation_message 中的实际范围、发现的问题与正在修复的说明。后台审查结束后继续等待主会话修复和最终汇报，不重复触发审查，不展示后置菜单。'
+            : '自动测试或后续修复仍在进行。及时展示新的 conversation_message 事件及实际测试、发现问题、修复进度。继续等待最终汇报；不重复触发、不自动开始下一次测试、不展示操作菜单。',
           requiresUserInput: false,
           command: [
             ...command,
@@ -122,7 +129,7 @@ function nextActionsForState(
           ],
         },
       ];
-    return autoTestActions(result, command);
+    return result.codeReview ? codeReviewActions(result, command) : autoTestActions(result, command);
   }
   if (result.stylePlanning && ['ACCEPTED', 'RUNNING', 'QUEUED', 'COMPLETED'].includes(result.state))
     return [
@@ -285,8 +292,14 @@ function developmentActions(result: GuidanceResult, command: Array<string>): Arr
   const previewInstruction = result.development?.previewUrl
     ? '先展示本轮原始结果和 development.previewUrl，链接统一命名为“查看预览”，不将预览称为已正式发布。'
     : '先按 messages 顺序展示原始对话，不把规划确认当作研发完成。';
-  const instruction = `${previewInstruction} 然后按以下三条独立列表原样展示，不合并或改名：\n- **自动测试**：回复“自动测试”，实际验证刚才完成的功能，发现确认的问题后先告知你，再自动修复。\n- **继续创作**：直接告诉我想新增或调整的内容。\n- **上线运营**：回复 **“上线运营”**，我会发布最新版本并返回访问链接。`;
+  const instruction = `${previewInstruction} 接着说明“接下来，你可以检查代码、实际验证功能、继续完善项目，或上线运营。”，然后按以下四条独立列表原样展示，不合并或改名：\n- **代码审查**：回复“代码审查”，检查刚才改动的代码，发现问题后先告知你，再自动修复。\n- **自动测试**：回复“自动测试”，实际验证刚才完成的功能，发现确认的问题后先告知你，再自动修复。\n- **继续创作**：直接告诉我想新增或调整的内容。\n- **上线运营**：回复 **“上线运营”**，我会发布最新版本并返回访问链接。`;
   return [
+    {
+      action: 'CODE_REVIEW',
+      instruction: `${instruction} 用户明确要求“代码审查”或指定审查范围后直接执行，无需二次确认；指定内容时使用 --input - 原样提交 content，不扩大范围、不混入新增功能。仅讨论是否需要审查不触发。不默认审查或承诺免费。`,
+      requiresUserInput: true,
+      command: [...command, 'review', '--', result.sessionId],
+    },
     {
       action: 'AUTO_TEST',
       instruction: `${instruction} 用户明确要求“自动测试”或“测一下刚才的功能”后直接执行，无需二次确认。用户指定测试范围时使用 --input - 提交原始 content，不扩大范围。不默认测试，不宣称免费。`,
@@ -358,6 +371,65 @@ function autoTestActions(result: GuidanceResult, command: Array<string>): Array<
       when: ready,
       instruction:
         '按结果先展示过渡句，再展示“- **上线运营**：回复‘上线运营’。”。仅用户明确要求上线后执行此命令，原样展示最新待发布版本的 changeLog 并按现有发布动作继续，无需二次确认；完成且站点公开后返回正式链接。',
+      requiresUserInput: true,
+      command: [...command, 'publish', 'status', '--for-launch', '--', result.sessionId],
+    },
+  ];
+}
+
+function codeReviewActions(result: GuidanceResult, command: Array<string>): Array<NextAction> {
+  const followup: NextAction = {
+    action: 'CODE_REVIEW_FOLLOW_UP',
+    when: '存在未修复问题、待确认规则或缺失资料，需要继续处理；或者报告不足以得出有效结论。',
+    instruction:
+      '先展示发现、已修复、未修复数量及逐项详情与原因，再只引导“修复剩余问题”“修复第 X 项”或提出具体问题，不展示三个完成选项。用户回复后按当前报告编号理解问题，content 使用用户原文，不扩充需求；通过普通对话继续处理，不重新启动审查。修复后仍按相同模板及状态引导。',
+    requiresUserInput: true,
+    command: [
+      ...command,
+      'send',
+      '--review-followup',
+      result.codeReview!.sourceMessageId,
+      '--input',
+      '-',
+      '--',
+      result.sessionId,
+    ],
+  };
+  const retry: NextAction = {
+    action: 'CODE_REVIEW',
+    when: '审查异常、暂停或中断，且障碍已排除、可以重试；或者本次确定的审查范围有尚未检查的部分。无效结论不能当作审查通过。',
+    instruction:
+      '异常时先说明实际原因，只在可重试时引导“重试代码审查”；范围只完成一部分时列出已审与未审范围，只引导“继续审查……”明确剩余目标。收到用户要求后原样提交 content。不自动重复审查已经处理完的同一范围，不展示正常完成菜单。',
+    requiresUserInput: true,
+    command: [...command, 'review', '--input', '-', '--', result.sessionId],
+  };
+  if (result.state !== 'COMPLETED' || result.codeReview?.error) return [followup, retry];
+  const ready =
+    '仅在本次审查有效完成且无未修复或待确认问题、无缺失资料、无本次确定范围内的未审部分时展示。包括未发现问题和发现的问题已全部修复；报告缺失、结论不明或仅后台审查结束时不展示。';
+  return [
+    followup,
+    retry,
+    {
+      action: 'AUTO_TEST',
+      when: ready,
+      instruction:
+        '展示结果、逐项修复详情与下一步过渡句后，直接展示三个选项中的“- **自动测试**：回复‘自动测试’，验证本次审查涉及的功能。”；有修复时改为“验证刚才修复的功能”。不增加暂不需要步骤。用户选择或此前明确授权审查后测试时，按原文或已授权范围填写 content 后执行，随后沿用自动测试的结果引导。',
+      requiresUserInput: true,
+      command: [...command, 'test', '--input', '-', '--', result.sessionId],
+    },
+    {
+      action: 'CONTINUE_CHAT',
+      when: ready,
+      instruction:
+        '完成结果和过渡句后直接展示“- **继续创作**：直接告诉我想新增或调整的内容。”。收到需求就原样提交 content，用普通 send 进入创作，不带 --review-followup，也不要求先回复继续创作。',
+      requiresUserInput: true,
+      command: [...command, 'send', '--input', '-', '--', result.sessionId],
+    },
+    {
+      action: 'REVIEW_PUBLISH',
+      when: ready,
+      instruction:
+        '完成结果和过渡句后直接展示“- **上线运营**：回复‘上线运营’。”。仅用户明确要求上线后执行此命令，沿用最新版本 changeLog 展示与发布流程，无需二次确认；发布完成且站点公开后返回正式链接。审查完成不代表项目已经上线。',
       requiresUserInput: true,
       command: [...command, 'publish', 'status', '--for-launch', '--', result.sessionId],
     },

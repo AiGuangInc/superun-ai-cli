@@ -124,6 +124,16 @@ export type TaskProgressSnapshot = {
   warnings: Array<string>;
   changed?: boolean;
 };
+/** 审查或测试的结果来源；正文保留服务端实际结论，CLI 不推断问题数量。 */
+export type CheckContext<T extends 'test' | 'review'> = {
+  phase: T | 'repair';
+  sourceMessageId: string;
+  reportMessages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
+  previousSourceMessageId?: string;
+  previousReportMessages?: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
+  error?: string;
+};
+
 export type CreationResult = {
   state: CreationState;
   sessionId: string;
@@ -131,14 +141,8 @@ export type CreationResult = {
   replyMessageId?: string;
   topic?: string;
   /** 自动测试及其后续修复的上下文；不以会话完成推断测试通过。 */
-  autoTest?: {
-    phase: 'test' | 'repair';
-    sourceMessageId: string;
-    reportMessages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
-    previousSourceMessageId?: string;
-    previousReportMessages?: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
-    error?: string;
-  };
+  autoTest?: CheckContext<'test'>;
+  codeReview?: CheckContext<'review'>;
   messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
   progress: Array<{ id: string; text: string; status?: string }>;
   taskProgress?: TaskProgressSnapshot;

@@ -1,36 +1,20 @@
 /** 自动测试的来源识别和结果展示契约。@author xiuyu.yi */
 import type { CreationResult } from '../contracts/cli-output.js';
 import type { SessionView } from '../contracts/node-wire.js';
-import { currentRound } from './round-selector.js';
-import { projectText } from './text-projector.js';
-import { text } from '../contracts/value.js';
+import { readCheckContext } from './check-context.js';
 
 export const AUTO_TEST_OPERATION_KEY = 'cliAutoTestOperation';
 export const AUTO_TEST_SOURCE_KEY = 'cliAutoTestSource';
 export const AUTO_TEST_DEFAULT_MESSAGE = '帮我测一下刚才完成的功能。';
+export const AUTO_TEST_SPEC = {
+  phase: 'test' as const,
+  operationKey: AUTO_TEST_OPERATION_KEY,
+  sourceKey: AUTO_TEST_SOURCE_KEY,
+  businessType: 'auto_test',
+};
 
 export function autoTestContext(view: SessionView, anchorMessageId?: string): CreationResult['autoTest'] {
-  const round = anchorMessageId
-    ? view.pipeline.render?.rounds.find((item) => item.anchorUserMessageId === anchorMessageId)
-    : currentRound(view);
-  if (!round) return undefined;
-  const ids = new Set([round.anchorUserMessageId, ...round.agentItems.map((item) => item.source?.messageId)]);
-  const messages = view.pipeline.messages
-    .filter((message) => ids.has(message.messageId))
-    .sort((a, b) => b.createdAt - a.createdAt);
-  for (const message of messages) {
-    const extra = message.roundExtra ?? {};
-    const phase = extra[AUTO_TEST_OPERATION_KEY];
-    if (phase === 'none') return undefined;
-    if (phase === 'test' || phase === 'repair' || extra.business_type === 'auto_test')
-      return {
-        phase: phase === 'repair' ? 'repair' : 'test',
-        sourceMessageId: round.anchorUserMessageId,
-        reportMessages: projectText([round]).messages.filter((item) => item.role === 'assistant'),
-        previousSourceMessageId: text(extra[AUTO_TEST_SOURCE_KEY]),
-      };
-  }
-  return undefined;
+  return readCheckContext(view, AUTO_TEST_SPEC, anchorMessageId);
 }
 
 export const AUTO_TEST_RESULT_INSTRUCTION = `依据 autoTest.reportMessages 中本次最新报告展示结果，messages 可补充本次过程和上下文。autoTest.previousReportMessages 仅用于追溯上一份报告的问题与编号，不能把旧结论当成本次结果。报告未返回完整清单时说明缺失，不补造计数。不得从 taskProgress 完成、工具成功或没有错误推断测试通过。

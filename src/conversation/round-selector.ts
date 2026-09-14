@@ -1,14 +1,24 @@
 /** 主链当前轮与消息锚点。@author xiuyu.yi */
 import type { NodeRound, NodeMessage, SessionView } from '../contracts/node-wire.js';
+import { list } from '../contracts/value.js';
+
+/** 回执被并入宿主轮后，仍按 BFF 保留的消息来源精确定位，不回退到其他轮。 */
+export function roundContainingMessage(view: SessionView, messageId: string): NodeRound | undefined {
+  const rounds = view.pipeline.render?.rounds ?? [];
+  return (
+    rounds.find((round) => round.anchorUserMessageId === messageId) ??
+    rounds.find(
+      (round) =>
+        list(round.meta?.sourceMessageIds).includes(messageId) ||
+        [...round.agentItems, ...round.userItems].some((item) => item.source?.messageId === messageId),
+    )
+  );
+}
 
 export function currentRound(view: SessionView, messageId?: string): NodeRound | undefined {
   const rounds = view.pipeline.render?.rounds ?? [];
   if (messageId) {
-    const found = rounds.find(
-      (round) =>
-        round.anchorUserMessageId === messageId ||
-        [...round.agentItems, ...round.userItems].some((item) => item.source?.messageId === messageId),
-    );
+    const found = roundContainingMessage(view, messageId);
     if (found) return found;
   }
   // 对齐 Glow 的末轮判定：按 BFF 展示顺序取最后一个非咨询、非被动轮，包含最终回执。

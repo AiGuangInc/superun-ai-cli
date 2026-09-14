@@ -11,6 +11,11 @@ import {
   AUTO_TEST_SOURCE_KEY,
 } from '../../conversation/auto-test.js';
 import { hasCompletedCreationResult } from '../../conversation/next-actions.js';
+import {
+  CODE_REVIEW_DEFAULT_MESSAGE,
+  CODE_REVIEW_OPERATION_KEY,
+  CODE_REVIEW_SOURCE_KEY,
+} from '../../conversation/code-review.js';
 import type { CommandContext } from '../shared.js';
 import { runtime, readInput, withWait, waitOptions, businessWrite } from '../shared.js';
 
@@ -46,17 +51,34 @@ export async function sendMessage(
   context: CommandContext,
   sessionId: string | undefined,
   command: Command,
-  autoTest = false,
+  check?: 'test' | 'review',
 ): Promise<void> {
   const options = object(command.opts());
+  const testFollowup = text(options.testFollowup),
+    reviewFollowup = text(options.reviewFollowup);
+  if (testFollowup && reviewFollowup)
+    throw new CliError('INVALID_ARGUMENT', '不能同时回复自动测试和代码审查报告');
+  const followup = reviewFollowup ?? testFollowup;
+  const checkKind = check ?? (reviewFollowup ? 'review' : testFollowup ? 'test' : undefined);
+  const label = checkKind === 'review' ? '代码审查' : '自动测试';
+  const operationKey = checkKind === 'review' ? CODE_REVIEW_OPERATION_KEY : AUTO_TEST_OPERATION_KEY;
+  const sourceKey = checkKind === 'review' ? CODE_REVIEW_SOURCE_KEY : AUTO_TEST_SOURCE_KEY;
   const hasMessage = typeof options.message === 'string',
     hasInput = typeof options.input === 'string';
-  if ((hasMessage && hasInput) || (!autoTest && !hasMessage && !hasInput))
+  if ((hasMessage && hasInput) || (!check && !hasMessage && !hasInput))
     throw new CliError('INVALID_ARGUMENT', '必须且只能指定 --message 或 --input');
   const raw =
     typeof options.input === 'string'
       ? await readInput(options.input)
-      : { content: options.message ?? (autoTest ? AUTO_TEST_DEFAULT_MESSAGE : undefined) };
+      : {
+          content:
+            options.message ??
+            (check === 'review'
+              ? CODE_REVIEW_DEFAULT_MESSAGE
+              : check === 'test'
+                ? AUTO_TEST_DEFAULT_MESSAGE
+                : undefined),
+        };
   const parsed = inputSchema.safeParse(raw);
   if (!parsed.success || (parsed.data.content !== undefined && parsed.data.message !== undefined))
     throw new CliError('INVALID_ARGUMENT', '输入只接受 content/message 与 attachments，且内容字段不能重复');
@@ -65,19 +87,19 @@ export async function sendMessage(
   const files = z.array(z.string()).parse(options.file);
   if (!content.trim() && !files.length && !input.attachments.length)
     throw new CliError('INVALID_ARGUMENT', '需求或附件不能为空');
-  if (autoTest && !content.trim())
-    throw new CliError('INVALID_ARGUMENT', '自动测试范围不能为空；省略 --message 可测试刚才完成的功能');
+  if (check && !content.trim())
+    throw new CliError('INVALID_ARGUMENT', `${label}范围不能为空；省略 --message 可检查刚才完成的内容`);
   const service = await runtime(context, command);
-  const followup = text(options.testFollowup);
   const previous =
-    sessionId && (options.wait !== false || autoTest || followup) ? await service.load(sessionId) : undefined;
-  let operation: 'test' | 'repair' | undefined;
-  if ((autoTest || followup) && previous) {
+    sessionId && (options.wait !== false || checkKind) ? await service.load(sessionId) : undefined;
+  let operation: 'test' | 'review' | 'repair' | undefined;
+  if (checkKind && previous) {
     if (previous.extra.agentRuntime === 'shire')
-      throw new CliError('INVALID_ARGUMENT', '当前处于探索阶段，请先完成研发，再对已有功能执行自动测试');
+      throw new CliError('INVALID_ARGUMENT', `当前处于探索阶段，请先完成研发，再对已有功能执行${label}`);
     const current = await service.inspect(previous);
-    if (followup && (!current.autoTest || current.autoTest.sourceMessageId !== followup))
-      throw new CliError('STALE_INTERACTION', '自动测试报告已被后续对话替换，请重新查询当前状态');
+    const currentCheck = checkKind === 'review' ? current.codeReview : current.autoTest;
+    if (followup && (!currentCheck || currentCheck.sourceMessageId !== followup))
+      throw new CliError('STALE_INTERACTION', `${label}报告已被后续对话替换，请重新查询当前状态`);
     if (
       (await service.taskProgress.hasPendingSubagentWork(previous.session.sessionId)) ||
       current.interactions.some((item) => item.kind !== 'SELECT_FEATURES') ||
@@ -86,11 +108,11 @@ export async function sendMessage(
         hasCompletedCreationResult(current)
       )
     )
-      throw new CliError('INVALID_ARGUMENT', '请先等待当前任务结束或回答当前问题，再发起自动测试或后续修复', {
+      throw new CliError('INVALID_ARGUMENT', `请先等待当前任务结束或回答当前问题，再发起${label}或后续修复`, {
         sessionId,
         observedState: service.withGuidance(current),
       });
-    operation = autoTest ? 'test' : 'repair';
+    operation = check ?? 'repair';
   }
   const attachments = [...input.attachments];
   for (const file of files) attachments.push(await uploadAttachment(service, file));
@@ -106,10 +128,13 @@ export async function sendMessage(
       ...(operation
         ? {
             roundExtra: {
-              [AUTO_TEST_OPERATION_KEY]: operation,
-              ...(followup ? { [AUTO_TEST_SOURCE_KEY]: followup } : {}),
+              [operationKey]: operation,
+              ...(followup ? { [sourceKey]: followup } : {}),
             },
-            businessParams: { business_type: autoTest ? 'auto_test' : 'casual_chat' },
+            businessParams: {
+              business_type:
+                check === 'review' ? 'issue_review' : check === 'test' ? 'auto_test' : 'casual_chat',
+            },
           }
         : {}),
       ...(create
@@ -131,7 +156,15 @@ export async function sendMessage(
   );
   context.output.write(
     await service.accepted(
-      { ...object(response), progressTitle: content, ...(operation ? { autoTestPhase: operation } : {}) },
+      {
+        ...object(response),
+        progressTitle: content,
+        ...(operation
+          ? checkKind === 'review'
+            ? { codeReviewPhase: operation }
+            : { autoTestPhase: operation }
+          : {}),
+      },
       sessionId,
       options.wait !== false,
       {

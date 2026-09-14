@@ -10,7 +10,7 @@ import type {
 } from '../contracts/cli-output.js';
 import { parseWire, recentlySchema } from '../contracts/node-wire.js';
 import type { SessionView } from '../contracts/node-wire.js';
-import { enabled, text } from '../contracts/value.js';
+import { enabled, list, text } from '../contracts/value.js';
 import { CliError } from '../output/exit-codes.js';
 import { currentRound, roundMessage } from './round-selector.js';
 import { projectFeatureTasks } from './feature-progress.js';
@@ -128,11 +128,60 @@ export class TaskProgressReader {
     return parents.size === 1 ? [...parents][0] : undefined;
   }
 
+  /** 子审查结束后，关联状态 2 才表示主会话已处理回执；期间不能提前展示完成菜单。 */
+  async pendingReviewReports(
+    view: SessionView,
+    previousSourceMessageId?: string,
+  ): Promise<Array<TaskProgressItem>> {
+    const round = currentRound(view);
+    if (!round) return [];
+    // Glow 会把回执轮并回原审查轮；后续修复实际归属于回执的用户消息。
+    const relatedRounds = (view.pipeline.render?.rounds ?? []).filter(
+      (item) => item.roundId === round.roundId || item.anchorUserMessageId === previousSourceMessageId,
+    );
+    const sourceIds = new Set(
+      relatedRounds.flatMap((item) => [
+        item.anchorUserMessageId,
+        ...list(item.meta?.sourceMessageIds).filter((id): id is string => typeof id === 'string'),
+        ...item.agentItems.map((content) => content.source?.messageId),
+      ]),
+    );
+    const parentIds = new Set([
+      round.anchorUserMessageId,
+      previousSourceMessageId,
+      ...view.pipeline.messages
+        .filter((message) => sourceIds.has(message.messageId))
+        .map((message) => (message.role === 1 ? message.messageId : message.replyMessageId)),
+    ]);
+    const discovery = await this.discovery(view.session.sessionId);
+    const removed = new Set(
+      (discovery.causalAssociations ?? [])
+        .filter((item) => item.associationStatus === 1)
+        .map((item) => item.childSessionId),
+    );
+    return discovery.tasks
+      .filter(
+        (task) =>
+          parentIds.has(task.parentReplyMessageId ?? '') &&
+          task.associationStatus !== 1 &&
+          task.associationStatus !== 2 &&
+          !removed.has(task.childSessionId || task.agentId || task.taskKey) &&
+          [1, -1].includes(task.status ?? 0),
+      )
+      .map((task) => ({
+        id: `subtask:${task.agentId || task.childSessionId || task.taskKey}`,
+        kind: 'subtask',
+        title: task.taskTitle?.trim() || '代码审查',
+        status: 'waiting',
+        detail: '等待审查结果回传及主会话后续处理完成。',
+      }));
+  }
+
   async read(
     view: SessionView,
     choices: Array<Choice>,
     interactions: Array<Interaction> = [],
-    options: { autoTest?: boolean } = {},
+    options: { autoTest?: boolean; codeReview?: boolean } = {},
   ): Promise<TaskProgressSnapshot> {
     if (this.client.signal?.aborted) throw new CliError('INTERRUPTED', '已停止本地进度查询');
     const sessionId = view.session.sessionId;
@@ -287,6 +336,7 @@ export class TaskProgressReader {
     // 仅在当前用户的已确认研发阶段读取内部进度；咨询、风格和归属未知时保留原展示。
     if (
       !options.autoTest &&
+      !options.codeReview &&
       current &&
       currentUser &&
       roundOwner(view, current) === currentUser &&
