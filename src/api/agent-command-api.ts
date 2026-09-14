@@ -39,8 +39,8 @@ export class AgentCommandApi {
                 excludedInheritedRoundExtraKeys: [
                   'stage0Intro',
                   'stage0SkillUnavailable',
-                  AUTO_TEST_OPERATION_KEY,
-                  AUTO_TEST_SOURCE_KEY,
+                  // Center 在合并本轮字段后执行排除；不能把本轮显式写入的来源也删掉。
+                  ...(input.roundExtra?.[AUTO_TEST_SOURCE_KEY] ? [] : [AUTO_TEST_SOURCE_KEY]),
                   ...(input.excludedInheritedRoundExtraKeys ?? []),
                 ],
               }

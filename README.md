@@ -247,6 +247,8 @@ superun-ai chat send <sessionId> --test-followup <sourceMessageId> --message "�
 
 自动测试与修复的等待期间，除了 `task_progress`，stderr 还会输出 `conversation_message` 事件，`data.messages` 是新出现或正文变化的实际消息。接入 Agent 应及时展示发现的问题及修复前告知，同一消息 ID 更新正文，避免重复追加；事件不表示整体完成，不中断等待、不展示后置菜单。stdout 仍只输出一次最终 JSON。
 
+自动测试可能使用独立后台任务，主消息结束、子会话列表为空都不代表测试完成。CLI 通过服务端已解析的消息快照识别实际启动的 E2E 任务，等待其结果回传及主会话处理结束；回执按任务与父轮的真实关联恢复测试上下文。报告中附带的网页操作入口由 CLI 当前后置引导替换。
+
 ## 风格、插件和发布
 
 交互、风格、插件和发布均归属对话创作，统一使用 `chat interaction`、`chat style`、`chat plugin` 和 `chat publish`，不提供对应顶层入口。

@@ -44,6 +44,7 @@ import { submittedTaskProgress, taskProgressSnapshot } from './conversation/task
 import { autoTestContext } from './conversation/auto-test.js';
 import { projectText } from './conversation/text-projector.js';
 import { applySnapshot } from './conversation/session-waiter.js';
+import { AutoTestTasks } from './conversation/auto-test-tasks.js';
 
 // 仅独立演示版本等待快照同步，研发主线直接使用稳定预览地址。
 const DEMO_SNAPSHOT_SYNC_MS = 15_000;
@@ -59,6 +60,7 @@ export class CreationRuntime {
   readonly previewVersions: PreviewVersionApi;
   readonly waiter: SessionWaiter;
   readonly taskProgress: TaskProgressReader;
+  readonly autoTestTasks: AutoTestTasks;
   private demoSnapshotSync?: { key: string; startedAt: number };
   constructor(
     readonly client: ApiClient,
@@ -73,6 +75,7 @@ export class CreationRuntime {
     this.publish = new PublishApi(client);
     this.previewVersions = new PreviewVersionApi(client);
     this.taskProgress = new TaskProgressReader(client);
+    this.autoTestTasks = new AutoTestTasks(client);
     this.waiter = new SessionWaiter({
       conversation: this.conversation,
       command: this.command,
@@ -119,6 +122,8 @@ export class CreationRuntime {
       ...view,
       activeSubagentWork: await this.taskProgress.hasPendingSubagentWork(view.session.sessionId),
     };
+    const backgroundTests = autoTest ? await this.autoTestTasks.pending(view) : [];
+    if (backgroundTests.length) view.activeSubagentWork = true;
     const bindings = collectInteractions(view, !styleTarget && isStyleSelected(view, choices)).filter(
       (binding) => !autoTest || binding.interaction.kind !== 'SELECT_FEATURES',
     );
@@ -164,8 +169,14 @@ export class CreationRuntime {
         throw new CliError(error.code, error.message, { ...error.details, taskProgress });
       else throw error;
     }
-    result.taskProgress = taskProgress;
-    result.cursor = { ...result.cursor, progressRevision: taskProgress.revision };
+    result.taskProgress = backgroundTests.length
+      ? taskProgressSnapshot(
+          view.session.sessionId,
+          [...taskProgress.tasks, ...backgroundTests],
+          taskProgress.warnings,
+        )
+      : taskProgress;
+    result.cursor = { ...result.cursor, progressRevision: result.taskProgress.revision };
     if (autoTest) {
       // 自动测试独立于开发阶段和功能推荐，不能落到普通研发完成菜单。
       result.autoTest = autoTest;
@@ -289,8 +300,11 @@ export class CreationRuntime {
     }
     const round = currentRound(view);
     const childId = text(round?.meta?.subAgentReportFrom);
-    if (!round?.meta?.subAgentReport || !childId) return undefined;
-    const parentId = await this.taskProgress.parentReplyMessageId(view.session.sessionId, childId);
+    if (!round) return undefined;
+    const parentId =
+      round.meta?.subAgentReport && childId
+        ? await this.taskProgress.parentReplyMessageId(view.session.sessionId, childId)
+        : await this.autoTestTasks.reportParent(view);
     if (!parentId) return undefined;
     let source = autoTestContext(view, parentId);
     if (!source) {
