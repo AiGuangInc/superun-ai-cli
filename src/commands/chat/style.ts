@@ -60,7 +60,7 @@ export function registerStyle(chat: Command, context: CommandContext): void {
         nextActions: anchor === currentAnchor ? result.nextActions : [],
       });
     });
-  withWait(style.command('select <sessionId> <choiceId>').description('选择风格并自动生成研发规划')).action(
+  withWait(style.command('select <sessionId> <choiceId>').description('选择风格并展示开发功能清单')).action(
     async (sessionId: string, choiceId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command);
       const response = await businessWrite(context, service, sessionId, () =>

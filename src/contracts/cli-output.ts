@@ -150,7 +150,7 @@ export type CreationResult = {
   toolUsage?: { toolCount?: number; complete: boolean; markdown: string };
   interactions: Array<Interaction>;
   choices?: Array<Choice>;
-  /** 用户选定风格后，自动衔接演示状态与研发规划；不代表已确认规划。 */
+  /** 用户选定风格后，静默完成演示、规划及确认，直到返回开发功能清单。 */
   stylePlanning?: { choiceId: string };
   demo?: DemoPreview;
   development?: DevelopmentProgress;

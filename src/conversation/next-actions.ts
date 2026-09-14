@@ -29,6 +29,18 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
     >
   >;
 
+/** 只静默确认风格选择后这一轮规划；实际业务问题仍交给用户。 */
+export function pendingStylePlanApproval(result: GuidanceResult) {
+  const interaction = result.interactions?.[0];
+  return result.stylePlanning &&
+    result.state === 'NEEDS_INPUT' &&
+    result.interactions?.length === 1 &&
+    interaction?.kind === 'APPROVE_ARCHITECTURE_PLAN' &&
+    interaction.actions.includes('APPROVE')
+    ? interaction
+    : undefined;
+}
+
 /** 研发结束后选择后续功能仍是本轮完成结果，不能退回过程卡或漏掉工具统计。 */
 export function hasCompletedCreationResult(result: GuidanceResult): boolean {
   return (
@@ -131,12 +143,16 @@ function nextActionsForState(
       ];
     return result.codeReview ? codeReviewActions(result, command) : autoTestActions(result, command);
   }
-  if (result.stylePlanning && ['ACCEPTED', 'RUNNING', 'QUEUED', 'COMPLETED'].includes(result.state))
+  if (
+    result.stylePlanning &&
+    (['ACCEPTED', 'RUNNING', 'QUEUED', 'COMPLETED'].includes(result.state) ||
+      pendingStylePlanApproval(result))
+  )
     return [
       {
         action: 'CONTINUE_STYLE_PLANNING',
         instruction:
-          '用户已选定风格，提示已采用该方案、正在生成研发规划。继续等待，CLI 会内部完成演示状态衔接并生成规划；不展示演示完成提示、使用场景说明或演示链接，不询问是否查看演示或是否开始研发。不要声称用户已实际查看演示。生成规划后沿用原有规划展示和确认引导；遇到问题或错误原样展示，不自动确认规划或选择开发功能。',
+          '用户已选定风格，提示“已采用方案 B，正在整理开发功能清单”，方案名称使用实际选择。继续执行返回的 chat wait，CLI 会内部完成演示衔接、生成并确认研发规划，直到返回开发功能清单；中间不展示规划内容或确认规划、调整功能入口。不要声称用户已实际查看演示或亲自确认规划。遇到实际业务问题或错误时如实展示并等待处理；功能清单出来后原样展示，提示“请回复要开发的功能编号或具体需求”，等待用户选择，不自动选择或开发功能。',
         requiresUserInput: false,
         command: [...command, 'wait', ...progressOptions, '--', result.sessionId],
       },
@@ -210,7 +226,7 @@ function nextActionsForState(
       return [
         {
           action: 'SELECT_STYLE',
-          instruction: `请按原始 index 对应的 A/B/C/D 展示本批方案及 previewUrl 可点击页面链接，不展示截图或截图 URL，说明选定风格后会生成研发规划供用户确认；仅在用户选择${styleChoiceLabel(choice)}（风格 ${choice.index + 1}）后执行此命令。CLI 会静默完成演示衔接并生成研发规划，不再询问是否查看演示或是否开始研发；规划仍按原流程展示并等待确认。`,
+          instruction: `请按原始 index 对应的 A/B/C/D 展示本批方案及 previewUrl 可点击页面链接，不展示截图或截图 URL，说明选定风格后会直接展示开发功能清单；仅在用户选择${styleChoiceLabel(choice)}（风格 ${choice.index + 1}）后执行此命令。CLI 会静默完成演示衔接、生成并确认研发规划，然后展示开发功能清单供用户选择；不增加查看演示、开始研发或确认规划的提问，不自动选择开发功能。`,
           requiresUserInput: true,
           choiceId: choice.choiceId,
           command: [...command, 'style', 'select', '--', result.sessionId, choice.choiceId],

@@ -26,7 +26,11 @@ import {
 } from './interactions/parsers/style-selection.js';
 import type { StyleWaitTarget } from './interactions/parsers/style-selection.js';
 import { resolveState } from './conversation/state-resolver.js';
-import { buildNextActions, hasCompletedCreationResult } from './conversation/next-actions.js';
+import {
+  buildNextActions,
+  hasCompletedCreationResult,
+  pendingStylePlanApproval,
+} from './conversation/next-actions.js';
 import {
   demoGenerationStatus,
   findModifiedDemoPreview,
@@ -206,26 +210,42 @@ export class CreationRuntime {
     }
     const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
     const planningChoiceId = text(roundExtra.cliPlanAfterStyle);
+    const started = enabled(roundExtra.startDevelopment);
+    const planApproved = enabled(roundExtra.architecturePlanApproved);
     if (
       planningChoiceId &&
       !styleTarget &&
       isStyleSelected(view, choices) &&
-      isInitialDemoRound(view) &&
-      !enabled(roundExtra.startDevelopment)
+      ((isInitialDemoRound(view) && !started) || (started && !planApproved))
     ) {
       result.stylePlanning = { choiceId: planningChoiceId };
-      // 只隐藏演示过渡消息；需要用户处理的问题仍按原文展示。
-      if (!result.interactions.length) {
+      // 演示和规划都静默衔接，真正需要补充信息的问题仍按原文展示。
+      if (
+        ['RUNNING', 'QUEUED', 'COMPLETED', 'NEEDS_INPUT'].includes(result.state) &&
+        (!result.interactions.length || pendingStylePlanApproval(result))
+      ) {
         const choice = choices.find((item) => item.choiceId === planningChoiceId);
         result.messages = [
           {
             id: `${result.replyMessageId}:style-planning`,
             role: 'assistant',
             text: choice
-              ? `已采用${styleChoiceLabel(choice)}，正在生成研发规划，完成后请你确认。`
-              : '风格已选定，正在生成研发规划，完成后请你确认。',
+              ? `已采用${styleChoiceLabel(choice)}，正在整理开发功能清单。`
+              : '风格已选定，正在整理开发功能清单。',
           },
         ];
+        if (result.taskProgress) {
+          const roundId = currentRound(view)?.roundId;
+          result.taskProgress = taskProgressSnapshot(
+            view.session.sessionId,
+            result.taskProgress.tasks.map((task) =>
+              task.kind === 'message' && task.roundId === roundId
+                ? { ...task, title: '整理开发功能清单', status: 'running', detail: undefined }
+                : task,
+            ),
+            result.taskProgress.warnings,
+          );
+        }
       }
     }
     if (result.state === 'COMPLETED' && isStyleSelected(view, choices) && isInitialDemoRound(view)) {
@@ -237,8 +257,6 @@ export class CreationRuntime {
       if (!demo) return { ...result, state: 'RUNNING' };
       result.demo = demo;
     }
-    const started = enabled(roundExtra.startDevelopment);
-    const planApproved = enabled(roundExtra.architecturePlanApproved);
     const modifiedDemo =
       result.state === 'COMPLETED' &&
       !started &&
@@ -273,7 +291,7 @@ export class CreationRuntime {
                     ? 'COMPLETED'
                     : 'DEVELOPING',
       };
-      if (result.development.stage === 'PLAN_REVIEW')
+      if (result.development.stage === 'PLAN_REVIEW' && !result.stylePlanning)
         result.attachments = (await this.query.attachments(view.session.sessionId, ['README.md'])).filter(
           (attachment) => attachment.name === 'README.md',
         );
@@ -380,13 +398,22 @@ export class CreationRuntime {
     return this.withGuidance(await this.inspect(await this.load(sessionId)));
   }
   withGuidance<T extends GuidanceResult>(result: T) {
-    const output = result.taskProgress
-      ? { ...result, cursor: { ...result.cursor, progressRevision: result.taskProgress.revision } }
+    // 对外仍表示正在整理清单；内部保留真实确认交互，由 wait 校验后继续。
+    const visible = pendingStylePlanApproval(result)
+      ? {
+          ...result,
+          state: 'RUNNING' as const,
+          interactions: [],
+          development: result.development ? { ...result.development, stage: 'PLANNING' as const } : undefined,
+        }
       : result;
+    const output = visible.taskProgress
+      ? { ...visible, cursor: { ...visible.cursor, progressRevision: visible.taskProgress.revision } }
+      : visible;
     const completed = {
       ...output,
-      ...(hasCompletedCreationResult(result)
-        ? { toolUsage: this.taskProgress.completionSummary(result.sessionId, result.messageId) }
+      ...(hasCompletedCreationResult(visible)
+        ? { toolUsage: this.taskProgress.completionSummary(visible.sessionId, visible.messageId) }
         : {}),
     };
     return { ...completed, nextActions: buildNextActions(completed, this.client.config) };
@@ -397,16 +424,25 @@ export class CreationRuntime {
       deadline === undefined ? undefined : Math.max(0, (deadline - Date.now()) / 1000);
     let pending = options;
     let result = await this.waiter.wait(sessionId, { ...pending, timeout: remaining() });
-    while (result.stylePlanning && result.state === 'COMPLETED') {
+    while (result.stylePlanning && (result.state === 'COMPLETED' || pendingStylePlanApproval(result))) {
       if (deadline !== undefined && Date.now() >= deadline)
-        return this.withGuidance({ ...result, state: 'RUNNING', waitTimedOut: true });
+        return this.withGuidance({
+          ...result,
+          state: pendingStylePlanApproval(result) ? result.state : 'RUNNING',
+          waitTimedOut: true,
+        });
       const choiceId = result.stylePlanning.choiceId;
-      result = await this.viewDemo(sessionId, { timeout: remaining() }, choiceId);
-      if (!result.stylePlanning || result.state !== 'COMPLETED') break;
-      if (deadline !== undefined && Date.now() >= deadline)
-        return this.withGuidance({ ...result, state: 'RUNNING', waitTimedOut: true });
-      // 查看演示与进入研发各自先核对当前轮，失败时保留真实错误，不重发写请求。
-      const response = await this.startDevelopment(sessionId, choiceId);
+      const approval = pendingStylePlanApproval(result);
+      let response: JsonObject;
+      if (approval) response = await this.approveStylePlan(sessionId, choiceId, approval.interactionId);
+      else {
+        result = await this.viewDemo(sessionId, { timeout: remaining() }, choiceId);
+        if (!result.stylePlanning || result.state !== 'COMPLETED') break;
+        if (deadline !== undefined && Date.now() >= deadline)
+          return this.withGuidance({ ...result, state: 'RUNNING', waitTimedOut: true });
+        // 查看演示与进入研发各自先核对当前轮，失败时保留真实错误，不重发写请求。
+        response = await this.startDevelopment(sessionId, choiceId);
+      }
       pending = {
         messageId: text(response.messageId),
         requiredMessageId: text(response.messageId) ?? text(response.replyMessageId),
@@ -414,8 +450,28 @@ export class CreationRuntime {
       };
       result = await this.waiter.wait(sessionId, { ...pending, timeout: remaining() });
     }
-    // 最终只展示规划或当前问题，不混入静默过渡阶段的演示消息。
+    // 最终展示功能清单或实际业务问题，静默步骤的消息不带到下一阶段。
     return this.withGuidance(result);
+  }
+
+  private async approveStylePlan(
+    sessionId: string,
+    choiceId: string,
+    interactionId: string,
+  ): Promise<JsonObject> {
+    const latest = await this.inspect(await this.load(sessionId));
+    if (
+      latest.stylePlanning?.choiceId !== choiceId ||
+      pendingStylePlanApproval(latest)?.interactionId !== interactionId
+    )
+      throw new CliError('STALE_INTERACTION', '研发规划或当前问题已变化，请重新查询当前状态', { sessionId });
+    return this.command.chat({
+      sessionId,
+      content: '确认研发规划',
+      businessParams: { business_type: 'architecture_plan_approve' },
+      // 自动衔接只消费本次初始规划，不影响后续独立的规划调整与确认。
+      excludedInheritedRoundExtraKeys: ['cliPlanAfterStyle'],
+    });
   }
   async accepted(
     response: JsonObject,
@@ -566,7 +622,7 @@ export class CreationRuntime {
         retryable: false,
       });
     }
-    const planningNotice = `已采用${styleChoiceLabel(choice)}，正在生成研发规划，完成后请你确认。`;
+    const planningNotice = `已采用${styleChoiceLabel(choice)}，正在整理开发功能清单。`;
     this.output.log(planningNotice);
     return { ...response, planningChoiceId: choice.choiceId, planningNotice };
   }
