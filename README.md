@@ -347,6 +347,8 @@ superun-ai chat publish visibility <sessionId> private
 
 自动规划确认仅适用于本次风格选择衔接，并在提交前重新核对当前交互；后续独立的规划调整保留原有确认流程。`--no-wait` 或等待超时返回时，按 `CONTINUE_STYLE_PLANNING` 继续执行 `chat wait`；`chat state` 只读并返回续等指引，不发起确认写请求。旧项目仍可使用 `chat demo` 和 `chat develop`。
 
+查看演示、保留演示版本、进入研发及规划确认都由 CLI 静默完成，调用参数与 Glow 对齐；用户只看到最终研发功能清单及必要的业务问题。`cliPlanAfterStyle` 是 CLI 写入的本次风格选择标记，不是服务端特性开关。网页先推进演示或研发时，后续消息可能不带此标记，CLI 会沿真实 `preMessageId` 追溯本次选择并接续剩余步骤，不重复查看演示、保留版本或进入研发；已确认规划及后续独立流程构成追溯边界。
+
 用户明确回复“上线运营”后，使用 `chat publish status <sessionId> --for-launch` 获取 Glow 发布面板的最新待发布版本，原样展示该版本的 `changeLog`，再按返回的命令直接发布，无需二次确认。发布中的版本只跟踪进度；部署后尚未公开的站点继续执行上线动作，完成后返回正式链接。`status` 始终只读，普通状态查询不会自动获得发布授权。
 
 `chat publish start --indexing allow|deny` 控制搜索引擎索引，不限制用户访问；站点上下线使用 `chat publish visibility`。若服务端要求确认云服务费用，了解费用后可显式传入 `--acknowledge-cloud-fee`。

@@ -14,10 +14,30 @@ const referenceSourcesSchema = z.array(
     parsedContents: z.array(z.string()),
   }),
 );
+const messageContextSchema = z.object({
+  sessionId: z.string(),
+  messageId: z.string(),
+  role: z.literal(1),
+  preMessageId: z.string().nullish(),
+  roundExtra: z.record(z.unknown()).default({}),
+});
 
 const PREFIX = '/api/uxa-center/agent/AgentQuery';
 export class AgentQueryApi {
   constructor(private readonly client: ApiClient) {}
+  async messageContext(sessionId: string, messageId: string) {
+    const message = parseWire(
+      messageContextSchema,
+      await this.client.call(`${PREFIX}/queryMessage`, {
+        sessionId,
+        messageId,
+        option: { withContent: false, withRoundExtra: true },
+      }),
+    );
+    if (message.sessionId !== sessionId || message.messageId !== messageId)
+      throw new CliError('PROTOCOL_ERROR', '风格衔接的消息来源不一致，请重新查询当前状态');
+    return message;
+  }
   async messageReferenceSource(sessionId: string, messageId: string) {
     const rows = parseWire(
       referenceSourcesSchema,

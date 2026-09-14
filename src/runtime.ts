@@ -52,6 +52,7 @@ import { AutoTestTasks } from './conversation/auto-test-tasks.js';
 import { codeReviewContext, CODE_REVIEW_SPEC } from './conversation/code-review.js';
 import { readCheckQuestionContext } from './conversation/check-question-context.js';
 import { checkContextFromExtra, reportReference } from './conversation/check-context.js';
+import { stylePlanningChoice } from './conversation/style-planning.js';
 
 // 仅独立演示版本等待快照同步，研发主线直接使用稳定预览地址。
 const DEMO_SNAPSHOT_SYNC_MS = 15_000;
@@ -209,7 +210,7 @@ export class CreationRuntime {
       return result;
     }
     const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
-    const planningChoiceId = text(roundExtra.cliPlanAfterStyle);
+    const planningChoiceId = await stylePlanningChoice(view, this.query);
     const started = enabled(roundExtra.startDevelopment);
     const planApproved = enabled(roundExtra.architecturePlanApproved);
     if (
@@ -634,7 +635,8 @@ export class CreationRuntime {
     const view = await this.load(sessionId);
     const round = currentRound(view);
     const extra = roundMessage(view, round)?.roundExtra ?? {};
-    if (planningChoiceId && text(extra.cliPlanAfterStyle) !== planningChoiceId)
+    const currentChoiceId = await stylePlanningChoice(view, this.query);
+    if (planningChoiceId && currentChoiceId !== planningChoiceId)
       throw new CliError('STALE_INTERACTION', '风格衔接期间会话已切换，请查询当前状态', { sessionId });
     const result = await this.inspect(view);
     if (planningChoiceId && enabled(extra.startDevelopment)) return this.withGuidance(result);
@@ -659,7 +661,7 @@ export class CreationRuntime {
       !enabled(extra.generateDemo) &&
       !enabled(extra.startDevelopment)
     ) {
-      const response = await this.command.viewDemo(sessionId, text(extra.cliPlanAfterStyle));
+      const response = await this.command.viewDemo(sessionId, currentChoiceId);
       const messageId = text(response.messageId) ?? text(response.replyMessageId);
       if (!messageId)
         throw new CliError(
@@ -723,7 +725,8 @@ export class CreationRuntime {
   async startDevelopment(sessionId: string, planningChoiceId?: string): Promise<JsonObject> {
     const view = await this.load(sessionId);
     const extra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
-    if (planningChoiceId && text(extra.cliPlanAfterStyle) !== planningChoiceId)
+    const currentChoiceId = await stylePlanningChoice(view, this.query);
+    if (planningChoiceId && currentChoiceId !== planningChoiceId)
       throw new CliError('STALE_INTERACTION', '风格衔接期间会话已切换，请查询当前状态', { sessionId });
     if (enabled(extra.startDevelopment))
       throw new CliError('STALE_INTERACTION', '项目已进入研发，请继续处理当前规划或任务，勿重复进入', {
@@ -741,7 +744,7 @@ export class CreationRuntime {
       roundExtra: {
         startDevelopment: '1',
         showDismissInBuildTutorial: '0',
-        ...(planningChoiceId ? { cliPlanAfterStyle: planningChoiceId } : {}),
+        ...(currentChoiceId ? { cliPlanAfterStyle: currentChoiceId } : {}),
       },
     });
     try {
