@@ -1,12 +1,45 @@
 /** npm 版本查询与安装共用网络配置，恢复过程不打断业务输出。@author xiuyu.yi */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { realpath, stat } from 'node:fs/promises';
+import { devNull } from 'node:os';
+import { basename, delimiter, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { valid } from 'semver';
 import { NPM_REGISTRY, PACKAGE_NAME, PACKAGE_PRIVATE } from '../config/constants.js';
 import { object, text } from '../contracts/value.js';
 import { CliError } from '../output/exit-codes.js';
 
 const execute = promisify(execFile);
+const NETWORK_CONFIG = new Set(['proxy', 'https-proxy', 'noproxy', 'ca', 'cafile', 'strict-ssl', 'cache']);
+const PUBLIC_NPM_ENV = new Set([
+  'path',
+  'home',
+  'userprofile',
+  'homedrive',
+  'homepath',
+  'systemroot',
+  'windir',
+  'comspec',
+  'pathext',
+  'appdata',
+  'localappdata',
+  'tmp',
+  'temp',
+  'tmpdir',
+  'lang',
+  'tz',
+  'http_proxy',
+  'https_proxy',
+  'all_proxy',
+  'no_proxy',
+  'node_extra_ca_certs',
+  'node_use_system_ca',
+  'node_use_env_proxy',
+  'ssl_cert_file',
+  'ssl_cert_dir',
+]);
+let npmRuntime: Promise<{ entry: string; prefix?: string }> | undefined;
 export const NPM_FETCH_OPTIONS = [
   '--fetch-retries=2',
   '--fetch-retry-mintimeout=1000',
@@ -20,22 +53,80 @@ export class NpmCommandError extends Error {
   }
 }
 
+async function resolveNpmRuntime(): Promise<{ entry: string; prefix?: string }> {
+  const nodeDirectory = dirname(process.execPath);
+  const candidates = [
+    join(nodeDirectory, 'node_modules/npm/bin/npm-cli.js'),
+    join(nodeDirectory, 'npm'),
+    process.env.npm_execpath,
+    ...(process.env.PATH ?? '')
+      .split(delimiter)
+      .filter(Boolean)
+      .flatMap((path) => [join(path, 'npm'), join(path, 'node_modules/npm/bin/npm-cli.js')]),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const entry = await realpath(candidate).catch(() => undefined);
+    if (!entry || basename(entry) !== 'npm-cli.js' || !(await stat(entry).catch(() => undefined))?.isFile())
+      continue;
+    const packageDirectory = fileURLToPath(new URL('../../', import.meta.url));
+    const modulesDirectory = dirname(packageDirectory);
+    const container = dirname(modulesDirectory);
+    // npm 全局安装的 CLI 固定更新自己的前缀，避免 PATH 指向另一套 Node/npm。
+    const prefix =
+      basename(modulesDirectory) === 'node_modules' && basename(container) === 'lib'
+        ? dirname(container)
+        : undefined;
+    return { entry, prefix };
+  }
+  throw new NpmCommandError('NPM_NOT_FOUND');
+}
+
+function publicRegistry(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (
+      ['https:', 'http:'].includes(url.protocol) &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash
+    )
+      return url.href;
+  } catch {
+    // 不将可能包含凭证的 Registry 原始值传到诊断或子进程。
+  }
+  return undefined;
+}
+
 export async function runNpm(
   args: Array<string>,
-  options: { registry?: string; timeoutMs?: number } = {},
+  options: { registry?: string; timeoutMs?: number; cwd?: string } = {},
 ): Promise<string> {
-  const env = { ...process.env };
-  if (options.registry) {
-    delete env.NPM_CONFIG_REGISTRY;
-    env.npm_config_registry = options.registry;
+  const runtime = await (npmRuntime ??= resolveNpmRuntime());
+  // 仅传运行和网络配置，避免任意名称的凭证、npm 登录信息或 Node 预加载脚本进入更新进程。
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    const config = /^npm_config_(.*)$/i.exec(key)?.[1]?.toLowerCase().replace(/_/g, '-');
+    if (config && NETWORK_CONFIG.has(config)) env[`npm_config_${config}`] = value;
+    else if (PUBLIC_NPM_ENV.has(key.toLowerCase()) || /^lc_[a-z_]+$/i.test(key)) env[key] = value;
   }
+  // 公开包更新不加载用户、全局或项目 npmrc，也不继承 npm 登录令牌。
+  // 空设备及其不可作为文件的子路径提供两份空配置，无需创建或清理配置文件。
+  env.npm_config_userconfig = devNull;
+  env.npm_config_globalconfig = join(devNull, 'superun-empty-npmrc');
+  env.npm_config_global = 'true';
+  env.npm_config_registry = publicRegistry(options.registry) ?? NPM_REGISTRY;
+  if (runtime.prefix) env.npm_config_prefix = runtime.prefix;
   try {
-    const { stdout } = await execute('npm', args, {
+    const { stdout } = await execute(process.execPath, [runtime.entry, ...args], {
       encoding: 'utf8',
       timeout: options.timeoutMs ?? 55_000,
       killSignal: 'SIGKILL',
       maxBuffer: 2_000_000,
-      // Registry 可能包含认证信息，只通过环境传入，不回显命令或 npm 原始诊断。
+      cwd: options.cwd,
+      // 使用当前 Node 启动 npm，保留环境中的代理和证书配置，不回显 npm 原始诊断。
       env,
     });
     return stdout.trim();
@@ -59,18 +150,8 @@ export async function latestVersion(): Promise<{ version: string; registry: stri
     );
 
   const registries = [NPM_REGISTRY];
-  try {
-    const configured = new URL(await runNpm(['config', 'get', 'registry'], { timeoutMs: 5000 }));
-    if (
-      ['https:', 'http:'].includes(configured.protocol) &&
-      !configured.search &&
-      !configured.hash &&
-      configured.href !== new URL(NPM_REGISTRY).href
-    )
-      registries.push(configured.href);
-  } catch {
-    // 读取配置失败不妨碍官方源查询；npm 缺失等问题由下面的正式检查统一报告。
-  }
+  const configured = publicRegistry(process.env.npm_config_registry ?? process.env.NPM_CONFIG_REGISTRY);
+  if (configured && configured !== new URL(NPM_REGISTRY).href) registries.push(configured);
 
   const failures: Array<{ source: string; reason: string }> = [];
   for (const [index, registry] of registries.entries()) {

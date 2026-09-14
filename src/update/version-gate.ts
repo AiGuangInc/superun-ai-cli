@@ -1,25 +1,16 @@
-/** 业务请求之前强制更新本机 CLI 到 npm latest。@author xiuyu.yi */
-import { spawn } from 'node:child_process';
-import { readFile, stat } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+/** 业务请求前独立安装 npm latest，验证后静默切换并保留旧版本。@author xiuyu.yi */
+import { execFile, spawn } from 'node:child_process';
+import { mkdir, mkdtemp } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import { promisify } from 'node:util';
 import { PACKAGE_NAME, PACKAGE_VERSION } from '../config/constants.js';
 import { object } from '../contracts/value.js';
 import { CliError } from '../output/exit-codes.js';
 import type { OutputWriter } from '../output/writer.js';
 import { latestVersion, runNpm, NPM_FETCH_OPTIONS, NpmCommandError } from './npm-registry.js';
+import { activateInstallation, activeEntry, installationRoot, verifiedEntry } from './installation.js';
 
-async function installedEntry(root: string, version: string): Promise<string | undefined> {
-  const packageDirectory = join(root, PACKAGE_NAME);
-  try {
-    const metadata = object(JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8')));
-    const candidate = join(packageDirectory, 'dist', 'cli.js');
-    if (metadata.name === PACKAGE_NAME && metadata.version === version && (await stat(candidate)).isFile())
-      return candidate;
-  } catch {
-    /* 未完成安装的目录不作为可执行版本。 */
-  }
-  return undefined;
-}
+const execute = promisify(execFile);
 
 export async function versionGate(
   argv: Array<string>,
@@ -28,45 +19,51 @@ export async function versionGate(
 ): Promise<{ reexecuted: boolean; version: string; exitCode?: number }> {
   const source = await latestVersion();
   const required = source.version;
-  if (required !== PACKAGE_VERSION && process.env.SUPERUN_AI_CLI_REEXEC === '1')
+  if (required === PACKAGE_VERSION) return { reexecuted: false, version: required };
+  if (process.env.SUPERUN_AI_CLI_REEXEC === '1')
     throw new CliError('UPDATE_FAILED', '重启后版本仍不匹配，已停止重复更新');
 
-  let root: string;
-  try {
-    root = await runNpm(['root', '--global'], { timeoutMs: 5000 });
-    if (!isAbsolute(root) || /[\r\n]/.test(root)) throw new Error();
-  } catch (error) {
-    throw new CliError('UPDATE_FAILED', '无法定位 npm 全局安装目录，业务请求未发送', {
-      reason: error instanceof NpmCommandError ? error.reason : 'INVALID_INSTALL_DIRECTORY',
-    });
-  }
-
-  // 校验真实安装入口，旧缓存版本启动到这里时也要把本机安装升级，避免下次仍从旧入口启动。
-  let entry = await installedEntry(root, required);
+  const { root, origin } = await installationRoot();
+  let entry = await activeEntry(root, required);
   if (!entry) {
     try {
+      await mkdir(root, { recursive: true, mode: 0o700 });
+      const directory = await mkdtemp(join(root, `${required}-`));
       await runNpm(
         [
           'install',
-          '--global',
+          '--global=false',
+          '--prefix',
+          directory,
           `${PACKAGE_NAME}@${required}`,
+          '--no-save',
           '--package-lock=false',
           ...NPM_FETCH_OPTIONS,
           '--ignore-scripts',
           '--no-audit',
           '--no-fund',
         ],
-        { registry: source.registry, timeoutMs: 180_000 },
+        { registry: source.registry, timeoutMs: 180_000, cwd: directory },
       );
+      entry = await verifiedEntry(directory, required);
+      if (!entry) throw new Error('INVALID_INSTALLATION');
+      // 激活前真实启动一次离线命令，验证模块与依赖完整；探测过程不输出给用户。
+      const { stdout } = await execute(process.execPath, [entry, 'version'], {
+        timeout: 15_000,
+        maxBuffer: 1_000_000,
+      });
+      const result = object(JSON.parse(stdout));
+      if (result.ok !== true || object(result.data).version !== required)
+        throw new Error('INVALID_INSTALLATION');
+      await activateInstallation(root, origin, basename(directory), required);
+      // 成功与失败均保留独立目录，不在业务调用中清理旧包或安装残留。
     } catch (error) {
       throw new CliError('UPDATE_FAILED', 'npm 自动更新失败，业务请求未发送', {
         reason: error instanceof NpmCommandError ? error.reason : 'NPM_REQUEST_FAILED',
       });
     }
-    entry = await installedEntry(root, required);
-    if (!entry) throw new CliError('UPDATE_FAILED', '安装后的版本或执行入口校验失败，业务请求未发送');
   }
-  if (updateOnly || required === PACKAGE_VERSION) return { reexecuted: false, version: required };
+  if (updateOnly) return { reexecuted: false, version: required };
 
   const exitCode = await new Promise<number>((resolve, reject) => {
     const child = spawn(process.execPath, [entry, ...argv], {
