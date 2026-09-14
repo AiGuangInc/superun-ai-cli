@@ -2,6 +2,7 @@
 import { COMMAND_NAME } from '../config/constants.js';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import type { CreationResult, InteractionKind, NextAction } from '../contracts/cli-output.js';
+import { AUTO_TEST_RESULT_INSTRUCTION } from './auto-test.js';
 import {
   latestStyleChoices,
   readyStyleChoices,
@@ -21,6 +22,8 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
       | 'stylePlanning'
       | 'taskProgress'
       | 'toolUsage'
+      | 'autoTest'
+      | 'replyMessageId'
     >
   >;
 
@@ -65,11 +68,13 @@ export function buildNextActions(
 ): Array<NextAction> {
   const completed = hasCompletedCreationResult(result);
   return nextActionsForState(result, config).map((action) => {
-    const progressInstruction = completed
-      ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
-      : result.taskProgress
-        ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
-        : '';
+    const progressInstruction = result.autoTest
+      ? AUTO_TEST_RESULT_INSTRUCTION
+      : completed
+        ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
+        : result.taskProgress
+          ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
+          : '';
     const waitInstruction = action.requiresUserInput
       ? '等待用户明确响应，不设置答题倒计时；未收到响应时保持当前步骤，不自动选择、提交、跳过或继续。'
       : '';
@@ -99,6 +104,26 @@ function nextActionsForState(
   const command = [COMMAND_NAME, '--endpoint', config.endpoint, '--locale', config.locale, 'chat'];
   const progressRevision = result.taskProgress?.revision ?? result.cursor?.progressRevision;
   const progressOptions = progressRevision ? ['--progress-revision', progressRevision] : [];
+  if (result.autoTest && !result.interactions?.length) {
+    if (['ACCEPTED', 'RUNNING', 'QUEUED'].includes(result.state))
+      return [
+        {
+          action: 'WAIT',
+          instruction:
+            '自动测试或后续修复仍在进行。及时展示新的 conversation_message 事件及实际测试、发现问题、修复进度。继续等待最终汇报；不重复触发、不自动开始下一次测试、不展示操作菜单。',
+          requiresUserInput: false,
+          command: [
+            ...command,
+            'wait',
+            ...progressOptions,
+            ...(result.messageId ? ['--message-id', result.messageId] : []),
+            '--',
+            result.sessionId,
+          ],
+        },
+      ];
+    return autoTestActions(result, command);
+  }
   if (result.stylePlanning && ['ACCEPTED', 'RUNNING', 'QUEUED', 'COMPLETED'].includes(result.state))
     return [
       {
@@ -260,8 +285,14 @@ function developmentActions(result: GuidanceResult, command: Array<string>): Arr
   const previewInstruction = result.development?.previewUrl
     ? '先展示本轮原始结果和 development.previewUrl，链接统一命名为“查看预览”，不将预览称为已正式发布。'
     : '先按 messages 顺序展示原始对话，不把规划确认当作研发完成。';
-  const instruction = `${previewInstruction} 然后按以下两条独立列表原样展示，不合并或改名：\n- **继续创作**：直接告诉我想新增或调整的内容。\n- **上线运营**：回复 **“上线运营”**，我会发布最新版本并返回访问链接。`;
+  const instruction = `${previewInstruction} 然后按以下三条独立列表原样展示，不合并或改名：\n- **自动测试**：回复“自动测试”，实际验证刚才完成的功能，发现确认的问题后先告知你，再自动修复。\n- **继续创作**：直接告诉我想新增或调整的内容。\n- **上线运营**：回复 **“上线运营”**，我会发布最新版本并返回访问链接。`;
   return [
+    {
+      action: 'AUTO_TEST',
+      instruction: `${instruction} 用户明确要求“自动测试”或“测一下刚才的功能”后直接执行，无需二次确认。用户指定测试范围时使用 --input - 提交原始 content，不扩大范围。不默认测试，不宣称免费。`,
+      requiresUserInput: true,
+      command: [...command, 'test', '--', result.sessionId],
+    },
     {
       action: 'CONTINUE_CHAT',
       instruction: `${instruction} 用户直接提出需求后，将原文放入 content，通过 --input - 继续当前会话；不强制先回复继续研发或选择推荐功能。如果有 details.features，保留真实 id、标题和说明供参考；只有用户明确选择其中条目时，才使用对应 interactionId 的 SELECT 和 featureIds 提交，不默认全选。`,
@@ -271,6 +302,62 @@ function developmentActions(result: GuidanceResult, command: Array<string>): Arr
     {
       action: 'REVIEW_PUBLISH',
       instruction: `${instruction} 用户回复“上线运营”即已授权发布：查询 Glow 发布面板的最新待发布版本，按后续动作原样展示该版本 changeLog 并发布，无需再次确认。版本正在发布时只等待，不重复提交；没有可发布版本时如实说明。发布完成且站点公开后再告知已上线并返回正式链接。`,
+      requiresUserInput: true,
+      command: [...command, 'publish', 'status', '--for-launch', '--', result.sessionId],
+    },
+  ];
+}
+
+function autoTestActions(result: GuidanceResult, command: Array<string>): Array<NextAction> {
+  const retry: NextAction = {
+    action: 'AUTO_TEST',
+    when: '全部问题已修复但尚未复测；或本次范围有未测流程；或测试受阻且障碍已排除、可以重试。仅展示符合当前结果的测试或重试提示。',
+    instruction:
+      '全部修复但未复测时展示“- **自动测试**：回复‘自动测试’，验证刚才修复的功能。”；有未测流程时仅引导用户指定剩余流程；异常时说明原因并仅在可重试时引导“重试自动测试”。用户同意后按其实际指定的范围填写 content，通过 --input - 提交，不默认为全项目测试。缺少账号或业务信息时先提问，不重试。',
+    requiresUserInput: true,
+    command: [...command, 'test', '--input', '-', '--', result.sessionId],
+  };
+  const followup: NextAction = {
+    action: 'AUTO_TEST_FOLLOW_UP',
+    when: '存在未修复问题、待确认规则或需要补充的信息；或者报告结论不足，需要继续核实。',
+    instruction:
+      '展示问题详情和未修复原因，只引导“修复剩余问题”“修复第 X 项”或提出具体待回答问题，不展示继续创作、上线运营。用户回复后把原文放入 content，不扩充需求；按当前报告编号理解目标，通过普通对话继续修复，不重新触发 auto_test。完成后继续按同一结果模板和条件引导。',
+    requiresUserInput: true,
+    command: [
+      ...command,
+      'send',
+      '--test-followup',
+      result.autoTest!.sourceMessageId,
+      '--input',
+      '-',
+      '--',
+      result.sessionId,
+    ],
+  };
+  if (result.state !== 'COMPLETED' || result.autoTest?.error) {
+    return [
+      { ...retry, when: '任务失败、暂停或中断，已说明原因且可以重试；没有取得有效测试结论，不能提示通过。' },
+      ...(result.autoTest?.sourceMessageId ? [followup] : []),
+    ];
+  }
+  const ready =
+    '仅在本次测试有效完成、没有未修复或待确认问题、没有缺失信息或承诺范围内的未测流程时展示；全部修复但尚未复测也可展示。报告缺失或结论不明时不展示。';
+  return [
+    followup,
+    retry,
+    {
+      action: 'CONTINUE_CHAT',
+      when: ready,
+      instruction:
+        '按结果先展示过渡句，再展示“- **继续创作**：直接告诉我想新增或调整的内容。”。用户提出新需求后原样提交 content，使用普通 send 进入创作，不带 --test-followup，不沿用测试修复引导。',
+      requiresUserInput: true,
+      command: [...command, 'send', '--input', '-', '--', result.sessionId],
+    },
+    {
+      action: 'REVIEW_PUBLISH',
+      when: ready,
+      instruction:
+        '按结果先展示过渡句，再展示“- **上线运营**：回复‘上线运营’。”。仅用户明确要求上线后执行此命令，原样展示最新待发布版本的 changeLog 并按现有发布动作继续，无需二次确认；完成且站点公开后返回正式链接。',
       requiresUserInput: true,
       command: [...command, 'publish', 'status', '--for-launch', '--', result.sessionId],
     },

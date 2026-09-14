@@ -132,10 +132,12 @@ export class SessionWaiter {
       const terminalRound = ['failed', 'interrupted'].includes(currentRound(view)?.status ?? '');
       if (
         !responseObserved &&
-        !hasPendingTool &&
-        !terminalRound &&
-        ![-1, 2].includes(view.session.status) &&
-        !view.session.errorType
+        // 已取得本次请求 ID 时，旧失败轮或旧问题都不能冒充本次结果。
+        (options.requiredMessageId ||
+          (!hasPendingTool &&
+            !terminalRound &&
+            ![-1, 2].includes(view.session.status) &&
+            !view.session.errorType))
       )
         return {
           state: 'RUNNING',

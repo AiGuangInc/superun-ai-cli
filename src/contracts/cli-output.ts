@@ -55,6 +55,8 @@ export type Choice = {
 };
 export type NextAction = {
   action: string;
+  /** 调用方依据本次真实报告判断；条件不满足时不展示、不执行。 */
+  when?: string;
   instruction: string;
   requiresUserInput: boolean;
   /** 完整命令的参数数组；仅提供引导，不会自动执行。 */
@@ -128,6 +130,15 @@ export type CreationResult = {
   messageId?: string;
   replyMessageId?: string;
   topic?: string;
+  /** 自动测试及其后续修复的上下文；不以会话完成推断测试通过。 */
+  autoTest?: {
+    phase: 'test' | 'repair';
+    sourceMessageId: string;
+    reportMessages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
+    previousSourceMessageId?: string;
+    previousReportMessages?: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
+    error?: string;
+  };
   messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
   progress: Array<{ id: string; text: string; status?: string }>;
   taskProgress?: TaskProgressSnapshot;

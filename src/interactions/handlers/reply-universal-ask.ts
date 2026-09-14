@@ -1,6 +1,11 @@
 /** Universal Ask 的回答为编号文本，继续普通 Chat。@author xiuyu.yi */
 import { resolveAnswers } from '../questions.js';
 import type { ReplyHandler } from './types.js';
+import {
+  autoTestContext,
+  AUTO_TEST_OPERATION_KEY,
+  AUTO_TEST_SOURCE_KEY,
+} from '../../conversation/auto-test.js';
 export const replyUniversalAsk: ReplyHandler = async ({ runtime, binding, input }) => {
   const answers = resolveAnswers(binding.interaction.questions, input.answers);
   const content = answers
@@ -12,5 +17,18 @@ export const replyUniversalAsk: ReplyHandler = async ({ runtime, binding, input 
           .join('\n')}`,
     )
     .join('\n');
-  return runtime.command.chat({ sessionId: binding.round.sessionId, content });
+  const autoTest = autoTestContext(binding.view, binding.round.anchorUserMessageId);
+  return runtime.command.chat({
+    sessionId: binding.round.sessionId,
+    content,
+    ...(autoTest
+      ? {
+          roundExtra: {
+            [AUTO_TEST_OPERATION_KEY]: autoTest.phase,
+            [AUTO_TEST_SOURCE_KEY]: autoTest.sourceMessageId,
+          },
+          businessParams: { business_type: autoTest.phase === 'test' ? 'auto_test' : 'casual_chat' },
+        }
+      : {}),
+  });
 };

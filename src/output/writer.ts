@@ -9,6 +9,7 @@ const SENSITIVE_KEY =
 export class OutputWriter {
   private written = false;
   private readonly secrets = new Set<string>();
+  private readonly shownMessages = new Map<string, string>();
 
   constructor(
     private readonly stdout: (text: string) => void = (text) => process.stdout.write(text),
@@ -30,7 +31,30 @@ export class OutputWriter {
   }
 
   /** stderr 输出过程事件，stdout 仍只输出一次最终结果。 */
-  progress(data: Pick<CreationResult, 'sessionId' | 'messageId' | 'taskProgress'>): void {
+  progress(
+    data: Pick<CreationResult, 'sessionId' | 'messageId' | 'taskProgress'> &
+      Partial<Pick<CreationResult, 'autoTest' | 'messages'>>,
+  ): void {
+    if (data.autoTest) {
+      const messages =
+        data.messages?.filter((message) => {
+          if (message.role !== 'assistant' || !message.text.trim()) return false;
+          const key = `${data.sessionId}:${message.id}`;
+          if (this.shownMessages.get(key) === message.text) return false;
+          this.shownMessages.set(key, message.text);
+          return true;
+        }) ?? [];
+      if (messages.length)
+        this.stderr(
+          `${this.serialize({
+            schemaVersion: SCHEMA_VERSION,
+            event: 'conversation_message',
+            data: { sessionId: data.sessionId, messageId: data.messageId, messages },
+            instruction:
+              '及时展示这些自动测试或修复的实际对话消息，保留发现的问题与修复前告知；同一消息 id 更新正文，不重复追加。该事件只是过程，继续等待当前命令，不表示测试或修复已全部完成，不展示继续创作或上线运营菜单。',
+          })}\n`,
+        );
+    }
     if (!data.taskProgress) return;
     this.stderr(
       `${this.serialize({
@@ -41,8 +65,9 @@ export class OutputWriter {
           messageId: data.messageId,
           taskProgress: data.taskProgress,
         },
-        instruction:
-          '每次查询都展示 data.taskProgress.markdown 中当前开发中的功能及步骤，即使 changed 为 false 也展示；不要从历史消息补回已完成的功能或旧步骤。支持原位更新时按卡片 id 更新，否则每次展示当前快照。不追加执行详情或工具次数。这是过程更新，继续等待当前命令的最终结果，不代表整个任务结束，不重复提交任务。',
+        instruction: data.autoTest
+          ? '展示 data.taskProgress.markdown 中实际任务进度，不把功能步骤数当作测试通过数。及时展示 conversation_message 中发现的问题和修复说明。继续等待当前命令的最终结果，不重复提交任务、不展示操作菜单。'
+          : '每次查询都展示 data.taskProgress.markdown 中当前开发中的功能及步骤，即使 changed 为 false 也展示；不要从历史消息补回已完成的功能或旧步骤。支持原位更新时按卡片 id 更新，否则每次展示当前快照。不追加执行详情或工具次数。这是过程更新，继续等待当前命令的最终结果，不代表整个任务结束，不重复提交任务。',
       })}\n`,
     );
   }

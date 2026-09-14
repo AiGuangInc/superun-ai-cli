@@ -106,10 +106,33 @@ export class TaskProgressReader {
     }
   }
 
+  /** 孤立回执只通过真实 child → parent 关系定位来源，不能猜最近的历史轮。 */
+  async parentReplyMessageId(sessionId: string, childSessionId: string): Promise<string | undefined> {
+    const result = await this.discovery(sessionId);
+    if (
+      result.causalAssociations?.some(
+        (item) => item.childSessionId === childSessionId && item.associationStatus === 1,
+      )
+    )
+      return undefined;
+    const parents = new Set(
+      result.tasks
+        .filter(
+          (task) =>
+            task.associationStatus !== 1 &&
+            (task.childSessionId === childSessionId || task.agentId === childSessionId),
+        )
+        .map((task) => task.parentReplyMessageId)
+        .filter((id): id is string => !!id),
+    );
+    return parents.size === 1 ? [...parents][0] : undefined;
+  }
+
   async read(
     view: SessionView,
     choices: Array<Choice>,
     interactions: Array<Interaction> = [],
+    options: { autoTest?: boolean } = {},
   ): Promise<TaskProgressSnapshot> {
     if (this.client.signal?.aborted) throw new CliError('INTERRUPTED', '已停止本地进度查询');
     const sessionId = view.session.sessionId;
@@ -263,6 +286,7 @@ export class TaskProgressReader {
     const extra = roundMessage(view, current)?.roundExtra ?? {};
     // 仅在当前用户的已确认研发阶段读取内部进度；咨询、风格和归属未知时保留原展示。
     if (
+      !options.autoTest &&
       current &&
       currentUser &&
       roundOwner(view, current) === currentUser &&

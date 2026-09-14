@@ -2,6 +2,7 @@
 import type { ApiClient } from '../transport/api-client.js';
 import type { JsonObject } from '../contracts/value.js';
 import { object } from '../contracts/value.js';
+import { AUTO_TEST_OPERATION_KEY, AUTO_TEST_SOURCE_KEY } from '../conversation/auto-test.js';
 
 export type ChatInput = {
   sessionId?: string;
@@ -32,12 +33,14 @@ export class AgentCommandApi {
           ...(input.sessionId ? { previewVersionId: input.previewVersionId ?? 0 } : {}),
           mode: input.mode ?? 6,
           framework: input.framework ?? 6,
-          roundExtra: { ...input.roundExtra, humanizeVer: '1' },
+          roundExtra: { [AUTO_TEST_OPERATION_KEY]: 'none', ...input.roundExtra, humanizeVer: '1' },
           ...(input.sessionId
             ? {
                 excludedInheritedRoundExtraKeys: [
                   'stage0Intro',
                   'stage0SkillUnavailable',
+                  AUTO_TEST_OPERATION_KEY,
+                  AUTO_TEST_SOURCE_KEY,
                   ...(input.excludedInheritedRoundExtraKeys ?? []),
                 ],
               }

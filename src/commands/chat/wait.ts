@@ -11,7 +11,16 @@ export function registerWait(chat: Command, context: CommandContext): void {
     .option('--timeout <seconds>', '本地等待上限；不传则持续等待', positive)
     .option('--interval <seconds>', '轮询最小间隔', positive)
     .option('--progress-revision <revision>', '上次已展示的任务进度版本；仅输出变化的进度')
-    .action(async (sessionId: string, _options: unknown, command: Command) =>
-      context.output.write(await (await runtime(context, command)).wait(sessionId, waitOptions(command))),
-    );
+    .action(async (sessionId: string, _options: unknown, command: Command) => {
+      const options = waitOptions(command);
+      context.output.write(
+        await (
+          await runtime(context, command)
+        ).wait(sessionId, {
+          ...options,
+          // no-wait 回执带的新消息也必须先入流，不能返回前一轮结果。
+          requiredMessageId: options.messageId,
+        }),
+      );
+    });
 }

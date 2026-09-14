@@ -41,6 +41,9 @@ import { CliError } from './output/exit-codes.js';
 import { dispatchReply } from './interactions/handlers/index.js';
 import { TaskProgressReader } from './conversation/task-progress-reader.js';
 import { submittedTaskProgress, taskProgressSnapshot } from './conversation/task-progress.js';
+import { autoTestContext } from './conversation/auto-test.js';
+import { projectText } from './conversation/text-projector.js';
+import { applySnapshot } from './conversation/session-waiter.js';
 
 // 仅独立演示版本等待快照同步，研发主线直接使用稳定预览地址。
 const DEMO_SNAPSHOT_SYNC_MS = 15_000;
@@ -109,13 +112,16 @@ export class CreationRuntime {
     );
   }
   async inspect(view: SessionView, styleTarget?: StyleWaitTarget): Promise<CreationResult> {
+    const autoTest = await this.resolveAutoTest(view);
     const anchor = styleTarget?.preReplyMessageId ?? styleBranchAnchor(view);
     const choices = anchor ? await this.choices(view.session.sessionId, anchor, view) : [];
     view = {
       ...view,
       activeSubagentWork: await this.taskProgress.hasPendingSubagentWork(view.session.sessionId),
     };
-    const bindings = collectInteractions(view, !styleTarget && isStyleSelected(view, choices));
+    const bindings = collectInteractions(view, !styleTarget && isStyleSelected(view, choices)).filter(
+      (binding) => !autoTest || binding.interaction.kind !== 'SELECT_FEATURES',
+    );
     const processingIds = new Set<string>();
     for (const binding of bindings) {
       if (binding.interaction.kind !== 'PLUGIN_ACTION') continue;
@@ -132,6 +138,7 @@ export class CreationRuntime {
       view,
       choices,
       visibleBindings.map((binding) => binding.interaction),
+      { autoTest: !!autoTest },
     );
     let result: CreationResult;
     try {
@@ -142,12 +149,28 @@ export class CreationRuntime {
         styleTarget,
       );
     } catch (error) {
-      if (error instanceof CliError)
+      if (autoTest && error instanceof CliError && error.code === 'BUSINESS_ERROR') {
+        result = {
+          state: 'FAILED',
+          sessionId: view.session.sessionId,
+          messageId: roundMessage(view, currentRound(view))?.messageId,
+          replyMessageId: currentRound(view)?.anchorUserMessageId,
+          messages: autoTest.reportMessages,
+          progress: [],
+          interactions: [],
+        };
+        autoTest.error = text(error.details.errorType) ?? error.message;
+      } else if (error instanceof CliError)
         throw new CliError(error.code, error.message, { ...error.details, taskProgress });
-      throw error;
+      else throw error;
     }
     result.taskProgress = taskProgress;
     result.cursor = { ...result.cursor, progressRevision: taskProgress.revision };
+    if (autoTest) {
+      // 自动测试独立于开发阶段和功能推荐，不能落到普通研发完成菜单。
+      result.autoTest = autoTest;
+      return result;
+    }
     const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
     const planningChoiceId = text(roundExtra.cliPlanAfterStyle);
     if (
@@ -239,6 +262,49 @@ export class CreationRuntime {
     }
     return result;
   }
+  private async resolveAutoTest(view: SessionView): Promise<CreationResult['autoTest']> {
+    const direct = autoTestContext(view);
+    if (direct) {
+      if (direct.previousSourceMessageId) {
+        // 来源可能是孤立后台回执，按已验证的精确锚点读报告，不要求重复携带业务标记。
+        const readPrevious = (source: SessionView) => {
+          const round = source.pipeline.render?.rounds.find(
+            (item) => item.anchorUserMessageId === direct.previousSourceMessageId,
+          );
+          return round
+            ? projectText([round]).messages.filter((item) => item.role === 'assistant')
+            : undefined;
+        };
+        let previous = readPrevious(view);
+        if (!previous) {
+          const snapshot = await this.conversation.snapshot(
+            view.session.sessionId,
+            direct.previousSourceMessageId,
+          );
+          if (snapshot.pipeline) previous = readPrevious(applySnapshot(view, snapshot.pipeline));
+        }
+        direct.previousReportMessages = previous;
+      }
+      return direct;
+    }
+    const round = currentRound(view);
+    const childId = text(round?.meta?.subAgentReportFrom);
+    if (!round?.meta?.subAgentReport || !childId) return undefined;
+    const parentId = await this.taskProgress.parentReplyMessageId(view.session.sessionId, childId);
+    if (!parentId) return undefined;
+    let source = autoTestContext(view, parentId);
+    if (!source) {
+      const snapshot = await this.conversation.snapshot(view.session.sessionId, parentId);
+      if (snapshot.pipeline) source = autoTestContext(applySnapshot(view, snapshot.pipeline), parentId);
+    }
+    return source
+      ? {
+          ...source,
+          sourceMessageId: round.anchorUserMessageId,
+          reportMessages: projectText([round]).messages.filter((item) => item.role === 'assistant'),
+        }
+      : undefined;
+  }
   async state(sessionId: string): Promise<CreationResult> {
     return this.withGuidance(await this.inspect(await this.load(sessionId)));
   }
@@ -305,7 +371,9 @@ export class CreationRuntime {
     try {
       // 接受回执也展示同一项目的其他活跃任务；仅查进度，不推进任务或读取功能清单。
       const view: SessionView = { ...(await this.conversation.recently(id)), extra: {} };
-      const snapshot = await this.taskProgress.read(view, await this.choices(id, undefined, view));
+      const snapshot = await this.taskProgress.read(view, await this.choices(id, undefined, view), [], {
+        autoTest: ['test', 'repair'].includes(String(response.autoTestPhase)),
+      });
       const responseIds = [text(response.messageId), text(response.replyMessageId)].filter(Boolean);
       const round = view.pipeline.render?.rounds.find(
         (item) =>
@@ -340,6 +408,15 @@ export class CreationRuntime {
         ? { stylePlanning: { choiceId: String(response.planningChoiceId) } }
         : {}),
       cursor: { branchAnchor: text(response.preReplyMessageId) },
+      ...(['test', 'repair'].includes(String(response.autoTestPhase))
+        ? {
+            autoTest: {
+              phase: response.autoTestPhase as 'test' | 'repair',
+              sourceMessageId: text(response.replyMessageId) ?? text(response.messageId) ?? '',
+              reportMessages: [],
+            },
+          }
+        : {}),
     });
   }
   async generateStyles(
