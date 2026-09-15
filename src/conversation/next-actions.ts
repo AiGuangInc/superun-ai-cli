@@ -79,15 +79,19 @@ export function buildNextActions(
 ): Array<NextAction> {
   const completed = hasCompletedCreationResult(result);
   return nextActionsForState(result, config).map((action) => {
-    const progressInstruction = result.codeReview
-      ? CODE_REVIEW_RESULT_INSTRUCTION
-      : result.autoTest
-        ? AUTO_TEST_RESULT_INSTRUCTION
-        : completed
-          ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
-          : result.taskProgress
-            ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
-            : '';
+    const silentPlanning =
+      result.stylePlanning && (!result.interactions?.length || pendingStylePlanApproval(result));
+    const progressInstruction = silentPlanning
+      ? '只展示一次“已采用所选方案，正在整理开发功能清单”（使用实际方案编号），随后静默等待结果；不展示 taskProgress 进度卡、内部步骤或中间演示和规划正文。每 5 分钟的任务提醒照常展示。'
+      : result.codeReview
+        ? CODE_REVIEW_RESULT_INSTRUCTION
+        : result.autoTest
+          ? AUTO_TEST_RESULT_INSTRUCTION
+          : completed
+            ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
+            : result.taskProgress
+              ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
+              : '';
     const waitInstruction = action.requiresUserInput
       ? result.codeReview
         ? '后续动作需要用户明确授权；若用户已明确要求审查后接着测试，满足当前结果条件后沿用该授权，无需重复确认。否则等待用户选择，不自动修复未确认的业务规则或发布。'
@@ -96,6 +100,7 @@ export function buildNextActions(
     return {
       ...action,
       instruction: [
+        'command、input 和动作标识供接入 Agent 内部执行，不是用户菜单，不逐项向用户解释或要求用户执行 Shell。只展示面向用户的状态、结果和需要回答的选项；用户主动询问命令或技术细节时再解释。已授权的内部衔接步骤静默执行，不增加确认；实际业务问题、错误和充值引导必须展示。',
         progressInstruction,
         action.instruction,
         waitInstruction,

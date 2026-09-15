@@ -68,6 +68,8 @@ superun-ai chat style generate --help
 
 ## Command tree
 
+This reference is for developers and integrating agents, not a user-facing menu. Execute `nextActions.command` / `input` internally and show users only status, results, and necessary questions. After style selection, keep demo transitions, version preservation, development entry, and initial plan approval silent. Credit errors, execution failures, and real business questions must still be shown.
+
 The tree below lists command groups, positional arguments, and their purpose. Replace required arguments written as `<...>` with actual values. Use each command's `--help` to see its options and requirements.
 
 ```text

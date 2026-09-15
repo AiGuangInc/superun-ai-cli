@@ -92,7 +92,11 @@ export class CreationRuntime {
       command: this.command,
       load: (id) => this.load(id),
       inspect: (view, styleTarget) => this.inspect(view, styleTarget),
-      onProgress: (result) => this.output.progress(result),
+      onProgress: (result) => {
+        // 静默整理清单时不输出内部进度；真实业务提问仍照常返回。
+        if (!result.stylePlanning || (result.interactions.length && !pendingStylePlanApproval(result)))
+          this.output.progress(result);
+      },
       signal: client.signal,
     });
   }
