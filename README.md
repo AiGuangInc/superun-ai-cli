@@ -74,45 +74,47 @@ superun-ai chat style generate --help
 
 ```text
 superun-ai
-├── auth                                         # 管理 PAT 登录
-│   ├── login                                    # 登录 Superun 并保存 PAT
-│   ├── status                                   # 查看本地 PAT 配置状态
-│   └── logout                                   # 清除本地 PAT
-├── session                                      # 查询项目
-│   ├── list                                     # 查询项目列表
-│   └── get <sessionId>                          # 查询项目详情
-├── chat                                         # 对话创作
-│   ├── create                                   # 新建项目并发送需求
-│   ├── send <sessionId>                         # 继续项目创作
-│   ├── test <sessionId>                         # 自动测试已有功能并修复确认的问题
-│   ├── review <sessionId>                       # 审查已有代码并修复确认的问题
-│   ├── state <sessionId>                        # 查询当前任务和交互
-│   ├── wait <sessionId>                         # 等待当前交互或任务结果
-│   ├── stop <sessionId>                         # 停止远端任务
-│   ├── retry <sessionId> <messageId>            # 充值或处理异常后重试原失败任务
-│   ├── style                                    # 管理创作风格
-│   │   ├── generate <sessionId>                 # 生成风格候选
-│   │   ├── list <sessionId>                     # 查询全部风格批次
-│   │   ├── append <sessionId>                   # 基于已有需求再设计一版
-│   │   ├── retry <sessionId> <choiceId>         # 重试原失败方案
-│   │   └── select <sessionId> <choiceId>        # 选择风格并自动生成研发规划
-│   ├── demo <sessionId>                         # 查看演示快照并记录已查看状态
-│   ├── develop <sessionId>                      # 保留演示，进入研发并生成规划
-│   ├── interaction                              # 回答或跳过交互
-│   │   ├── reply <sessionId> <interactionId>    # 提交回答
-│   │   └── skip <sessionId> <interactionId>     # 跳过当前交互
-│   ├── plugin                                   # 查询、启用和禁用插件
-│   │   ├── list <sessionId>                     # 查询可用插件
-│   │   ├── status <sessionId> <pluginId>        # 查询插件状态
-│   │   ├── enable <sessionId> <pluginId>        # 启用插件
-│   │   └── disable <sessionId> <pluginId>       # 禁用插件
-│   └── publish                                  # 发布应用和管理站点状态
-│       ├── status <sessionId>                   # 查询发布版本与部署进度
-│       ├── start <sessionId> <encryptedId>      # 发布指定版本
-│       └── visibility <sessionId> <visibility>  # 设置站点上线或下线状态
-├── update                                       # 检查并安装指定版本
-└── version                                      # 显示本地版本与输出协议版本
+├── auth                                                          # 管理 PAT 登录
+│   ├── login                                                     # 登录 Superun 并保存 PAT
+│   ├── status                                                    # 查看本地 PAT 配置状态
+│   └── logout                                                    # 清除本地 PAT
+├── session                                                       # 查询项目
+│   ├── list                                                      # 查询项目列表
+│   └── get <sessionId>                                           # 查询项目详情
+├── chat                                                          # 对话创作
+│   ├── create                                                    # 新建项目并发送需求
+│   ├── send <sessionId>                                          # 继续项目创作
+│   ├── test <sessionId>                                          # 自动测试指定功能，告知发现的问题后自动修复；默认测试刚才完成的功能
+│   ├── review <sessionId>                                        # 代码审查，告知发现的问题后自动修复；默认审查刚才改动的代码
+│   ├── state <sessionId>                                         # 查询当前任务和交互
+│   ├── wait <sessionId>                                          # 等待当前交互或任务结果，期间持续展示任务进度
+│   ├── stop <sessionId>                                          # 停止远端任务
+│   ├── retry <sessionId> <messageId>                             # 充值或处理异常后重试原失败任务
+│   ├── style                                                     # 管理创作风格
+│   │   ├── generate <sessionId>                                  # 生成风格候选
+│   │   ├── list <sessionId>                                      # 查询全部风格批次
+│   │   ├── append <sessionId>                                    # 再设计一版，每版预计消耗 50～100 算力值，按实际用量扣费
+│   │   ├── retry <sessionId> <choiceId>                          # 重试失败的原方案任务
+│   │   └── select <sessionId> <choiceId>                         # 选择风格并展示开发功能清单
+│   ├── demo <sessionId>                                          # 查看演示快照并记录已查看状态
+│   ├── develop <sessionId>                                       # 保留演示，进入研发并生成规划
+│   ├── interaction                                               # 回答或跳过交互
+│   │   ├── reply <sessionId> <interactionId>                     # 提交回答
+│   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互
+│   ├── plugin                                                    # 查询、启用和禁用插件
+│   │   ├── list <sessionId>                                      # 查询可用插件
+│   │   ├── status <sessionId> <pluginId>                         # 查询插件状态
+│   │   ├── enable <sessionId> <pluginId>                         # 启用插件
+│   │   └── disable <sessionId> <pluginId>                        # 禁用插件
+│   └── publish                                                   # 发布应用和管理站点状态
+│       ├── status <sessionId>                                    # 查询发布版本与部署进度
+│       ├── start <sessionId> <encryptedId>                       # 发布指定版本
+│       └── visibility <sessionId> <visibility>                   # 设置站点上线或下线状态
+├── update                                                        # 检查并将本机 CLI 更新到最新版本
+└── version                                                       # 显示本地版本与输出协议版本
 ```
+
+命令树以源码注册为准。新增或调整命令后执行 `npm run docs:sync` 同步中英文命令树；`npm run docs:check` 校验完整性。发包前的 `prepack` 同样执行校验，发现遗漏或过期参数时停止发包准备。
 
 ## PAT 登录
 
@@ -346,6 +348,8 @@ superun-ai chat style list <sessionId>
 superun-ai chat style append <sessionId> --anchor <branchAnchor>
 superun-ai chat style retry <sessionId> <choiceId>
 superun-ai chat style select <sessionId> <choiceId>
+superun-ai chat demo <sessionId>
+superun-ai chat develop <sessionId>
 
 superun-ai chat plugin list <sessionId>
 superun-ai chat plugin status <sessionId> <pluginId>
