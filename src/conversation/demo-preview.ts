@@ -38,10 +38,17 @@ export function projectDemoPreview(
   response: unknown,
   view: SessionView,
   choices: Array<Choice>,
+  selectedReplyMessageId?: string,
 ): DemoPreview | undefined {
   const round = currentRound(view);
   const selected = choices.find((choice) => choice.selected);
-  const messageIds = [round?.anchorUserMessageId, selected?.lastReplyMessageId, selected?.replyMessageId];
+  // 最近消息可能已不含风格卡；沿本轮确认的选择 ID 定位，不能退化成取最新快照。
+  const messageIds = [
+    round?.anchorUserMessageId,
+    selected?.lastReplyMessageId,
+    selected?.replyMessageId,
+    selectedReplyMessageId,
+  ];
   const snapshots = parseWire(snapshotSchema, response).sort((a, b) => b.createdAt - a.createdAt);
   for (const messageId of messageIds) {
     if (!messageId) continue;

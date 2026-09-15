@@ -276,7 +276,12 @@ export class CreationRuntime {
       const message = roundMessage(view, currentRound(view));
       if (demoGenerationStatus(view) !== 2 || Number(message?.roundExtra?.demoReadyAt) > Date.now())
         return { ...result, state: 'RUNNING' };
-      const demo = projectDemoPreview(await this.query.snapshots(view.session.sessionId), view, choices);
+      const demo = projectDemoPreview(
+        await this.query.snapshots(view.session.sessionId),
+        view,
+        choices,
+        planningChoiceId,
+      );
       // 不能用“消息完成”代替演示就绪，也不能拿另一种风格的最新快照兜底。
       if (!demo) return { ...result, state: 'RUNNING' };
       result.demo = demo;
