@@ -36,7 +36,7 @@ export function createProgram(
     if (offline || action === program) return;
     await hooks.beforeBusiness();
     if (!(authCommand && action.name() === 'login'))
-      await requireCredentials(context, action, !authCommand && Boolean(process.stdin.isTTY));
+      await requireCredentials(context, action, !authCommand);
   });
   registerAuth(program, context);
   registerSession(program, context);

@@ -124,7 +124,7 @@ superun-ai auth status
 superun-ai auth logout
 ```
 
-`auth login` reuses an existing PAT. If none is configured, it opens the Superun website so you can sign in and obtain a PAT, then saves it locally without requiring you to copy it. When you first run a business command in an interactive terminal without a PAT, the CLI uses the same login flow and then resumes the original command.
+`auth login` reuses an existing PAT. If none is configured, it opens the system default browser for Superun login and saves the resulting PAT locally. Business commands without a PAT use the same login flow, including commands run from an agent's non-TTY shell, then resume the original operation without requiring a separate `auth login` command. `auth status` only checks existing configuration and does not open a browser.
 
 Browser login waits for up to five minutes. Press Ctrl+C to cancel. If the browser does not open automatically, use the URL printed in the terminal. The website login token is only used to obtain a PAT and is not stored locally.
 

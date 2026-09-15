@@ -126,7 +126,7 @@ superun-ai auth status
 superun-ai auth logout
 ```
 
-已有 PAT 时，`auth login` 直接复用；没有时自动打开 Superun 网页，完成登录后领取 PAT 并保存到本地，无需手动复制。首次在交互终端执行业务命令时，如果没有 PAT，也会自动进入同一登录流程，完成后继续执行原命令。
+已有 PAT 时，`auth login` 直接复用；没有时自动打开系统默认浏览器，完成 Superun 登录后领取 PAT 并保存到本地，无需手动复制。业务命令缺少 PAT 时也会自动进入同一登录流程，包括 Agent 的非 TTY Shell；登录完成后继续执行原命令，无需另行执行 `auth login`。`auth status` 仍只检查已有配置，不打开浏览器。
 
 网页登录最多等待 5 分钟，按 Ctrl+C 可取消。浏览器未自动打开时，可以手动打开终端提示的地址。网页登录 Token 只用于申请 PAT，不会保存到本地。
 
