@@ -88,6 +88,8 @@ superun-ai
 │   ├── style                                    # Manage creative styles
 │   │   ├── generate <sessionId>                 # Generate style candidates
 │   │   ├── list <sessionId>                     # List style batches
+│   │   ├── append <sessionId> --anchor <anchor> # 再设计一版
+│   │   ├── retry <sessionId> <choiceId>         # 重试原方案
 │   │   └── select <sessionId> <choiceId>        # Choose a style and generate the development plan
 │   ├── demo <sessionId>                         # View the demo and record it as viewed
 │   ├── develop <sessionId>                      # Keep the demo and plan development
@@ -198,7 +200,7 @@ For secret input, submit `{"values":{"requested-key":"secret-value"}}` with only
 Interactions, styles, plugins, and publishing belong under `chat`. Use `chat interaction`, `chat style`, `chat plugin`, and `chat publish`; they are not top-level commands.
 
 ```bash
-superun-ai chat style generate <sessionId> --content "Create a clean brand style" --count 2
+superun-ai chat style generate <sessionId> --content "Create a clean brand style"
 superun-ai chat style list <sessionId>
 superun-ai chat style select <sessionId> <choiceId>
 
@@ -213,7 +215,7 @@ superun-ai chat publish visibility <sessionId> public
 superun-ai chat publish visibility <sessionId> private
 ```
 
-Style generation defaults to two candidates and supports one to four. Use the returned `choiceId` to select a style. Publishing uses the returned `encryptedId` and tracks the selected version's deployment. Plugin IDs come from `chat plugin list`.
+首次固定生成一个方案，已移除 `--count` / `styleCount`；`chat style append <sessionId> --anchor <branchAnchor>` 每次基于已有需求追加一版，不接受额外要求或参考文件。`chat style retry <sessionId> <choiceId>` 重试原失败任务。展示 `styleGeneration.notice`，按 `nextActions` 引导用户采用已有方案或再设计一版；费用以服务端实际结果为准。 Use the returned `choiceId` to select a style. Publishing uses the returned `encryptedId` and tracks the selected version's deployment. Plugin IDs come from `chat plugin list`.
 
 Style waiting returns progress as soon as one candidate succeeds and its preview page is ready, while the batch remains `RUNNING`. Each candidate exposes `previewUrl`, the same interactive page used by Glow's branch preview. Screenshot URLs are not returned, and screenshot generation does not delay readiness. Show that candidate and its page link immediately, then follow `QUERY_STYLES` to keep checking the remaining candidates. For example: “Style B is ready; waiting for style A.” Labels A/B/C/D correspond to the original `index` 0/1/2/3, regardless of completion order. Announce each `choiceId` only once and wait for the user's selection after the batch finishes.
 

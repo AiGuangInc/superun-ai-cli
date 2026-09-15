@@ -92,6 +92,8 @@ superun-ai
 │   ├── style                                    # 管理创作风格
 │   │   ├── generate <sessionId>                 # 生成风格候选
 │   │   ├── list <sessionId>                     # 查询全部风格批次
+│   │   ├── append <sessionId>                   # 基于已有需求再设计一版
+│   │   ├── retry <sessionId> <choiceId>         # 重试原失败方案
 │   │   └── select <sessionId> <choiceId>        # 选择风格并自动生成研发规划
 │   ├── demo <sessionId>                         # 查看演示快照并记录已查看状态
 │   ├── develop <sessionId>                      # 保留演示，进入研发并生成规划
@@ -322,7 +324,7 @@ superun-ai chat send <sessionId> --review-followup <sourceMessageId> --message "
 交互、风格、插件和发布均归属对话创作，统一使用 `chat interaction`、`chat style`、`chat plugin` 和 `chat publish`，不提供对应顶层入口。
 
 ```bash
-superun-ai chat style generate <sessionId> --content "生成简洁的品牌风格" --count 2
+superun-ai chat style generate <sessionId> --content "生成简洁的品牌风格"
 superun-ai chat style list <sessionId>
 superun-ai chat style select <sessionId> <choiceId>
 
@@ -337,9 +339,9 @@ superun-ai chat publish visibility <sessionId> public
 superun-ai chat publish visibility <sessionId> private
 ```
 
-风格默认生成 2 个，支持 1～4 个；使用查询结果中的 `choiceId`。发布使用查询结果中的 `encryptedId`，按目标版本跟踪部署状态。插件 ID 以 `chat plugin list` 返回值为准。
+首次固定生成 1 个方案，不再支持 `--count` 或问卷 `styleCount`。用户选择“再设计一版”后，通过 `chat style append <sessionId> --anchor <branchAnchor>` 每次基于已有需求追加 1 个，不接受额外要求或参考文件。失败方案使用 `chat style retry <sessionId> <choiceId>` 重试原任务。选择使用查询结果中的 `choiceId`。发布使用查询结果中的 `encryptedId`，按目标版本跟踪部署状态。插件 ID 以 `chat plugin list` 返回值为准。
 
-风格等待会在单个方案成功且预览页面就绪时提前返回进度，整批状态仍为 `RUNNING`。候选通过 `previewUrl` 返回与 Glow 分支预览相同的可交互页面，不返回截图链接，也不等待截图生成。调用方应立即提示该方案及页面链接，再按 `QUERY_STYLES` 继续查询剩余方案，例如“方案 B 已生成，继续等待方案 A”。方案 A/B/C/D 固定对应原始 `index` 0/1/2/3，同一 `choiceId` 只提示一次；全部结束后再等待用户选择。
+风格等待会在单个方案成功且预览页面就绪时提前返回进度，整批状态仍为 `RUNNING`。结果的 `styleGeneration.notice` 为实际状态对应的展示文案，`nextActions` 提供采用、追加和重试命令；`choices` 保留同一轮全部方案，不能只展示最新批次。候选通过 `previewUrl` 返回与 Glow 分支预览相同的可交互页面，不返回截图链接，也不等待截图生成。调用方应立即提示该方案及页面链接，再按 `QUERY_STYLES` 继续查询剩余方案，例如“方案 B 已生成，继续等待方案 A”。方案 A/B/C/D 固定对应原始 `index` 0/1/2/3，同一 `choiceId` 只提示一次；已有可用方案时用户可以提前选择；追加生成不会隐藏旧方案。
 
 研发完成后的“查看预览”使用 `development.previewUrl`，返回与 Glow 研发主线一致的稳定地址 `https://id--<sessionId>.<托管域名>`，随主线构建结果更新。研发主线不再查找或等待快照；风格候选和独立演示版本继续使用各自的快照页面。上线运营返回正式发布域名。
 

@@ -27,7 +27,7 @@ const handlers: Record<InteractionKind, ReplyHandler> = {
 };
 export async function dispatchReply(context: ReplyContext): Promise<Record<string, unknown>> {
   const fields: Record<InteractionKind, Array<string>> = {
-    PRD_CLARIFICATION: ['action', 'answers', 'styleCount'],
+    PRD_CLARIFICATION: ['action', 'answers'],
     ASK_USER_TOOL: ['action', 'answers'],
     ASK_USER_MESSAGE: ['action', 'answers'],
     SECRET_INPUT: ['action', 'values'],

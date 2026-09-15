@@ -87,7 +87,6 @@ export const ANSWER_JSON_SCHEMA = {
   additionalProperties: false,
   properties: {
     action: { type: 'string' },
-    styleCount: { type: 'integer', minimum: 1, maximum: 4 },
     answers: {
       type: 'array',
       items: {

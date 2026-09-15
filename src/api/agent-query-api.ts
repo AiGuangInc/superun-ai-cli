@@ -71,10 +71,25 @@ export class AgentQueryApi {
       pageSize: 50,
     });
   }
-  async parallel(sessionId: string, preReplyMessageId: string): Promise<JsonObject> {
+  async parallel(
+    sessionId: string,
+    preReplyMessageId: string,
+    withStartMessage = false,
+  ): Promise<JsonObject> {
     return object(
-      await this.client.call(`${PREFIX}/queryAllParallelInfos`, { sessionId, preReplyMessageId }),
+      await this.client.call(`${PREFIX}/queryAllParallelInfos`, {
+        sessionId,
+        preReplyMessageId,
+        withStartMessage,
+      }),
     );
+  }
+  async designerFreeRemaining(sessionId: string): Promise<number> {
+    const response = object(await this.client.call(`${PREFIX}/querySessionFreeQuota`, { sessionId }));
+    const item = list(response.items)
+      .map(object)
+      .find((item) => item.quotaKey === 'free_round:stage2_designer');
+    return typeof item?.remaining === 'number' ? Math.max(0, item.remaining) : 0;
   }
   async attachments(sessionId: string, names: Array<string> = []): Promise<Array<JsonObject>> {
     const response = await this.client.call(`${PREFIX}/querySessionAttachmentsExcludeInternalAndCompiled`, {

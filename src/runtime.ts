@@ -52,7 +52,9 @@ import { AutoTestTasks } from './conversation/auto-test-tasks.js';
 import { codeReviewContext, CODE_REVIEW_SPEC } from './conversation/code-review.js';
 import { readCheckQuestionContext } from './conversation/check-question-context.js';
 import { checkContextFromExtra, reportReference } from './conversation/check-context.js';
+import { styleResultNotice } from './conversation/style-guidance.js';
 import { stylePlanningChoice } from './conversation/style-planning.js';
+import { generateInitialStyles, appendStyle, retryStyle } from './conversation/style-generation.js';
 
 // 仅独立演示版本等待快照同步，研发主线直接使用稳定预览地址。
 const DEMO_SNAPSHOT_SYNC_MS = 15_000;
@@ -178,9 +180,18 @@ export class CreationRuntime {
           interactions: [],
         };
         check.error = text(error.details.errorType) ?? error.message;
-      } else if (error instanceof CliError)
-        throw new CliError(error.code, error.message, { ...error.details, taskProgress });
-      else throw error;
+      } else if (error instanceof CliError) {
+        const planningChoiceId = await stylePlanningChoice(view, this.query).catch(() => undefined);
+        throw new CliError(error.code, error.message, {
+          ...error.details,
+          taskProgress,
+          ...(planningChoiceId
+            ? {
+                instruction: `风格已选定，开发功能清单暂未整理完成：${error.message}。处理失败原因后回复“继续整理”，保留已选风格，通过 chat send 提交“继续整理开发功能清单”并等待结果，不重新生成或重复选择风格。`,
+              }
+            : {}),
+        });
+      } else throw error;
     }
     result.taskProgress = pendingReports.length
       ? taskProgressSnapshot(
@@ -399,6 +410,11 @@ export class CreationRuntime {
     return this.withGuidance(await this.inspect(await this.load(sessionId)));
   }
   withGuidance<T extends GuidanceResult>(result: T) {
+    if (result.styleGeneration)
+      result = {
+        ...result,
+        styleGeneration: { ...result.styleGeneration, notice: styleResultNotice(result) },
+      };
     // 对外仍表示正在整理清单；内部保留真实确认交互，由 wait 校验后继续。
     const visible = pendingStylePlanApproval(result)
       ? {
@@ -527,9 +543,17 @@ export class CreationRuntime {
       sessionId: id,
       messageId: text(response.messageId),
       replyMessageId: text(response.replyMessageId),
-      messages: text(response.planningNotice)
-        ? [{ id: `${id}:style-planning`, role: 'assistant' as const, text: String(response.planningNotice) }]
-        : [],
+      messages: text(response.styleNotice)
+        ? [{ id: `${id}:style-generation`, role: 'assistant' as const, text: String(response.styleNotice) }]
+        : text(response.planningNotice)
+          ? [
+              {
+                id: `${id}:style-planning`,
+                role: 'assistant' as const,
+                text: String(response.planningNotice),
+              },
+            ]
+          : [],
       progress: [],
       interactions: [],
       taskProgress,
@@ -537,6 +561,15 @@ export class CreationRuntime {
         ? { stylePlanning: { choiceId: String(response.planningChoiceId) } }
         : {}),
       cursor: { branchAnchor: text(response.preReplyMessageId) },
+      ...(styleWaitTarget(response)
+        ? {
+            styleGeneration: {
+              choiceIds: styleWaitTarget(response)!.choiceIds,
+              phase: (text(response.stylePhase) ?? 'initial') as 'initial' | 'append' | 'retry',
+              notice: text(response.styleNotice),
+            },
+          }
+        : {}),
       ...(['test', 'repair'].includes(String(response.autoTestPhase))
         ? {
             autoTest: {
@@ -557,35 +590,22 @@ export class CreationRuntime {
         : {}),
     });
   }
-  async generateStyles(
-    sessionId: string,
-    content: string,
-    count: number,
-    preReplyMessageId?: string,
-  ): Promise<JsonObject> {
-    const view = await this.load(sessionId);
-    if (view.extra.agentRuntime === 'shire')
-      throw new CliError('INVALID_ARGUMENT', '当前处于 Stage0，请先完成进入构想阶段的交接');
-    const response = await this.command.parallel({
-      sessionId,
-      preReplyMessageId,
-      items: Array.from({ length: count }, (_, index) => ({
-        index,
-        mode: 6,
-        framework: 6,
-        content,
-        businessParams: { business_type: 'startMV' },
-      })),
-    });
-    await this.command.sessionExtra(sessionId, {
-      hasClarifiedPrd: '1',
-      generatedByBranch: '1',
-      version: '6',
-    });
-    return response;
+  async generateStyles(sessionId: string, content: string, preReplyMessageId?: string): Promise<JsonObject> {
+    return generateInitialStyles(this, sessionId, content, preReplyMessageId);
+  }
+  async appendStyle(sessionId: string, anchor: string): Promise<JsonObject> {
+    return appendStyle(this, sessionId, anchor);
+  }
+  async retryStyle(sessionId: string, choiceId: string): Promise<JsonObject> {
+    return retryStyle(this, sessionId, choiceId);
   }
   async selectStyle(sessionId: string, choiceId: string): Promise<JsonObject> {
-    const choice = (await this.choices(sessionId)).find((item) => item.choiceId === choiceId);
+    const view = await this.load(sessionId);
+    if (!view.session.pendingBranch || isStyleSelected(view))
+      throw new CliError('STALE_INTERACTION', '当前已离开风格选择阶段，请查看进度');
+    const choice = (await this.choices(sessionId, undefined, view)).find(
+      (item) => item.choiceId === choiceId,
+    );
     if (!choice)
       throw new CliError('STALE_INTERACTION', '当前未决批次中不存在该风格，请重新执行 chat style list');
     if (choice.status !== 'success' || choice.errorType)

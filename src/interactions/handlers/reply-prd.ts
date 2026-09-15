@@ -8,9 +8,6 @@ export const replyPrd: ReplyHandler = async ({ runtime, binding, input }) => {
   const { source, questions } = binding.interaction;
   const sessionId = binding.round.sessionId;
   const answers = resolveAnswers(questions, input.answers);
-  const count = input.styleCount ?? 2;
-  if (!Number.isInteger(count) || typeof count !== 'number' || count < 1 || count > 4)
-    throw new CliError('INVALID_ARGUMENT', 'styleCount 必须是 1 到 4 的整数');
   const states = answers.map((answer) => ({
     question: answer.question.question,
     selectedIndices: answer.selectedIndices,
@@ -24,7 +21,7 @@ export const replyPrd: ReplyHandler = async ({ runtime, binding, input }) => {
     sessionId,
     messageId: source.messageId,
     contentId: source.contentId,
-    extra: { ...object(binding.item.payload.extra), prdAnswersAttachment: name, submitPrdQuestions: '1' },
+    extra: { ...object(binding.item.payload.extra), prdAnswersAttachment: name },
   });
   const content = answers
     .map(
@@ -35,5 +32,31 @@ export const replyPrd: ReplyHandler = async ({ runtime, binding, input }) => {
           .join('\n')}`,
     )
     .join('\n');
-  return runtime.generateStyles(sessionId, content, count, binding.round.anchorUserMessageId);
+  const response = await runtime
+    .generateStyles(sessionId, content, binding.round.anchorUserMessageId)
+    .catch((error) => {
+      if (error instanceof CliError)
+        throw new CliError(error.code, error.message, {
+          ...error.details,
+          sessionId,
+          instruction:
+            error.code === 'BUSINESS_ERROR'
+              ? `本次方案生成失败：${error.message}。需求答案已保存，处理失败原因后回复“重试生成”，使用本次已保存的答案重新提交当前问卷。`
+              : '请先查看进度，确认本次请求结果后再决定下一步，不重复生成。',
+        });
+      throw error;
+    });
+  try {
+    await runtime.command.contentExtra({
+      sessionId,
+      messageId: source.messageId,
+      contentId: source.contentId,
+      extra: { ...object(binding.item.payload.extra), prdAnswersAttachment: name, submitPrdQuestions: '1' },
+    });
+  } catch {
+    throw new CliError('OUTCOME_UNKNOWN', '方案生成已提交，问卷提交标记同步未确认；请查看进度，勿重复生成', {
+      sessionId,
+    });
+  }
+  return response;
 };

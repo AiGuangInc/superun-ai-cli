@@ -1,14 +1,10 @@
 /** 根据当前结果提供操作引导，不替用户作答或执行操作。@author xiuyu.yi */
+import { styleNextActions } from './style-guidance.js';
 import { COMMAND_NAME } from '../config/constants.js';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import type { CreationResult, InteractionKind, NextAction } from '../contracts/cli-output.js';
 import { AUTO_TEST_RESULT_INSTRUCTION } from './auto-test.js';
 import { CODE_REVIEW_RESULT_INSTRUCTION } from './code-review.js';
-import {
-  latestStyleChoices,
-  readyStyleChoices,
-  styleChoiceLabel,
-} from '../interactions/parsers/style-selection.js';
 
 export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
   Partial<
@@ -21,6 +17,7 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
       | 'demo'
       | 'development'
       | 'stylePlanning'
+      | 'styleGeneration'
       | 'taskProgress'
       | 'toolUsage'
       | 'autoTest'
@@ -120,6 +117,8 @@ function nextActionsForState(
 ): Array<NextAction> {
   // 显式保留连接地址，避免调用方执行下一步时切回默认环境；凭据不进入命令。
   const command = [COMMAND_NAME, '--endpoint', config.endpoint, '--locale', config.locale, 'chat'];
+  const styleActions = styleNextActions(result, command);
+  if (styleActions) return styleActions;
   const progressRevision = result.taskProgress?.revision ?? result.cursor?.progressRevision;
   const progressOptions = progressRevision ? ['--progress-revision', progressRevision] : [];
   if ((result.autoTest || result.codeReview) && !result.interactions?.length) {
@@ -219,21 +218,6 @@ function nextActionsForState(
       return nextActions;
     }
   }
-  if (result.state === 'NEEDS_SELECTION') {
-    if (latestStyleChoices(result.choices ?? []).some((choice) => choice.selected)) return [];
-    return latestStyleChoices(result.choices ?? []).flatMap((choice): Array<NextAction> => {
-      if (choice.selected || choice.status !== 'success' || !choice.previewUrl || choice.errorType) return [];
-      return [
-        {
-          action: 'SELECT_STYLE',
-          instruction: `请按原始 index 对应的 A/B/C/D 展示本批方案及 previewUrl 可点击页面链接，不展示截图或截图 URL，说明选定风格后会直接展示开发功能清单；仅在用户选择${styleChoiceLabel(choice)}（风格 ${choice.index + 1}）后执行此命令。CLI 会静默完成演示衔接、生成并确认研发规划，然后展示开发功能清单供用户选择；不增加查看演示、开始研发或确认规划的提问，不自动选择开发功能。`,
-          requiresUserInput: true,
-          choiceId: choice.choiceId,
-          command: [...command, 'style', 'select', '--', result.sessionId, choice.choiceId],
-        },
-      ];
-    });
-  }
   if (result.state === 'COMPLETED' && (result.demo || result.development?.stage === 'READY')) {
     if (result.demo?.viewed || result.development?.stage === 'READY') {
       const previewInstruction = result.demo
@@ -272,32 +256,19 @@ function nextActionsForState(
     return developmentActions(result, command);
   }
   if (['ACCEPTED', 'RUNNING', 'QUEUED'].includes(result.state)) {
-    const anchor = result.cursor?.branchAnchor;
-    const styles = latestStyleChoices(result.choices ?? []);
-    const ready = readyStyleChoices(styles).sort((left, right) => left.index - right.index);
-    const pending = styles
-      .filter((choice) => choice.status === 'running' || (choice.status === 'success' && !choice.previewUrl))
-      .sort((left, right) => left.index - right.index);
-    const styleProgress = ready.length
-      ? `已生成${ready.map(styleChoiceLabel).join('、')}。${pending.length ? `继续等待${pending.map(styleChoiceLabel).join('、')}。` : ''}`
-      : '风格仍在生成。';
     return [
       {
-        action: anchor ? 'QUERY_STYLES' : 'WAIT',
-        instruction: anchor
-          ? `${styleProgress} 请立即提示本次新完成的方案，并展示对应 previewUrl 的可点击页面链接，不展示截图或截图 URL，不要等整批完成后才提示。按原始 index 固定对应 A/B/C/D，以 choiceId 区分候选，同一候选已提示过就不重复提示；没有新完成方案时继续等待。继续查询本批剩余候选，全部结束后再展示本批结果并等待用户选择，不自动选中已完成方案，不重复生成。`
-          : '任务尚未结束，继续等待下一步问题或结果；不要重复提交。',
+        action: 'WAIT',
+        instruction: '任务尚未结束，继续等待下一步问题或结果；不要重复提交。',
         requiresUserInput: false,
-        command: anchor
-          ? [...command, 'style', 'list', '--anchor', anchor, ...progressOptions, '--', result.sessionId]
-          : [
-              ...command,
-              'wait',
-              ...progressOptions,
-              ...(result.messageId ? ['--message-id', result.messageId] : []),
-              '--',
-              result.sessionId,
-            ],
+        command: [
+          ...command,
+          'wait',
+          ...progressOptions,
+          ...(result.messageId ? ['--message-id', result.messageId] : []),
+          '--',
+          result.sessionId,
+        ],
       },
     ];
   }
