@@ -60,6 +60,12 @@ export class AgentCommandApi {
   async parallel(input: JsonObject): Promise<JsonObject> {
     return object(await this.client.call(`${PREFIX}/glowParallelChat`, input, true));
   }
+  async checkBalance(sessionId: string): Promise<void> {
+    await this.client.call('/api/uxa-center/agent/AgentToken/checkSessionTokenBalance', { sessionId });
+  }
+  async retry(sessionId: string, messageId: string, replyMessageId?: string): Promise<JsonObject> {
+    return object(await this.client.call(`${PREFIX}/retry`, { sessionId, messageId, replyMessageId }, true));
+  }
   async viewDemo(sessionId: string, planningChoiceId?: string): Promise<JsonObject> {
     return object(
       await this.client.call(

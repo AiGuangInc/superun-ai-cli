@@ -30,20 +30,27 @@ export function latestStyleChoices(choices: Array<Choice>): Array<Choice> {
 
 /** 只有成功状态与预览页面同时就绪，才向用户报告方案已生成。 */
 export function readyStyleChoices(choices: Array<Choice>): Array<Choice> {
-  return latestStyleChoices(choices).filter(
+  return choices.filter(
     (choice) => choice.status === 'success' && !!choice.previewUrl && !choice.errorType && !choice.selected,
   );
 }
 
 /** 方案编号跟随原始 index，不随异步完成顺序变化。 */
 export function styleChoiceLabel(choice: Pick<Choice, 'index'>): string {
-  return `方案 ${String.fromCharCode(65 + choice.index)}`;
+  let index = choice.index + 1,
+    label = '';
+  while (index > 0) {
+    index -= 1;
+    label = String.fromCharCode(65 + (index % 26)) + label;
+    index = Math.floor(index / 26);
+  }
+  return `方案 ${label}`;
 }
 
 export function isStyleSelected(view: SessionView, choices: Array<Choice> = []): boolean {
   const flag = roundMessage(view, currentRound(view))?.roundExtra?.hasSelectedStyle;
   // 当前轮明确回到未选态时，不能被旧批次的已选记录覆盖。
-  return flag !== undefined ? enabled(flag) : latestStyleChoices(choices).some((choice) => choice.selected);
+  return flag !== undefined ? enabled(flag) : choices.some((choice) => choice.selected);
 }
 
 export function styleBranchAnchor(view: SessionView): string | undefined {
@@ -99,12 +106,14 @@ export function projectChoices(
     return list(info.items).map((value) => {
       const item = object(value);
       const reply = text(item.replyMessageId);
-      if (!reply || typeof item.index !== 'number')
+      if (!reply || typeof item.index !== 'number' || !Number.isSafeInteger(item.index) || item.index < 0)
         throw new CliError('PROTOCOL_ERROR', '风格候选缺少稳定 ID');
       const errorType =
         object(item.roundExtra).finish_reason === 'content_filter' ? 'content_filter' : text(item.errorType);
       return {
         choiceId: reply,
+        messageId: text(item.messageId),
+        tokenFree: typeof item.tokenFree === 'boolean' ? item.tokenFree : undefined,
         batchVersion: typeof entry.version === 'number' ? entry.version : undefined,
         index: item.index,
         preReplyMessageId: anchor,

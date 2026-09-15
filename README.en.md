@@ -68,44 +68,53 @@ superun-ai chat style generate --help
 
 ## Command tree
 
+This reference is for developers and integrating agents, not a user-facing menu. Execute `nextActions.command` / `input` internally and show users only status, results, and necessary questions. After style selection, keep demo transitions, version preservation, development entry, and initial plan approval silent. Credit errors, execution failures, and real business questions must still be shown.
+
 The tree below lists command groups, positional arguments, and their purpose. Replace required arguments written as `<...>` with actual values. Use each command's `--help` to see its options and requirements.
 
 ```text
 superun-ai
-├── auth                                         # Manage PAT login
-│   ├── login                                    # Sign in and save a PAT
-│   ├── status                                   # Check local PAT configuration
-│   └── logout                                   # Remove the locally saved PAT
-├── session                                      # Query projects
-│   ├── list                                     # List projects
-│   └── get <sessionId>                          # Get project details
-├── chat                                         # Conversational creation
-│   ├── create                                   # Create a project and send a request
-│   ├── send <sessionId>                         # Continue the conversation
-│   ├── state <sessionId>                        # Inspect the task and interactions
-│   ├── wait <sessionId>                         # Wait for input or a task result
-│   ├── stop <sessionId>                         # Stop the remote task
-│   ├── style                                    # Manage creative styles
-│   │   ├── generate <sessionId>                 # Generate style candidates
-│   │   ├── list <sessionId>                     # List style batches
-│   │   └── select <sessionId> <choiceId>        # Choose a style and generate the development plan
-│   ├── demo <sessionId>                         # View the demo and record it as viewed
-│   ├── develop <sessionId>                      # Keep the demo and plan development
-│   ├── interaction                              # Answer or skip interactions
-│   │   ├── reply <sessionId> <interactionId>    # Submit an answer
-│   │   └── skip <sessionId> <interactionId>     # Skip an eligible interaction
-│   ├── plugin                                   # Query, enable, and disable plugins
-│   │   ├── list <sessionId>                     # List available plugins
-│   │   ├── status <sessionId> <pluginId>        # Inspect a plugin
-│   │   ├── enable <sessionId> <pluginId>        # Enable a plugin
-│   │   └── disable <sessionId> <pluginId>       # Disable a plugin
-│   └── publish                                  # Publish applications and manage visibility
-│       ├── status <sessionId>                   # Query versions and deployment progress
-│       ├── start <sessionId> <encryptedId>      # Publish a specific version
-│       └── visibility <sessionId> <visibility>  # Make the site public or private
-├── update                                       # Check and install the required version
-└── version                                      # Show local and output-schema versions
+├── auth                                                          # Manage PAT login
+│   ├── login                                                     # Sign in and save a PAT
+│   ├── status                                                    # Check local PAT configuration
+│   └── logout                                                    # Remove the locally saved PAT
+├── session                                                       # Query projects
+│   ├── list                                                      # List projects
+│   └── get <sessionId>                                           # Get project details
+├── chat                                                          # Conversational creation
+│   ├── create                                                    # Create a project and send a request
+│   ├── send <sessionId>                                          # Continue the conversation
+│   ├── test <sessionId>                                          # Test existing functionality and repair identified issues
+│   ├── review <sessionId>                                        # Review existing code and repair identified issues
+│   ├── state <sessionId>                                         # Inspect the task and interactions
+│   ├── wait <sessionId>                                          # Wait for input or a task result
+│   ├── stop <sessionId>                                          # Stop the remote task
+│   ├── retry <sessionId> <messageId>                             # Retry the original failed task after recharging
+│   ├── style                                                     # Manage creative styles
+│   │   ├── generate <sessionId>                                  # Generate style candidates
+│   │   ├── list <sessionId>                                      # List style batches
+│   │   ├── append <sessionId>                                    # Generate one additional design from existing requirements
+│   │   ├── retry <sessionId> <choiceId>                          # Retry the original failed style task
+│   │   └── select <sessionId> <choiceId>                         # Choose a style and show the development feature list
+│   ├── demo <sessionId>                                          # View the demo and record it as viewed
+│   ├── develop <sessionId>                                       # Keep the demo and plan development
+│   ├── interaction                                               # Answer or skip interactions
+│   │   ├── reply <sessionId> <interactionId>                     # Submit an answer
+│   │   └── skip <sessionId> <interactionId>                      # Skip an eligible interaction
+│   ├── plugin                                                    # Query, enable, and disable plugins
+│   │   ├── list <sessionId>                                      # List available plugins
+│   │   ├── status <sessionId> <pluginId>                         # Inspect a plugin
+│   │   ├── enable <sessionId> <pluginId>                         # Enable a plugin
+│   │   └── disable <sessionId> <pluginId>                        # Disable a plugin
+│   └── publish                                                   # Publish applications and manage visibility
+│       ├── status <sessionId>                                    # Query versions and deployment progress
+│       ├── start <sessionId> <encryptedId>                       # Publish a specific version
+│       └── visibility <sessionId> <visibility>                   # Make the site public or private
+├── update                                                        # Check and update to the latest CLI version
+└── version                                                       # Show local and output-schema versions
 ```
+
+Run `npm run docs:sync` after changing command registration to update both command trees. `npm run docs:check` validates their completeness; `prepack` also checks them before packaging.
 
 ## PAT login
 
@@ -193,14 +202,47 @@ For secret input, submit `{"values":{"requested-key":"secret-value"}}` with only
 
 `chat interaction reply --no-wait` controls waiting for subsequent creation after the reply has been processed. Some plugin configuration steps must finish in the foreground before submitting their interaction result; this option does not skip those steps. After an interruption, check the plugin and conversation states first.
 
+## Automatic testing and code review
+
+```bash
+superun-ai chat test <sessionId>
+superun-ai chat test <sessionId> --message "Verify login and logout"
+superun-ai chat review <sessionId>
+superun-ai chat review <sessionId> --message "Review capacity updates and cancellation handling"
+superun-ai chat send <sessionId> --test-followup <sourceMessageId> --message "Fix issue 2"
+superun-ai chat send <sessionId> --review-followup <sourceMessageId> --message "Fix issue 2"
+```
+
+Use the actual report `sourceMessageId` for follow-ups. Display the returned findings and follow the current `nextActions`; do not invent test results or approve unresolved business decisions.
+
+## Insufficient credits and retrying
+
+When a request or running task fails because of insufficient credits, open [superun.ai](https://superun.ai) to recharge, then reply “Retry”. The CLI does not retry automatically while waiting for the user.
+
+- A rejected request: repeat the original operation with its original input after recharging; do not retry an earlier completed message.
+- A failed running task: use the returned `RECHARGE_AND_RETRY` command. It checks the balance and calls Glow's existing retry API for the current failed message. Completed, running, or stale messages are rejected.
+- Owner or team balance failures require funding the corresponding account. Member monthly/total quota failures require an administrator to adjust the quota.
+
+```bash
+superun-ai chat retry <sessionId> <messageId>
+superun-ai chat retry <sessionId> <messageId> --no-wait
+superun-ai chat retry <sessionId> <messageId> --timeout 120
+```
+
+Use the actual failed agent message ID from `nextActions.command`, not a user message ID or a style `choiceId`. Retry waits for the result by default. With `--no-wait`, follow the returned guidance to check progress after the request is accepted. Failed style candidates use `chat style retry <sessionId> <choiceId>` instead.
+
 ## Styles, plugins, and publishing
 
 Interactions, styles, plugins, and publishing belong under `chat`. Use `chat interaction`, `chat style`, `chat plugin`, and `chat publish`; they are not top-level commands.
 
 ```bash
-superun-ai chat style generate <sessionId> --content "Create a clean brand style" --count 2
+superun-ai chat style generate <sessionId> --content "Create a clean brand style"
 superun-ai chat style list <sessionId>
+superun-ai chat style append <sessionId> --anchor <branchAnchor>
+superun-ai chat style retry <sessionId> <choiceId>
 superun-ai chat style select <sessionId> <choiceId>
+superun-ai chat demo <sessionId>
+superun-ai chat develop <sessionId>
 
 superun-ai chat plugin list <sessionId>
 superun-ai chat plugin status <sessionId> <pluginId>
@@ -213,13 +255,13 @@ superun-ai chat publish visibility <sessionId> public
 superun-ai chat publish visibility <sessionId> private
 ```
 
-Style generation defaults to two candidates and supports one to four. Use the returned `choiceId` to select a style. Publishing uses the returned `encryptedId` and tracks the selected version's deployment. Plugin IDs come from `chat plugin list`.
+首次固定生成一个方案，已移除 `--count` / `styleCount`；`chat style append <sessionId> --anchor <branchAnchor>` 每次基于已有需求追加一版，不接受额外要求或参考文件。`chat style retry <sessionId> <choiceId>` 重试原失败任务。展示 `styleGeneration.notice`，按 `nextActions` 引导用户采用已有方案或再设计一版；费用以服务端实际结果为准。 Use the returned `choiceId` to select a style. Publishing uses the returned `encryptedId` and tracks the selected version's deployment. Plugin IDs come from `chat plugin list`.
 
 Style waiting returns progress as soon as one candidate succeeds and its preview page is ready, while the batch remains `RUNNING`. Each candidate exposes `previewUrl`, the same interactive page used by Glow's branch preview. Screenshot URLs are not returned, and screenshot generation does not delay readiness. Show that candidate and its page link immediately, then follow `QUERY_STYLES` to keep checking the remaining candidates. For example: “Style B is ready; waiting for style A.” Labels A/B/C/D correspond to the original `index` 0/1/2/3, regardless of completion order. Announce each `choiceId` only once and wait for the user's selection after the batch finishes.
 
 After development completes, the preview link is returned in `development.previewUrl` as `https://id--<sessionId>.<hosting-domain>`, matching Glow's stable development-mainline address and updating with mainline builds. Development no longer looks up or waits for snapshots. Style candidates and saved demo versions retain their own snapshot pages, while launch operations return the published domain.
 
-After the user selects a style, `chat style select` waits for its demo, completes the demo transition and preserves the version internally, then generates the development plan. Show only that the selected style is being used to prepare the plan, without demo-stage prompts or additional questions. Keep the existing plan content and confirmation/adjustment guidance unchanged; the feature-selection step follows plan approval. After `--no-wait` or a local timeout, follow `CONTINUE_STYLE_PLANNING` with `chat wait` to check the current state and resume the transition. `chat state` remains read-only, and existing projects can still use `chat demo` and `chat develop`.
+After the user selects a style, `chat style select` waits for its demo, completes the demo transition and preserves the version internally, then generates the development plan. Show only that the selected style is being used to prepare the plan, without demo-stage prompts or additional questions. The CLI silently generates and confirms the initial plan, then displays the actual feature list for the user to choose what to develop. Real business questions still require user input. After `--no-wait` or a local timeout, follow `CONTINUE_STYLE_PLANNING` with `chat wait` to check the current state and resume the transition. `chat state` remains read-only, and existing projects can still use `chat demo` and `chat develop`.
 
 After the user explicitly asks to launch the site, use `chat publish status <sessionId> --for-launch` to get the latest pending version from the publishing panel. Show its `changeLog` unchanged, then follow the returned publishing command without a second confirmation. For a deployment already in progress, only track progress. If deployment is complete but the site is not public, finish the visibility step and return the public URL. `status` is always read-only; an ordinary status query does not grant publishing authorization.
 

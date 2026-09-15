@@ -6,6 +6,7 @@ import { currentRound, roundMessage } from './round-selector.js';
 import { projectText } from './text-projector.js';
 import { pendingAutomaticTools, hasServerAutomaticWork } from '../auto-tools/registry.js';
 import { CliError } from '../output/exit-codes.js';
+import { retryableMainMessage } from './insufficient-credits.js';
 import {
   isStyleSelected,
   latestStyleChoices,
@@ -32,6 +33,7 @@ export function resolveState(
 ): CreationResult {
   const round = currentRound(view),
     message = roundMessage(view, round);
+  const errorType = view.session.errorType ?? message?.sessionErrorType;
   const waitingForStyles = !!styleTarget || (!!view.session.pendingBranch && !isStyleSelected(view, choices));
   const currentChoices = styleTarget
     ? choices.filter((choice) => styleTarget.choiceIds.includes(choice.choiceId))
@@ -46,7 +48,7 @@ export function resolveState(
     replyMessageId: round?.anchorUserMessageId,
     ...projectText(round ? [round] : []),
     interactions: bindings.map((binding) => binding.interaction),
-    ...(waitingForStyles || currentChoices.length ? { choices: currentChoices } : {}),
+    ...(waitingForStyles || currentChoices.length ? { choices } : {}),
     cursor: {
       messageId: message?.messageId,
       branchAnchor: waitingForStyles
@@ -54,11 +56,35 @@ export function resolveState(
         : undefined,
     },
   };
-  if (view.session.status === -1 || view.session.errorType || round?.status === 'failed') {
+  if (
+    waitingForStyles &&
+    choices.length &&
+    !bindings.some(
+      (binding) =>
+        binding.interaction.kind !== 'PRD_CLARIFICATION' && binding.interaction.kind !== 'STYLE_SELECTION',
+    )
+  ) {
+    result.interactions = [];
+    result.styleGeneration = {
+      choiceIds: currentChoices.map((choice) => choice.choiceId),
+      phase: currentChoices.some((choice) => choice.index > 0) ? 'append' : 'initial',
+    };
+    if (styleTarget && currentChoices.length !== styleTarget.choiceIds.length) return result;
+    result.state = styleBatchState(currentChoices);
+    if (
+      result.state === 'FAILED' &&
+      choices.some((choice) => choice.status === 'success' && choice.previewUrl)
+    )
+      result.state = 'NEEDS_SELECTION';
+    return result;
+  }
+  if (view.session.status === -1 || errorType || round?.status === 'failed') {
     throw new CliError('BUSINESS_ERROR', '创作任务执行失败', {
       sessionId: result.sessionId,
       messageId: result.messageId,
-      errorType: view.session.errorType,
+      errorType,
+      retryMessageId: retryableMainMessage(view),
+      creditSource: 'execution',
       ...(result.interactions.length ? { interactions: result.interactions } : {}),
     });
   }
@@ -68,17 +94,7 @@ export function resolveState(
       : 'NEEDS_INPUT';
     return result;
   }
-  if (waitingForStyles) {
-    if (styleTarget && currentChoices.length !== styleTarget.choiceIds.length) return result;
-    const state = styleBatchState(currentChoices);
-    if (state === 'FAILED')
-      throw new CliError('BUSINESS_ERROR', '本批风格均生成失败', {
-        sessionId: result.sessionId,
-        choices: currentChoices,
-      });
-    result.state = state;
-    return result;
-  }
+  if (waitingForStyles) return result;
   if (hasPendingCreationWork(view)) return result;
   if (view.session.status === 4)
     throw new CliError('UNSUPPORTED_INTERACTION', '会话正在等待当前 CLI 未识别的交互', {

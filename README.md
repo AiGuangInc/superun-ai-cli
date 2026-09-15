@@ -70,46 +70,53 @@ superun-ai chat style generate --help
 
 ## 命令树
 
+本节供开发者和接入 Agent 查阅，不作为面向用户的操作菜单。`nextActions.command` / `input` 由 Agent 内部执行；用户只看到当前状态、最终结果及必要问题。选定风格后的演示衔接、版本保留、进入研发和初始规划确认静默完成，不逐步展示或确认；欠费、执行错误和真实业务问题仍须展示。
+
 下面列出完整命令层级、位置参数和用途。`<...>` 表示需要替换的必填位置参数；选项参数及其要求可通过各命令的 `--help` 查看。
 
 ```text
 superun-ai
-├── auth                                         # 管理 PAT 登录
-│   ├── login                                    # 登录 Superun 并保存 PAT
-│   ├── status                                   # 查看本地 PAT 配置状态
-│   └── logout                                   # 清除本地 PAT
-├── session                                      # 查询项目
-│   ├── list                                     # 查询项目列表
-│   └── get <sessionId>                          # 查询项目详情
-├── chat                                         # 对话创作
-│   ├── create                                   # 新建项目并发送需求
-│   ├── send <sessionId>                         # 继续项目创作
-│   ├── test <sessionId>                         # 自动测试已有功能并修复确认的问题
-│   ├── review <sessionId>                       # 审查已有代码并修复确认的问题
-│   ├── state <sessionId>                        # 查询当前任务和交互
-│   ├── wait <sessionId>                         # 等待当前交互或任务结果
-│   ├── stop <sessionId>                         # 停止远端任务
-│   ├── style                                    # 管理创作风格
-│   │   ├── generate <sessionId>                 # 生成风格候选
-│   │   ├── list <sessionId>                     # 查询全部风格批次
-│   │   └── select <sessionId> <choiceId>        # 选择风格并自动生成研发规划
-│   ├── demo <sessionId>                         # 查看演示快照并记录已查看状态
-│   ├── develop <sessionId>                      # 保留演示，进入研发并生成规划
-│   ├── interaction                              # 回答或跳过交互
-│   │   ├── reply <sessionId> <interactionId>    # 提交回答
-│   │   └── skip <sessionId> <interactionId>     # 跳过当前交互
-│   ├── plugin                                   # 查询、启用和禁用插件
-│   │   ├── list <sessionId>                     # 查询可用插件
-│   │   ├── status <sessionId> <pluginId>        # 查询插件状态
-│   │   ├── enable <sessionId> <pluginId>        # 启用插件
-│   │   └── disable <sessionId> <pluginId>       # 禁用插件
-│   └── publish                                  # 发布应用和管理站点状态
-│       ├── status <sessionId>                   # 查询发布版本与部署进度
-│       ├── start <sessionId> <encryptedId>      # 发布指定版本
-│       └── visibility <sessionId> <visibility>  # 设置站点上线或下线状态
-├── update                                       # 检查并安装指定版本
-└── version                                      # 显示本地版本与输出协议版本
+├── auth                                                          # 管理 PAT 登录
+│   ├── login                                                     # 登录 Superun 并保存 PAT
+│   ├── status                                                    # 查看本地 PAT 配置状态
+│   └── logout                                                    # 清除本地 PAT
+├── session                                                       # 查询项目
+│   ├── list                                                      # 查询项目列表
+│   └── get <sessionId>                                           # 查询项目详情
+├── chat                                                          # 对话创作
+│   ├── create                                                    # 新建项目并发送需求
+│   ├── send <sessionId>                                          # 继续项目创作
+│   ├── test <sessionId>                                          # 自动测试指定功能，告知发现的问题后自动修复；默认测试刚才完成的功能
+│   ├── review <sessionId>                                        # 代码审查，告知发现的问题后自动修复；默认审查刚才改动的代码
+│   ├── state <sessionId>                                         # 查询当前任务和交互
+│   ├── wait <sessionId>                                          # 等待当前交互或任务结果，期间持续展示任务进度
+│   ├── stop <sessionId>                                          # 停止远端任务
+│   ├── retry <sessionId> <messageId>                             # 充值或处理异常后重试原失败任务
+│   ├── style                                                     # 管理创作风格
+│   │   ├── generate <sessionId>                                  # 生成风格候选
+│   │   ├── list <sessionId>                                      # 查询全部风格批次
+│   │   ├── append <sessionId>                                    # 再设计一版，每版预计消耗 50～100 算力值，按实际用量扣费
+│   │   ├── retry <sessionId> <choiceId>                          # 重试失败的原方案任务
+│   │   └── select <sessionId> <choiceId>                         # 选择风格并展示开发功能清单
+│   ├── demo <sessionId>                                          # 查看演示快照并记录已查看状态
+│   ├── develop <sessionId>                                       # 保留演示，进入研发并生成规划
+│   ├── interaction                                               # 回答或跳过交互
+│   │   ├── reply <sessionId> <interactionId>                     # 提交回答
+│   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互
+│   ├── plugin                                                    # 查询、启用和禁用插件
+│   │   ├── list <sessionId>                                      # 查询可用插件
+│   │   ├── status <sessionId> <pluginId>                         # 查询插件状态
+│   │   ├── enable <sessionId> <pluginId>                         # 启用插件
+│   │   └── disable <sessionId> <pluginId>                        # 禁用插件
+│   └── publish                                                   # 发布应用和管理站点状态
+│       ├── status <sessionId>                                    # 查询发布版本与部署进度
+│       ├── start <sessionId> <encryptedId>                       # 发布指定版本
+│       └── visibility <sessionId> <visibility>                   # 设置站点上线或下线状态
+├── update                                                        # 检查并将本机 CLI 更新到最新版本
+└── version                                                       # 显示本地版本与输出协议版本
 ```
+
+命令树以源码注册为准。新增或调整命令后执行 `npm run docs:sync` 同步中英文命令树；`npm run docs:check` 校验完整性。发包前的 `prepack` 同样执行校验，发现遗漏或过期参数时停止发包准备。
 
 ## PAT 登录
 
@@ -317,14 +324,34 @@ superun-ai chat send <sessionId> --review-followup <sourceMessageId> --message "
 
 不增加“暂不需要”步骤。用户明确要求“审查完再自动测试”时，在审查及修复有效完成且无遗留问题后沿用已有授权衔接，否则等待用户选择。选择自动测试后沿用自动测试的结果规则；选择上线运营后沿用现有发布流程。当前审查流程不会在修复后自动重复审查同一范围。
 
+## 余额不足与充值后重试
+
+创建请求或对话执行中余额不足时，CLI 返回充值引导：前往 [superun.ai](https://superun.ai) 充值，完成后回复“重试”。用户确认前不自动重试，也不展示继续创作或上线运营菜单。
+
+- 请求直接被拒绝：宿主保留原命令与输入，充值后重新执行原操作；没有失败任务 ID 时不调用任务重试。
+- 执行中失败：使用返回的 `RECHARGE_AND_RETRY` 命令 `chat retry <sessionId> <messageId>`，先调用 Glow 同源的余额校验，再通过 `AgentCommand/retry` 重试真实主链异常消息。已完成、运行中或过期消息不会被重试；风格分支继续使用 `chat style retry`。
+- 项目所有者余额不足时联系所有者充值；团队余额不足时为对应团队充值；成员月度/总额度不足时联系管理员调整额度，不能用个人充值代替。
+
+```bash
+superun-ai chat retry <sessionId> <messageId>
+superun-ai chat retry <sessionId> <messageId> --no-wait
+superun-ai chat retry <sessionId> <messageId> --timeout 120
+```
+
+`messageId` 使用欠费结果中 `nextActions.command` 指定的真实失败消息 ID，不使用用户消息 ID、风格 `choiceId` 或自行猜测的 ID。默认等待重试结果；`--no-wait` 在重试请求被接受后返回，后续按返回的引导查询进度。
+
 ## 风格、插件和发布
 
 交互、风格、插件和发布均归属对话创作，统一使用 `chat interaction`、`chat style`、`chat plugin` 和 `chat publish`，不提供对应顶层入口。
 
 ```bash
-superun-ai chat style generate <sessionId> --content "生成简洁的品牌风格" --count 2
+superun-ai chat style generate <sessionId> --content "生成简洁的品牌风格"
 superun-ai chat style list <sessionId>
+superun-ai chat style append <sessionId> --anchor <branchAnchor>
+superun-ai chat style retry <sessionId> <choiceId>
 superun-ai chat style select <sessionId> <choiceId>
+superun-ai chat demo <sessionId>
+superun-ai chat develop <sessionId>
 
 superun-ai chat plugin list <sessionId>
 superun-ai chat plugin status <sessionId> <pluginId>
@@ -337,9 +364,9 @@ superun-ai chat publish visibility <sessionId> public
 superun-ai chat publish visibility <sessionId> private
 ```
 
-风格默认生成 2 个，支持 1～4 个；使用查询结果中的 `choiceId`。发布使用查询结果中的 `encryptedId`，按目标版本跟踪部署状态。插件 ID 以 `chat plugin list` 返回值为准。
+首次固定生成 1 个方案，不再支持 `--count` 或问卷 `styleCount`。用户选择“再设计一版”后，通过 `chat style append <sessionId> --anchor <branchAnchor>` 每次基于已有需求追加 1 个，不接受额外要求或参考文件。失败方案使用 `chat style retry <sessionId> <choiceId>` 重试原任务。选择使用查询结果中的 `choiceId`。发布使用查询结果中的 `encryptedId`，按目标版本跟踪部署状态。插件 ID 以 `chat plugin list` 返回值为准。
 
-风格等待会在单个方案成功且预览页面就绪时提前返回进度，整批状态仍为 `RUNNING`。候选通过 `previewUrl` 返回与 Glow 分支预览相同的可交互页面，不返回截图链接，也不等待截图生成。调用方应立即提示该方案及页面链接，再按 `QUERY_STYLES` 继续查询剩余方案，例如“方案 B 已生成，继续等待方案 A”。方案 A/B/C/D 固定对应原始 `index` 0/1/2/3，同一 `choiceId` 只提示一次；全部结束后再等待用户选择。
+风格等待会在单个方案成功且预览页面就绪时提前返回进度，整批状态仍为 `RUNNING`。结果的 `styleGeneration.notice` 为实际状态对应的展示文案，`nextActions` 提供采用、追加和重试命令；`choices` 保留同一轮全部方案，不能只展示最新批次。候选通过 `previewUrl` 返回与 Glow 分支预览相同的可交互页面，不返回截图链接，也不等待截图生成。调用方应立即提示该方案及页面链接，再按 `QUERY_STYLES` 继续查询剩余方案，例如“方案 B 已生成，继续等待方案 A”。方案 A/B/C/D 固定对应原始 `index` 0/1/2/3，同一 `choiceId` 只提示一次；已有可用方案时用户可以提前选择；追加生成不会隐藏旧方案。
 
 研发完成后的“查看预览”使用 `development.previewUrl`，返回与 Glow 研发主线一致的稳定地址 `https://id--<sessionId>.<托管域名>`，随主线构建结果更新。研发主线不再查找或等待快照；风格候选和独立演示版本继续使用各自的快照页面。上线运营返回正式发布域名。
 

@@ -1,14 +1,10 @@
 /** 根据当前结果提供操作引导，不替用户作答或执行操作。@author xiuyu.yi */
+import { styleNextActions } from './style-guidance.js';
 import { COMMAND_NAME } from '../config/constants.js';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import type { CreationResult, InteractionKind, NextAction } from '../contracts/cli-output.js';
 import { AUTO_TEST_RESULT_INSTRUCTION } from './auto-test.js';
 import { CODE_REVIEW_RESULT_INSTRUCTION } from './code-review.js';
-import {
-  latestStyleChoices,
-  readyStyleChoices,
-  styleChoiceLabel,
-} from '../interactions/parsers/style-selection.js';
 
 export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
   Partial<
@@ -21,6 +17,7 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
       | 'demo'
       | 'development'
       | 'stylePlanning'
+      | 'styleGeneration'
       | 'taskProgress'
       | 'toolUsage'
       | 'autoTest'
@@ -82,15 +79,19 @@ export function buildNextActions(
 ): Array<NextAction> {
   const completed = hasCompletedCreationResult(result);
   return nextActionsForState(result, config).map((action) => {
-    const progressInstruction = result.codeReview
-      ? CODE_REVIEW_RESULT_INSTRUCTION
-      : result.autoTest
-        ? AUTO_TEST_RESULT_INSTRUCTION
-        : completed
-          ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
-          : result.taskProgress
-            ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
-            : '';
+    const silentPlanning =
+      result.stylePlanning && (!result.interactions?.length || pendingStylePlanApproval(result));
+    const progressInstruction = silentPlanning
+      ? '只展示一次“已采用所选方案，正在整理开发功能清单”（使用实际方案编号），随后静默等待结果；不展示 taskProgress 进度卡、内部步骤或中间演示和规划正文。每 5 分钟的任务提醒照常展示。'
+      : result.codeReview
+        ? CODE_REVIEW_RESULT_INSTRUCTION
+        : result.autoTest
+          ? AUTO_TEST_RESULT_INSTRUCTION
+          : completed
+            ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
+            : result.taskProgress
+              ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
+              : '';
     const waitInstruction = action.requiresUserInput
       ? result.codeReview
         ? '后续动作需要用户明确授权；若用户已明确要求审查后接着测试，满足当前结果条件后沿用该授权，无需重复确认。否则等待用户选择，不自动修复未确认的业务规则或发布。'
@@ -99,6 +100,7 @@ export function buildNextActions(
     return {
       ...action,
       instruction: [
+        'command、input 和动作标识供接入 Agent 内部执行，不是用户菜单，不逐项向用户解释或要求用户执行 Shell。只展示面向用户的状态、结果和需要回答的选项；用户主动询问命令或技术细节时再解释。已授权的内部衔接步骤静默执行，不增加确认；实际业务问题、错误和充值引导必须展示。',
         progressInstruction,
         action.instruction,
         waitInstruction,
@@ -120,6 +122,8 @@ function nextActionsForState(
 ): Array<NextAction> {
   // 显式保留连接地址，避免调用方执行下一步时切回默认环境；凭据不进入命令。
   const command = [COMMAND_NAME, '--endpoint', config.endpoint, '--locale', config.locale, 'chat'];
+  const styleActions = styleNextActions(result, command);
+  if (styleActions) return styleActions;
   const progressRevision = result.taskProgress?.revision ?? result.cursor?.progressRevision;
   const progressOptions = progressRevision ? ['--progress-revision', progressRevision] : [];
   if ((result.autoTest || result.codeReview) && !result.interactions?.length) {
@@ -219,21 +223,6 @@ function nextActionsForState(
       return nextActions;
     }
   }
-  if (result.state === 'NEEDS_SELECTION') {
-    if (latestStyleChoices(result.choices ?? []).some((choice) => choice.selected)) return [];
-    return latestStyleChoices(result.choices ?? []).flatMap((choice): Array<NextAction> => {
-      if (choice.selected || choice.status !== 'success' || !choice.previewUrl || choice.errorType) return [];
-      return [
-        {
-          action: 'SELECT_STYLE',
-          instruction: `请按原始 index 对应的 A/B/C/D 展示本批方案及 previewUrl 可点击页面链接，不展示截图或截图 URL，说明选定风格后会直接展示开发功能清单；仅在用户选择${styleChoiceLabel(choice)}（风格 ${choice.index + 1}）后执行此命令。CLI 会静默完成演示衔接、生成并确认研发规划，然后展示开发功能清单供用户选择；不增加查看演示、开始研发或确认规划的提问，不自动选择开发功能。`,
-          requiresUserInput: true,
-          choiceId: choice.choiceId,
-          command: [...command, 'style', 'select', '--', result.sessionId, choice.choiceId],
-        },
-      ];
-    });
-  }
   if (result.state === 'COMPLETED' && (result.demo || result.development?.stage === 'READY')) {
     if (result.demo?.viewed || result.development?.stage === 'READY') {
       const previewInstruction = result.demo
@@ -272,32 +261,19 @@ function nextActionsForState(
     return developmentActions(result, command);
   }
   if (['ACCEPTED', 'RUNNING', 'QUEUED'].includes(result.state)) {
-    const anchor = result.cursor?.branchAnchor;
-    const styles = latestStyleChoices(result.choices ?? []);
-    const ready = readyStyleChoices(styles).sort((left, right) => left.index - right.index);
-    const pending = styles
-      .filter((choice) => choice.status === 'running' || (choice.status === 'success' && !choice.previewUrl))
-      .sort((left, right) => left.index - right.index);
-    const styleProgress = ready.length
-      ? `已生成${ready.map(styleChoiceLabel).join('、')}。${pending.length ? `继续等待${pending.map(styleChoiceLabel).join('、')}。` : ''}`
-      : '风格仍在生成。';
     return [
       {
-        action: anchor ? 'QUERY_STYLES' : 'WAIT',
-        instruction: anchor
-          ? `${styleProgress} 请立即提示本次新完成的方案，并展示对应 previewUrl 的可点击页面链接，不展示截图或截图 URL，不要等整批完成后才提示。按原始 index 固定对应 A/B/C/D，以 choiceId 区分候选，同一候选已提示过就不重复提示；没有新完成方案时继续等待。继续查询本批剩余候选，全部结束后再展示本批结果并等待用户选择，不自动选中已完成方案，不重复生成。`
-          : '任务尚未结束，继续等待下一步问题或结果；不要重复提交。',
+        action: 'WAIT',
+        instruction: '任务尚未结束，继续等待下一步问题或结果；不要重复提交。',
         requiresUserInput: false,
-        command: anchor
-          ? [...command, 'style', 'list', '--anchor', anchor, ...progressOptions, '--', result.sessionId]
-          : [
-              ...command,
-              'wait',
-              ...progressOptions,
-              ...(result.messageId ? ['--message-id', result.messageId] : []),
-              '--',
-              result.sessionId,
-            ],
+        command: [
+          ...command,
+          'wait',
+          ...progressOptions,
+          ...(result.messageId ? ['--message-id', result.messageId] : []),
+          '--',
+          result.sessionId,
+        ],
       },
     ];
   }

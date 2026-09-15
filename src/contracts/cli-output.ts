@@ -43,6 +43,8 @@ export type Interaction = {
 };
 export type Choice = {
   choiceId: string;
+  messageId?: string;
+  tokenFree?: boolean;
   batchVersion?: number;
   index: number;
   preReplyMessageId: string;
@@ -150,6 +152,8 @@ export type CreationResult = {
   toolUsage?: { toolCount?: number; complete: boolean; markdown: string };
   interactions: Array<Interaction>;
   choices?: Array<Choice>;
+  /** 当前等待的批次与同轮全部方案分开，追加不会隐藏旧方案。 */
+  styleGeneration?: { choiceIds: Array<string>; phase: 'initial' | 'append' | 'retry'; notice?: string };
   /** 用户选定风格后，静默完成演示、规划及确认，直到返回开发功能清单。 */
   stylePlanning?: { choiceId: string };
   demo?: DemoPreview;
