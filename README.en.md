@@ -85,6 +85,7 @@ superun-ai
 │   ├── state <sessionId>                        # Inspect the task and interactions
 │   ├── wait <sessionId>                         # Wait for input or a task result
 │   ├── stop <sessionId>                         # Stop the remote task
+│   ├── retry <sessionId> <messageId>            # Retry the original failed task after recharging
 │   ├── style                                    # Manage creative styles
 │   │   ├── generate <sessionId>                 # Generate style candidates
 │   │   ├── list <sessionId>                     # List style batches
@@ -195,6 +196,22 @@ For secret input, submit `{"values":{"requested-key":"secret-value"}}` with only
 
 `chat interaction reply --no-wait` controls waiting for subsequent creation after the reply has been processed. Some plugin configuration steps must finish in the foreground before submitting their interaction result; this option does not skip those steps. After an interruption, check the plugin and conversation states first.
 
+## Insufficient credits and retrying
+
+When a request or running task fails because of insufficient credits, open [superun.ai](https://superun.ai) to recharge, then reply “Retry”. The CLI does not retry automatically while waiting for the user.
+
+- A rejected request: repeat the original operation with its original input after recharging; do not retry an earlier completed message.
+- A failed running task: use the returned `RECHARGE_AND_RETRY` command. It checks the balance and calls Glow's existing retry API for the current failed message. Completed, running, or stale messages are rejected.
+- Owner or team balance failures require funding the corresponding account. Member monthly/total quota failures require an administrator to adjust the quota.
+
+```bash
+superun-ai chat retry <sessionId> <messageId>
+superun-ai chat retry <sessionId> <messageId> --no-wait
+superun-ai chat retry <sessionId> <messageId> --timeout 120
+```
+
+Use the actual failed agent message ID from `nextActions.command`, not a user message ID or a style `choiceId`. Retry waits for the result by default. With `--no-wait`, follow the returned guidance to check progress after the request is accepted. Failed style candidates use `chat style retry <sessionId> <choiceId>` instead.
+
 ## Styles, plugins, and publishing
 
 Interactions, styles, plugins, and publishing belong under `chat`. Use `chat interaction`, `chat style`, `chat plugin`, and `chat publish`; they are not top-level commands.
@@ -202,6 +219,8 @@ Interactions, styles, plugins, and publishing belong under `chat`. Use `chat int
 ```bash
 superun-ai chat style generate <sessionId> --content "Create a clean brand style"
 superun-ai chat style list <sessionId>
+superun-ai chat style append <sessionId> --anchor <branchAnchor>
+superun-ai chat style retry <sessionId> <choiceId>
 superun-ai chat style select <sessionId> <choiceId>
 
 superun-ai chat plugin list <sessionId>

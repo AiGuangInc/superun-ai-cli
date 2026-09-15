@@ -89,6 +89,7 @@ superun-ai
 │   ├── state <sessionId>                        # 查询当前任务和交互
 │   ├── wait <sessionId>                         # 等待当前交互或任务结果
 │   ├── stop <sessionId>                         # 停止远端任务
+│   ├── retry <sessionId> <messageId>            # 充值或处理异常后重试原失败任务
 │   ├── style                                    # 管理创作风格
 │   │   ├── generate <sessionId>                 # 生成风格候选
 │   │   ├── list <sessionId>                     # 查询全部风格批次
@@ -327,6 +328,14 @@ superun-ai chat send <sessionId> --review-followup <sourceMessageId> --message "
 - 执行中失败：使用返回的 `RECHARGE_AND_RETRY` 命令 `chat retry <sessionId> <messageId>`，先调用 Glow 同源的余额校验，再通过 `AgentCommand/retry` 重试真实主链异常消息。已完成、运行中或过期消息不会被重试；风格分支继续使用 `chat style retry`。
 - 项目所有者余额不足时联系所有者充值；团队余额不足时为对应团队充值；成员月度/总额度不足时联系管理员调整额度，不能用个人充值代替。
 
+```bash
+superun-ai chat retry <sessionId> <messageId>
+superun-ai chat retry <sessionId> <messageId> --no-wait
+superun-ai chat retry <sessionId> <messageId> --timeout 120
+```
+
+`messageId` 使用欠费结果中 `nextActions.command` 指定的真实失败消息 ID，不使用用户消息 ID、风格 `choiceId` 或自行猜测的 ID。默认等待重试结果；`--no-wait` 在重试请求被接受后返回，后续按返回的引导查询进度。
+
 ## 风格、插件和发布
 
 交互、风格、插件和发布均归属对话创作，统一使用 `chat interaction`、`chat style`、`chat plugin` 和 `chat publish`，不提供对应顶层入口。
@@ -334,6 +343,8 @@ superun-ai chat send <sessionId> --review-followup <sourceMessageId> --message "
 ```bash
 superun-ai chat style generate <sessionId> --content "生成简洁的品牌风格"
 superun-ai chat style list <sessionId>
+superun-ai chat style append <sessionId> --anchor <branchAnchor>
+superun-ai chat style retry <sessionId> <choiceId>
 superun-ai chat style select <sessionId> <choiceId>
 
 superun-ai chat plugin list <sessionId>
