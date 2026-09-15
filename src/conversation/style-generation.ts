@@ -5,6 +5,7 @@ import { list, object, text } from '../contracts/value.js';
 import type { JsonObject } from '../contracts/value.js';
 import { CliError } from '../output/exit-codes.js';
 import { currentRound } from './round-selector.js';
+import { creditCode } from './insufficient-credits.js';
 import {
   isStyleSelected,
   projectChoices,
@@ -190,7 +191,8 @@ export async function retryStyle(
   if (!choice || choice.status !== 'failed' || !choice.messageId)
     throw new CliError('INVALID_ARGUMENT', '只能重试本轮有原始任务 ID 的失败方案，请重新查询方案');
   try {
-    await runtime.command.retryStyle(sessionId, choice.messageId, choice.replyMessageId);
+    if (creditCode(choice.errorType)) await runtime.command.checkBalance(sessionId);
+    await runtime.command.retry(sessionId, choice.messageId, choice.replyMessageId);
   } catch (error) {
     throw styleRequestError(error, sessionId, anchor, choices);
   }

@@ -8,6 +8,7 @@ import { registerReview } from './review.js';
 import { registerState } from './state.js';
 import { registerWait } from './wait.js';
 import { registerStop } from './stop.js';
+import { registerRetry } from './retry.js';
 import { registerStyle } from './style.js';
 import { registerDemo } from './demo.js';
 import { registerDevelop } from './develop.js';
@@ -24,6 +25,7 @@ export function registerChat(program: Command, context: CommandContext): void {
   registerState(chat, context);
   registerWait(chat, context);
   registerStop(chat, context);
+  registerRetry(chat, context);
   registerStyle(chat, context);
   registerDemo(chat, context);
   registerDevelop(chat, context);

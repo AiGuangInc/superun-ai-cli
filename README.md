@@ -319,6 +319,14 @@ superun-ai chat send <sessionId> --review-followup <sourceMessageId> --message "
 
 不增加“暂不需要”步骤。用户明确要求“审查完再自动测试”时，在审查及修复有效完成且无遗留问题后沿用已有授权衔接，否则等待用户选择。选择自动测试后沿用自动测试的结果规则；选择上线运营后沿用现有发布流程。当前审查流程不会在修复后自动重复审查同一范围。
 
+## 余额不足与充值后重试
+
+创建请求或对话执行中余额不足时，CLI 返回充值引导：前往 [superun.ai](https://superun.ai) 充值，完成后回复“重试”。用户确认前不自动重试，也不展示继续创作或上线运营菜单。
+
+- 请求直接被拒绝：宿主保留原命令与输入，充值后重新执行原操作；没有失败任务 ID 时不调用任务重试。
+- 执行中失败：使用返回的 `RECHARGE_AND_RETRY` 命令 `chat retry <sessionId> <messageId>`，先调用 Glow 同源的余额校验，再通过 `AgentCommand/retry` 重试真实主链异常消息。已完成、运行中或过期消息不会被重试；风格分支继续使用 `chat style retry`。
+- 项目所有者余额不足时联系所有者充值；团队余额不足时为对应团队充值；成员月度/总额度不足时联系管理员调整额度，不能用个人充值代替。
+
 ## 风格、插件和发布
 
 交互、风格、插件和发布均归属对话创作，统一使用 `chat interaction`、`chat style`、`chat plugin` 和 `chat publish`，不提供对应顶层入口。

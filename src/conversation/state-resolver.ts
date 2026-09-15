@@ -6,6 +6,7 @@ import { currentRound, roundMessage } from './round-selector.js';
 import { projectText } from './text-projector.js';
 import { pendingAutomaticTools, hasServerAutomaticWork } from '../auto-tools/registry.js';
 import { CliError } from '../output/exit-codes.js';
+import { retryableMainMessage } from './insufficient-credits.js';
 import {
   isStyleSelected,
   latestStyleChoices,
@@ -32,6 +33,7 @@ export function resolveState(
 ): CreationResult {
   const round = currentRound(view),
     message = roundMessage(view, round);
+  const errorType = view.session.errorType ?? message?.sessionErrorType;
   const waitingForStyles = !!styleTarget || (!!view.session.pendingBranch && !isStyleSelected(view, choices));
   const currentChoices = styleTarget
     ? choices.filter((choice) => styleTarget.choiceIds.includes(choice.choiceId))
@@ -76,11 +78,13 @@ export function resolveState(
       result.state = 'NEEDS_SELECTION';
     return result;
   }
-  if (view.session.status === -1 || view.session.errorType || round?.status === 'failed') {
+  if (view.session.status === -1 || errorType || round?.status === 'failed') {
     throw new CliError('BUSINESS_ERROR', '创作任务执行失败', {
       sessionId: result.sessionId,
       messageId: result.messageId,
-      errorType: view.session.errorType,
+      errorType,
+      retryMessageId: retryableMainMessage(view),
+      creditSource: 'execution',
       ...(result.interactions.length ? { interactions: result.interactions } : {}),
     });
   }

@@ -12,6 +12,7 @@ import { CreationRuntime } from '../runtime.js';
 import type { OutputWriter } from '../output/writer.js';
 import { CliError } from '../output/exit-codes.js';
 import { object, text } from '../contracts/value.js';
+import { creditCode } from '../conversation/insufficient-credits.js';
 import type { JsonObject } from '../contracts/value.js';
 
 export type CommandContext = {
@@ -121,6 +122,13 @@ export async function businessWrite(
   try {
     return await action();
   } catch (error) {
+    if (error instanceof CliError && creditCode(error.details.businessCode))
+      throw new CliError(error.code, error.message, {
+        ...error.details,
+        sessionId,
+        endpoint: service.client.config.endpoint,
+        locale: service.client.config.locale,
+      });
     if (error instanceof CliError && error.code === 'OUTCOME_UNKNOWN' && sessionId) {
       let observedState: unknown;
       try {

@@ -3,6 +3,7 @@ import { SCHEMA_VERSION } from '../config/constants.js';
 import type { CreationResult } from '../contracts/cli-output.js';
 import { CliError, EXIT_CODES } from './exit-codes.js';
 import { TaskReminder } from './task-reminder.js';
+import { creditFailureDetails } from '../conversation/insufficient-credits.js';
 
 const SENSITIVE_KEY =
   /^(?:pat|token|access[-_]?token|private[-_]?token|gatewayToken|authorization|password|secret|secrets|secretValues|apiKey|api_key|rowKey|authToken)$/i;
@@ -108,6 +109,7 @@ export class OutputWriter {
       ok: false,
       error: {
         ...failure.details,
+        ...creditFailureDetails(failure.details),
         code: failure.code,
         message: failure.message,
       },

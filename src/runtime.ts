@@ -53,6 +53,7 @@ import { codeReviewContext, CODE_REVIEW_SPEC } from './conversation/code-review.
 import { readCheckQuestionContext } from './conversation/check-question-context.js';
 import { checkContextFromExtra, reportReference } from './conversation/check-context.js';
 import { styleResultNotice } from './conversation/style-guidance.js';
+import { creditCode, throwCreditResult } from './conversation/insufficient-credits.js';
 import { stylePlanningChoice } from './conversation/style-planning.js';
 import { generateInitialStyles, appendStyle, retryStyle } from './conversation/style-generation.js';
 
@@ -169,7 +170,12 @@ export class CreationRuntime {
         styleTarget,
       );
     } catch (error) {
-      if (check && error instanceof CliError && error.code === 'BUSINESS_ERROR') {
+      if (
+        check &&
+        error instanceof CliError &&
+        error.code === 'BUSINESS_ERROR' &&
+        !creditCode(error.details.errorType)
+      ) {
         result = {
           state: 'FAILED',
           sessionId: view.session.sessionId,
@@ -185,6 +191,8 @@ export class CreationRuntime {
         throw new CliError(error.code, error.message, {
           ...error.details,
           taskProgress,
+          endpoint: this.client.config.endpoint,
+          locale: this.client.config.locale,
           ...(planningChoiceId
             ? {
                 instruction: `风格已选定，开发功能清单暂未整理完成：${error.message}。处理失败原因后回复“继续整理”，保留已选风格，通过 chat send 提交“继续整理开发功能清单”并等待结果，不重新生成或重复选择风格。`,
@@ -410,6 +418,7 @@ export class CreationRuntime {
     return this.withGuidance(await this.inspect(await this.load(sessionId)));
   }
   withGuidance<T extends GuidanceResult>(result: T) {
+    throwCreditResult(result, this.client.config);
     if (result.styleGeneration)
       result = {
         ...result,
