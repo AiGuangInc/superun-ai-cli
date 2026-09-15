@@ -255,7 +255,7 @@ superun-ai chat publish visibility <sessionId> public
 superun-ai chat publish visibility <sessionId> private
 ```
 
-首次固定生成一个方案，已移除 `--count` / `styleCount`；`chat style append <sessionId> --anchor <branchAnchor>` 每次基于已有需求追加一版，不接受额外要求或参考文件。`chat style retry <sessionId> <choiceId>` 重试原失败任务。展示 `styleGeneration.notice`，按 `nextActions` 引导用户采用已有方案或再设计一版；费用以服务端实际结果为准。 Use the returned `choiceId` to select a style. Publishing uses the returned `encryptedId` and tracks the selected version's deployment. Plugin IDs come from `chat plugin list`.
+首次固定生成一个方案，已移除 `--count` / `styleCount`；`chat style append <sessionId> --anchor <branchAnchor>` 每次基于已有需求追加一版，不接受额外要求或参考文件。`chat style retry <sessionId> <choiceId>` 重试原失败任务。展示 `styleGeneration.notice`，按 `nextActions` 引导用户采用已有方案或委托高级设计师再设计一版方案；费用以服务端实际结果为准。 Use the returned `choiceId` to select a style. Publishing uses the returned `encryptedId` and tracks the selected version's deployment. Plugin IDs come from `chat plugin list`.
 
 Style waiting returns progress as soon as one candidate succeeds and its preview page is ready, while the batch remains `RUNNING`. Each candidate exposes `previewUrl`, the same interactive page used by Glow's branch preview. Screenshot URLs are not returned, and screenshot generation does not delay readiness. Show that candidate and its page link immediately, then follow `QUERY_STYLES` to keep checking the remaining candidates. For example: “Style B is ready; waiting for style A.” Labels A/B/C/D correspond to the original `index` 0/1/2/3, regardless of completion order. Announce each `choiceId` only once and wait for the user's selection after the batch finishes.
 

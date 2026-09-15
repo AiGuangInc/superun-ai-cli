@@ -97,7 +97,7 @@ export function styleNextActions(
     actions.push({
       action: 'APPEND_STYLE',
       requiresUserInput: true,
-      instruction: `${prefix} 用户选择“再设计一版”后直接执行，不重复确认费用；若用户此前没看到费用说明，先展示该选项并等待确认。直接基于本轮已有需求生成，每次只追加一个方案，不引导填写调整要求或上传参考文件。`,
+      instruction: `${prefix} 用户选择“委托高级设计师再设计一版方案”后直接执行，不重复确认费用；若用户此前没看到费用说明，先展示该选项并等待确认。直接基于本轮已有需求生成，每次只追加一个方案，不引导填写调整要求或上传参考文件。`,
       command: [...command, 'style', 'append', '--anchor', anchor, '--', result.sessionId],
     });
   return actions;

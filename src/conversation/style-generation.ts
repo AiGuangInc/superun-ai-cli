@@ -15,7 +15,7 @@ import {
 } from '../interactions/parsers/style-selection.js';
 
 export const APPEND_STYLE_OPTION =
-  '**再设计一版**：委托高级设计师生成更多方案，预计消耗 **50～100 算力值**，按实际用量扣费。';
+  '**委托高级设计师再设计一版方案**：预计消耗 **50～100 算力值**，按实际用量扣费。';
 export const APPEND_STYLE_NOTICE =
   '高级设计师已接受委托，正在根据你的需求定制一版新方案，完成后按实际用量扣费（预计 50–100 算力值），这可能需要一些时间。';
 
@@ -61,9 +61,13 @@ export async function generateInitialStyles(
   if (!preReplyMessageId) throw new CliError('INVALID_ARGUMENT', '未找到需求轮次，请先完成需求问卷');
   const existing = await runtime.choices(sessionId, preReplyMessageId, view);
   if (existing.length || isStyleSelected(view))
-    throw new CliError('STALE_INTERACTION', '本轮已有方案，请查询后选择、重试或再设计一版，勿重复首次生成', {
-      sessionId,
-    });
+    throw new CliError(
+      'STALE_INTERACTION',
+      '本轮已有方案，请查询后选择、重试或委托高级设计师再设计一版方案，勿重复首次生成',
+      {
+        sessionId,
+      },
+    );
   const response = await runtime.command.parallel({
     sessionId,
     preReplyMessageId,
@@ -101,10 +105,10 @@ export async function appendStyle(
   const raw = await runtime.query.parallel(sessionId, anchor, true);
   const choices = projectChoices(raw, anchor, runtime.client.config.endpoint);
   if (!choices.length || choices.some((choice) => choice.selected || choice.status === 'running'))
-    throw new CliError('INVALID_ARGUMENT', '请先等待当前方案生成结束，再设计一版');
+    throw new CliError('INVALID_ARGUMENT', '请先等待当前方案生成结束，委托高级设计师再设计一版方案');
   const content = initialStyleContent(raw);
   const index = Math.max(1, ...choices.map((choice) => choice.index + 1));
-  // 查询失败与 Glow 一样按付费入口处理；用户已通过含费用说明的“再设计一版”授权。
+  // 查询失败与 Glow 一样按付费入口处理；用户已通过含费用说明的“委托高级设计师再设计一版方案”授权。
   let expectFree = false;
   try {
     expectFree = (await runtime.query.designerFreeRemaining(sessionId)) > 0;
@@ -166,7 +170,7 @@ export function styleRequestError(
     ? `首次免费额度已使用，本次没有创建新方案。\n\n${APPEND_STYLE_OPTION}\n${existingStyleLinks(choices)}\n也可以回复“采用 A”（使用实际已有方案编号）。等待用户选择，不自动转付费。`
     : error.code === 'OUTCOME_UNKNOWN'
       ? '暂时无法确认本次请求是否成功，请查看进度或去 superun.ai 查看详情，确认前不要重复生成。'
-      : `本次方案生成未开始：${error.message}。请按实际错误处理后回复“再设计一版”，也可以采用已有方案。`;
+      : `本次方案生成未开始：${error.message}。请按实际错误处理后回复“委托高级设计师再设计一版方案”，也可以采用已有方案。`;
   return new CliError(error.code, freeExpired ? '首次免费额度已使用，本次没有创建新方案' : error.message, {
     ...error.details,
     sessionId,
