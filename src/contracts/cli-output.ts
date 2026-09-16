@@ -35,6 +35,7 @@ export type Question = {
   recommendedIndices?: Array<number>;
 };
 export type Interaction = {
+  view?: import('./interaction-view.js').InteractionView;
   page?: { id: string; revision: string; index?: number; total?: number; title: string };
   supported?: boolean;
   interactionId: string;
@@ -174,6 +175,8 @@ export type CreationResult = {
   toolUsage?: { toolCount?: number; complete: boolean; markdown: string };
   interactions: Array<Interaction>;
   choices?: Array<Choice>;
+  /** 增量风格选择视图，不改变旧 interactions、choices 和 nextActions。 */
+  selectionView?: import('./interaction-view.js').InteractionView;
   /** 当前等待的批次与同轮全部方案分开，追加不会隐藏旧方案。 */
   styleGeneration?: { choiceIds: Array<string>; phase: 'initial' | 'append' | 'retry'; notice?: string };
   /** 用户选定风格后，静默完成演示、规划及确认，直到返回开发功能清单。 */

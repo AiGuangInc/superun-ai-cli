@@ -202,6 +202,12 @@ For secret input, submit `{"values":{"requested-key":"secret-value"}}` with only
 
 `chat interaction reply --no-wait` controls waiting for subsequent creation after the reply has been processed. Some plugin configuration steps must finish in the foreground before submitting their interaction result; this option does not skip those steps. After an interruption, check the plugin and conversation states first.
 
+## 通用交互协议 v1
+
+新版在原字段之外提供 `interaction.view`，宿主按协议版本和展示能力处理正文、字段、操作与链接。普通问卷可整组获取后逐题或分批展示，旧 questions/page 和原回复协议保留兼容。
+
+回复格式为 `{"response":{"version":"1","revision":"当前 view.revision","actionId":"所选动作 ID","values":{"字段 ID":{"optionIds":["选项 ID"]}}}}`；文本用 text。依据所选动作的 fieldIds 和 validation 收答，partial 只保存，complete 才提交，none 不要求其他字段。密钥只用安全输入，不能保存在通用草稿或聊天中。完整协议见 README.md 的“通用交互协议 v1”。
+
 ## 托管智能体与逐题交互
 
 托管智能体沿用 Glow 流程：服务端按需提问，CLI 每次展示一个问题，收齐一组答案后统一提交。回复使用当前 `pageRevision`；普通完整 `answers` 协议仍兼容。`BACK` 返回上一题，`SKIP` 跳过整组。部分回答保存在本地，无论是否 `--no-wait` 都返回下一题。

@@ -208,6 +208,32 @@ superun-ai chat interaction skip <sessionId> <interactionId>
 
 `chat interaction reply --no-wait` 控制回答处理完成后的创作等待。部分插件配置需要在前台等待配置结束并提交交互结果，这一步不会因该选项被省略；中断后应先查询插件与会话状态。
 
+## 通用交互协议 v1
+
+新交互在原有字段之外增加 `view`：包含协议版本、交互 ID、修订版本、业务步骤、标题、完整展示内容、输入字段、操作和预览链接。宿主按展示能力处理，不按业务 kind 白名单拒绝一个已支持的契约；旧 questions/actions/details/answerSchema 和旧输入格式继续兼容。
+
+普通问卷的 view.fields 返回当前完整问题组，宿主可整组或逐题展示。旧 questions/page 仍提供逐题视图。根据用户选择的 action.fieldIds 收答，操作 validation=complete 要求收齐必填项，partial 只保存当前答案，none 不要求填写其他操作的字段；保存整组答案也不自动触发生成。原生工具容量不足时可分批或使用文本，但 secret 只能走安全输入。
+
+```json
+{
+  "response": {
+    "version": "1",
+    "revision": "当前 interaction.view.revision",
+    "actionId": "用户选择的 view.actions 中真实 ID",
+    "values": {
+      "q0": { "optionIds": ["option:0"] },
+      "q1": { "text": "用户原文" }
+    }
+  }
+}
+```
+
+使用 `view.reply.command` 和 `view.reply.input.response`，补所选 actionId 和当前动作允许的 values，不能混合旧顶层 action/answers/values。CLI 在内部转换为原业务处理器的参数并重新校验版本。不得把显示编号当选项 ID，不代选推荐项，不把既有 value 当作新授权。专家之间交接保留 interactionId、stepId、revision 和真实字段映射；同一交互的新步骤不能被旧的去重记录吞掉。
+
+操作与字段分开：智能体“继续”不要求填写修改字段，“保存修改”才填写新设定；最终确认和终止可以没有输入字段，但必须展示正文并收集用户决定。规划支持确认与原文调整，功能选择保留真实业务 ID；密钥不进入草稿或通用展示值。风格通过新增 selectionView 提供通用选择，原 choices/interactions/nextActions 保持不变；保留真实预览链接和既有静默规划衔接，不用普通问题代替页面展示。
+
+通用视图是增量协议，不是任意 JSON Schema 表单引擎。未知协议版本或必要展示能力应报告缺口；`supported=false` 不授权跳过。缺少 view 的旧 CLI 结果继续使用原协议。升级 CLI 不会更新已安装的专家团，宿主规则需要同步适配。
+
 ## 托管智能体与逐题交互
 
 沿用 Glow 的产品判断和创建流程。`chat plugin enable <sessionId> SUPERUN_MANAGED_AGENT_V2` 首次启用时发送 Glow 同源的创建 Skill 入口；已启用不重复创建，停用恢复仍沿用原插件流程。是否询问用途、是否推荐 Superun AI，由实际返回的问题决定。托管智能体创建需要项目处于服务端支持的研发阶段。
