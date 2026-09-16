@@ -78,14 +78,11 @@ export function styleBatchState(
   return choices.some((choice) => choice.status === 'success') ? 'NEEDS_SELECTION' : 'FAILED';
 }
 
-/** 与 Glow 的分支 iframe 同源，snapshotUrl 是图片，snapshotId 才用于生成页面地址。 */
+/** 与 Glow 的分支 iframe 同源，使用后端加密 ID；snapshotUrl 是图片，不回退数字 ID。 */
 function stylePreviewUrl(item: JsonObject, endpoint: string): string | undefined {
-  const snapshotId =
-    typeof item.snapshotId === 'number' && Number.isSafeInteger(item.snapshotId) && item.snapshotId > 0
-      ? String(item.snapshotId)
-      : text(item.snapshotId)?.trim();
-  if (!snapshotId || !/^[a-zA-Z0-9_-]+$/.test(snapshotId)) return undefined;
-  const url = new URL(`https://snapshot--${snapshotId}.${getSuperunHostingDomain(endpoint)}`);
+  const encryptedSnapshotId = text(item.encryptedSnapshotId)?.trim();
+  if (!encryptedSnapshotId || !/^[a-zA-Z0-9_-]+$/.test(encryptedSnapshotId)) return undefined;
+  const url = new URL(`https://snapshot--${encryptedSnapshotId}.${getSuperunHostingDomain(endpoint)}`);
   if (
     typeof item.updateTimestamp === 'number' &&
     Number.isSafeInteger(item.updateTimestamp) &&
