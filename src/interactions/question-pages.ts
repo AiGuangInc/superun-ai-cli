@@ -113,7 +113,7 @@ export class QuestionPages {
       if (action !== 'SKIP') {
         const parsed = z.array(answer).min(1).safeParse(input.answers);
         if (!parsed.success) throw new CliError('INVALID_ARGUMENT', '请提供当前问题的有效答案');
-        // 完整旧协议仍接受；部分回答必须携带页面版本。
+        // 内部处理器接收整组或部分答案；部分回答必须携带页面版本。
         if (parsed.data.length !== interaction.questions.length && input.pageRevision !== revision)
           throw new CliError('STALE_INTERACTION', '逐题回答需要携带当前 pageRevision');
         const ids = parsed.data.map((item) => item.questionId);

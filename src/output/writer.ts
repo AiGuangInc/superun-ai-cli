@@ -1,4 +1,6 @@
 /** stdout 单结果输出，敏感值统一脱敏。@author xiuyu.yi */
+import { object } from '../contracts/value.js';
+import { presentInteractions } from '../interactions/view-adapter.js';
 import { SCHEMA_VERSION } from '../config/constants.js';
 import type { CreationResult } from '../contracts/cli-output.js';
 import { CliError, EXIT_CODES } from './exit-codes.js';
@@ -96,7 +98,7 @@ export class OutputWriter {
   }
 
   write(data: unknown): void {
-    this.emit({ schemaVersion: SCHEMA_VERSION, ok: true, data });
+    this.emit({ schemaVersion: SCHEMA_VERSION, ok: true, data: presentInteractions(data) });
   }
 
   fail(error: unknown): number {
@@ -108,7 +110,7 @@ export class OutputWriter {
       schemaVersion: SCHEMA_VERSION,
       ok: false,
       error: {
-        ...failure.details,
+        ...object(presentInteractions(failure.details)),
         ...creditFailureDetails(failure.details),
         code: failure.code,
         message: failure.message,

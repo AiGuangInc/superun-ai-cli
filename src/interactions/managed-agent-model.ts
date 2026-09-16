@@ -96,6 +96,8 @@ export function wizardPage(
   const labels = (values: string[]) => values.map((label, index) => ({ index, label }));
   const actions = ['SUBMIT', 'TERMINATE'];
   const details: Record<string, unknown> = {
+    actionLabels: { SKIP: '跳过此步骤' },
+    actionDescriptions: { SKIP: '本次不配置知识文件和记忆库。' },
     workDescription: draft.description,
     knowledgeNotice: '知识文件可在创建后到 Superun 网页端补充，本次不配置。',
     builtinCapabilities: ['读写文件、编辑代码', '联网搜索、抓取网页信息'],
@@ -151,6 +153,7 @@ export function wizardPage(
       actions.push('SKIP');
       break;
     case 'skills':
+      details.actionDescriptions = { SKIP: '清空本次可选技能。' };
       question.question = '需要添加哪些扩展能力？';
       question.multiSelect = true;
       question.options = [
@@ -180,6 +183,14 @@ export function wizardPage(
     actions.splice(0, actions.length, 'RESUME');
     details.notice = '创建已确认，只能继续尚未完成的步骤；已有资源会复用，不再重复创建。';
   }
+  // 设定、能力和确认摘要与原页面共用数据，适配器不再按步骤重写一份。
+  details.content = [draft.description, details.knowledgeNotice, details.instruction];
+  if (draft.stage === 'skills')
+    (details.content as unknown[]).push(`内置能力：${(details.builtinCapabilities as string[]).join('、')}`);
+  if (draft.stage === 'confirm')
+    (details.content as unknown[]).push(
+      `记忆库：${draft.memoryMode === 'none' ? '不使用' : `${draft.memoryMode === 'new' ? '新建' : '使用已有'}「${draft.memoryMode === 'new' ? draft.memoryName : draft.existingMemory?.label}」`}\n可选技能：${draft.skills.map((skill) => skill.label).join('、') || '无'}\n知识文件：本次不配置`,
+    );
   const revision = fingerprint([interaction.interactionId, draft, question, catalog]);
   return {
     ...interaction,

@@ -122,7 +122,11 @@ export function interactionView(
       lower,
     });
   };
-  const fixed = (action: string, label = labels[action] ?? action, description?: string) =>
+  const fixed = (
+    action: string,
+    label = text(object(details.actionLabels)[action]) ?? labels[action] ?? action,
+    description = text(object(details.actionDescriptions)[action]),
+  ) =>
     add(
       action,
       label,
@@ -133,7 +137,7 @@ export function interactionView(
     );
   const questions = context.questions ?? interaction.questions;
   const questionnaire = ['PRD_CLARIFICATION', 'ASK_USER_TOOL', 'ASK_USER_MESSAGE'].includes(interaction.kind);
-  if (questionnaire) {
+  if (questionnaire || interaction.kind === 'MANAGED_AGENT_WIZARD') {
     fields.push(...questions.map(field));
     for (const saved of list(details.savedAnswers).map(object)) {
       const target = fields.find((f) => f.id === saved.questionId);
@@ -156,102 +160,22 @@ export function interactionView(
         fields.map((f) => f.id),
         lower,
       );
-      add(
-        'SAVE',
-        labels.SAVE!,
-        fields.map((f) => f.id),
-        (values) => ({ ...lower(values), saveOnly: true }),
-        'partial',
-        '只保存已回答内容，不启动后续任务；整组确认后再提交。',
-      );
-    }
-    if (interaction.actions.includes('SKIP'))
-      fixed('SKIP', '跳过本组问题', '跳过整组，不是仅跳过当前显示页。');
-    if (interaction.actions.includes('BACK')) fixed('BACK');
-    for (const message of context.messages ?? []) addText(message);
-  } else if (interaction.kind === 'MANAGED_AGENT_WIZARD') {
-    addText(details.workDescription);
-    addText(details.knowledgeNotice, 'notice');
-    addText(details.instruction, 'notice');
-    const stage = interaction.page?.id;
-    const question = interaction.questions[0];
-    const submitOption = (index: number): JsonObject => ({
-      action: 'SUBMIT',
-      pageRevision: interaction.page?.revision,
-      answers: [{ questionId: question?.id, selectedIndices: [index], otherValue: '' }],
-    });
-    if (interaction.actions.includes('SUBMIT') && question) {
-      if (stage === 'description') {
-        fields.push({
-          id: 'workDescription',
-          type: 'text',
-          label: '修改后的完整智能体设定',
-          required: true,
-          allowOther: true,
-          options: [],
-        });
-        add('CONTINUE', '继续', [], () => submitOption(0));
-        add('EDIT_DESCRIPTION', '保存修改后的设定', ['workDescription'], (values) => ({
-          action: 'SUBMIT',
-          pageRevision: interaction.page?.revision,
-          answers: [
-            { questionId: question.id, selectedIndices: [], otherValue: values.workDescription!.text },
-          ],
-        }));
-        add('SMART_EDIT', '智能修改', [], () => submitOption(1));
+      if (questionnaire)
         add(
-          'QUICK_CREATE',
-          '快速创建',
-          [],
-          () => submitOption(2),
-          'none',
-          '按当前设定创建，本次不配置知识文件、记忆库和可选技能。',
+          'SAVE',
+          labels.SAVE!,
+          fields.map((f) => f.id),
+          (values) => ({ ...lower(values), saveOnly: true }),
+          'partial',
+          '只保存答案，不启动后续任务。',
         );
-      } else if (stage === 'confirm' || stage === 'terminate') {
-        const ids =
-          stage === 'confirm'
-            ? ['CREATE', 'EDIT_DESCRIPTION', 'EDIT_MEMORY', 'EDIT_SKILLS']
-            : ['STOP', 'KEEP_EDITING'];
-        question.options.forEach((option, index) =>
-          add(ids[index] ?? `choice:${option.index}`, option.label, [], () => submitOption(option.index)),
-        );
-      } else {
-        fields.push(field(question));
-        add('SUBMIT', stage === 'rewrite' ? '提交并重新生成' : '继续', [question.id], (values) => ({
-          action: 'SUBMIT',
-          pageRevision: interaction.page?.revision,
-          answers: [answer(question, values[question.id]!)],
-        }));
-      }
     }
-    for (const action of interaction.actions.filter((a) => a !== 'SUBMIT'))
-      fixed(
-        action,
-        labels[action],
-        action === 'SKIP'
-          ? stage === 'skills'
-            ? '清空本次可选技能。'
-            : '本次不配置知识文件和记忆库。'
-          : undefined,
-      );
-    if (stage === 'skills')
-      addText(
-        `内置能力：${list(details.builtinCapabilities)
-          .filter((x) => typeof x === 'string')
-          .join('、')}`,
-        'notice',
-      );
-    if (stage === 'confirm') {
-      const memory = object(details.memory);
-      addText(
-        `记忆库：${memory.mode === 'none' ? '不使用' : `${memory.mode === 'new' ? '新建' : '使用已有'}「${text(memory.name) ?? ''}」`}\n可选技能：${
-          list(details.skills)
-            .map((s) => text(object(s).label))
-            .filter(Boolean)
-            .join('、') || '无'
-        }\n知识文件：本次不配置`,
-      );
-    }
+    for (const action of interaction.actions.filter((action) => action !== submit))
+      if (questionnaire && action === 'SKIP')
+        fixed(action, '跳过本组问题', '跳过整组，不是仅跳过当前显示页。');
+      else fixed(action);
+    for (const paragraph of list(details.content)) addText(paragraph);
+    if (questionnaire) for (const message of context.messages ?? []) addText(message);
   } else if (['SECRET_INPUT', 'PLUGIN_SECRET_INPUT'].includes(interaction.kind)) {
     const keys = list(details.keys).filter((key): key is string => typeof key === 'string');
     fields.push(
@@ -462,4 +386,49 @@ export function translateResponse(
   if (binding.action.validation === 'partial' && !Object.keys(values).length)
     throw new CliError('INVALID_ARGUMENT', '请先回答至少一个问题');
   return binding.lower(values);
+}
+
+/** 输出唯一的通用交互格式，不同时发布内部问题/答案模型。 */
+export function presentInteractions(data: unknown): unknown {
+  const result = object(data);
+  if (!Array.isArray(result.interactions) && !result.selectionView) return data;
+  const internal = (result.interactions ?? []) as Interaction[];
+  const interactions = internal.map((item) => ({
+    interactionId: item.interactionId,
+    kind: item.kind,
+    view: item.view ?? interactionView(item).view,
+  }));
+  if (result.selectionView) {
+    const view = result.selectionView as InteractionView;
+    interactions.push({ interactionId: view.interactionId, kind: 'STYLE_SELECTION', view });
+  }
+  const active = interactions.filter(
+    (item) => item.view.supported && item.view.actions.length && item.view.reply,
+  );
+  const ids = new Set(active.map((item) => item.interactionId));
+  const nextActions = list(result.nextActions)
+    .map(object)
+    .filter(
+      (action) =>
+        !ids.has(String(action.interactionId)) &&
+        !(result.selectionView && action.action === 'SELECT_STYLE') &&
+        !(
+          action.action === 'CONTINUE_CHAT' &&
+          active.some((item) =>
+            item.view.actions.some((a) => ['ADJUST_PLAN', 'SEND_REQUIREMENT'].includes(a.id)),
+          )
+        ),
+    );
+  for (const { view } of active)
+    for (const action of view.actions)
+      nextActions.push({
+        action: action.id,
+        interactionId: view.interactionId,
+        requiresUserInput: action.requiresUserInput,
+        instruction: `先完整展示 view.content 和 links，再按所选操作 ${action.label} 的 fieldIds 收答。${action.description ?? ''} 可以整组或逐题展示，题目与选项不得改写；secret 只走安全输入。回答当前操作的必填问题后直接提交，不额外确认；独立确认题按原文收答。保存不等于执行，不把预选或超时当答案。`,
+        command: view.reply!.command,
+        input: { response: { ...view.reply!.input.response, actionId: action.id } },
+      });
+  const { selectionView: _selection, ...rest } = result;
+  return { ...rest, interactions, nextActions };
 }

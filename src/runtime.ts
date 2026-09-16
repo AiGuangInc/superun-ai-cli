@@ -17,7 +17,7 @@ import type { JsonObject } from './contracts/value.js';
 import { InteractionDraftStore } from './interactions/draft-store.js';
 import { QuestionPages, isQuestionnaire } from './interactions/question-pages.js';
 import { ManagedAgentWizard } from './interactions/managed-agent-wizard.js';
-import { styleInteraction } from './interactions/style-view.js';
+import { styleInteraction } from './interactions/parsers/style-selection.js';
 import { interactionView, translateResponse } from './interactions/view-adapter.js';
 import { COMMAND_NAME } from './config/constants.js';
 import type { InteractionView } from './contracts/interaction-view.js';
