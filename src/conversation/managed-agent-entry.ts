@@ -1,4 +1,37 @@
 /** Glow 首次启用入口协议，来源 origin/pre 24c9d848bb。@author xiuyu.yi */
+import type { CreationRuntime } from '../runtime.js';
+import { InteractionDraftStore } from '../interactions/draft-store.js';
+import { object, text } from '../contracts/value.js';
+import { currentRound, roundContainingMessage } from './round-selector.js';
+
+/** 原专家团会查询插件状态；CLI 将该入口所属的对话继续映射到同一查询。 */
+export function managedAgentEntryStore(runtime: CreationRuntime) {
+  return new InteractionDraftStore(runtime.client.interactionScope);
+}
+export const managedAgentEntryKey = (sessionId: string) => `managed-agent-enable:${sessionId}`;
+
+export async function managedAgentEntryState(runtime: CreationRuntime, sessionId: string) {
+  const saved = object(await managedAgentEntryStore(runtime).read(managedAgentEntryKey(sessionId)));
+  if (!saved.pending) return undefined;
+  const view = await runtime.load(sessionId);
+  const latest = currentRound(view);
+  const messageId = text(saved.messageId);
+  const entryRound = messageId ? roundContainingMessage(view, messageId) : undefined;
+  // 新需求已经替换入口轮时，状态查询恢复为普通插件查询。
+  if (entryRound && latest?.roundId !== entryRound.roundId) return undefined;
+  if (messageId && !entryRound && latest?.roundId !== saved.previousRoundId) return undefined;
+  if (!entryRound && latest?.roundId === saved.previousRoundId)
+    return runtime.withGuidance({
+      state: 'RUNNING',
+      sessionId,
+      messageId,
+      messages: [],
+      progress: [],
+      interactions: [],
+    });
+  return runtime.withGuidance(await runtime.inspect(view));
+}
+
 /** 完整通用智能体创建 Skill；前端只负责把入口意图无损交给它。 */
 export const MANAGED_AGENT_CREATION_SKILL_ID = 'skill.superun_managed_agent_v2';
 

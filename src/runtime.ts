@@ -15,13 +15,9 @@ import { enabled, object, text } from './contracts/value.js';
 import { getSuperunHostingDomain } from './config/runtime-config.js';
 import type { JsonObject } from './contracts/value.js';
 import { InteractionDraftStore } from './interactions/draft-store.js';
-import { QuestionPages, isQuestionnaire } from './interactions/question-pages.js';
-import { ManagedAgentWizard } from './interactions/managed-agent-wizard.js';
-import { styleInteraction } from './interactions/parsers/style-selection.js';
-import { interactionView, translateResponse } from './interactions/view-adapter.js';
-import { COMMAND_NAME } from './config/constants.js';
-import type { InteractionView } from './contracts/interaction-view.js';
+import { wizardQuestion } from './interactions/managed-agent-model.js';
 import type { InteractionBinding } from './interactions/context.js';
+import { ManagedAgentWizard } from './interactions/managed-agent-wizard.js';
 import { collectInteractions } from './interactions/registry.js';
 import { toolId as sourceToolId, toolData } from './interactions/context.js';
 import { integrationKey } from './interactions/handlers/reply-plugin.js';
@@ -70,7 +66,6 @@ import { generateInitialStyles, appendStyle, retryStyle } from './conversation/s
 const DEMO_SNAPSHOT_SYNC_MS = 15_000;
 
 export class CreationRuntime {
-  readonly questionPages: QuestionPages;
   readonly managedWizard: ManagedAgentWizard;
   readonly command: AgentCommandApi;
   readonly query: AgentQueryApi;
@@ -89,7 +84,6 @@ export class CreationRuntime {
     readonly output: OutputWriter,
   ) {
     const drafts = new InteractionDraftStore(client.interactionScope);
-    this.questionPages = new QuestionPages(drafts);
     this.managedWizard = new ManagedAgentWizard(this, drafts);
     this.command = new AgentCommandApi(client);
     this.query = new AgentQueryApi(client);
@@ -143,48 +137,6 @@ export class CreationRuntime {
       this.client.config.endpoint,
     );
   }
-  private replyView(view: InteractionView, sessionId: string): InteractionView {
-    return {
-      ...view,
-      reply: {
-        command: [
-          COMMAND_NAME,
-          '--endpoint',
-          this.client.config.endpoint,
-          '--locale',
-          this.client.config.locale,
-          'chat',
-          'interaction',
-          'reply',
-          '--input',
-          '-',
-          '--',
-          sessionId,
-          view.interactionId,
-        ],
-        input: { response: { version: '1', revision: view.revision } },
-      },
-    };
-  }
-  async projectInteraction(binding: InteractionBinding): Promise<InteractionBinding> {
-    const projected =
-      binding.interaction.kind === 'MANAGED_AGENT_WIZARD'
-        ? await this.managedWizard.project(binding)
-        : await this.questionPages.project(binding);
-    const context = {
-      questions: isQuestionnaire(binding) ? binding.interaction.questions : undefined,
-      messages: projectText([binding.round])
-        .messages.filter((message) => message.role === 'assistant')
-        .map((message) => message.text),
-    };
-    return {
-      ...projected,
-      interaction: {
-        ...projected.interaction,
-        view: this.replyView(interactionView(projected.interaction, context).view, binding.round.sessionId),
-      },
-    };
-  }
   async inspect(view: SessionView, styleTarget?: StyleWaitTarget): Promise<CreationResult> {
     const { autoTest, codeReview } = await this.resolveChecks(view);
     const check = codeReview ?? autoTest;
@@ -200,13 +152,33 @@ export class CreationRuntime {
         ? await this.autoTestTasks.pending(view)
         : [];
     if (pendingReports.length) view.activeSubagentWork = true;
-    const bindings = (
-      await Promise.all(
-        collectInteractions(view, !styleTarget && isStyleSelected(view, choices)).map((binding) =>
-          this.projectInteraction(binding),
-        ),
-      )
-    ).filter((binding) => !check || binding.interaction.kind !== 'SELECT_FEATURES');
+    const wizardMessages: CreationResult['messages'] = [];
+    let wizardReplyPending = false;
+    const projected = await Promise.all(
+      collectInteractions(view, !styleTarget && isStyleSelected(view, choices)).map(async (binding) => {
+        if (binding.interaction.kind !== 'MANAGED_AGENT_WIZARD') return binding;
+        const page = await this.managedWizard.project(binding);
+        if (object(page.interaction.details?.creation).checkpoint === 'complete') {
+          wizardReplyPending = true;
+          return undefined;
+        }
+        const question = wizardQuestion(page.interaction).interaction;
+        const content = [
+          page.interaction.page?.title,
+          ...(Array.isArray(page.interaction.details?.content) ? page.interaction.details.content : []),
+          page.interaction.details?.notice,
+          ...(Array.isArray(page.interaction.details?.warnings) ? page.interaction.details.warnings : []),
+        ]
+          .filter((value): value is string => typeof value === 'string' && !!value.trim())
+          .join('\n\n');
+        if (content)
+          wizardMessages.push({ id: `${question.interactionId}:content`, role: 'assistant', text: content });
+        return { ...page, interaction: question };
+      }),
+    );
+    const bindings = projected
+      .filter((binding): binding is InteractionBinding => !!binding)
+      .filter((binding) => !check || binding.interaction.kind !== 'SELECT_FEATURES');
     const processingIds = new Set<string>();
     for (const binding of bindings) {
       if (binding.interaction.kind !== 'PLUGIN_ACTION') continue;
@@ -228,7 +200,7 @@ export class CreationRuntime {
     let result: CreationResult;
     try {
       result = resolveState(
-        { ...view, automaticWork: processingIds.size > 0 },
+        { ...view, automaticWork: processingIds.size > 0 || wizardReplyPending },
         visibleBindings,
         choices,
         styleTarget,
@@ -265,10 +237,7 @@ export class CreationRuntime {
         });
       } else throw error;
     }
-    if (result.state === 'NEEDS_SELECTION' && !result.interactions.length && anchor) {
-      const style = styleInteraction(view.session.sessionId, result.messageId, anchor, choices);
-      if (style?.view) result.selectionView = this.replyView(style.view, view.session.sessionId);
-    }
+    result.messages.push(...wizardMessages);
     result.taskProgress = pendingReports.length
       ? taskProgressSnapshot(
           view.session.sessionId,
@@ -877,19 +846,18 @@ export class CreationRuntime {
   }
   async reply(sessionId: string, interactionId: string, input: JsonObject): Promise<JsonObject> {
     const view = await this.load(sessionId);
-    const binding = collectInteractions(view).find(
-      (item) => item.interaction.interactionId === interactionId,
-    );
-    if (!binding && 'response' in input && interactionId.startsWith('style_')) {
-      const current = await this.inspect(view);
-      const anchor = current.cursor?.branchAnchor;
-      const style = anchor
-        ? styleInteraction(sessionId, current.messageId, anchor, current.choices ?? [])
-        : undefined;
-      if (style?.interactionId === interactionId && current.state === 'NEEDS_SELECTION') {
-        const answer = translateResponse(style, input, { choices: current.choices });
-        if (typeof answer.choiceId !== 'string') throw new CliError('INVALID_ARGUMENT', '请选择当前风格方案');
-        return this.selectStyle(sessionId, answer.choiceId);
+    const available = collectInteractions(view);
+    let binding = available.find((item) => item.interaction.interactionId === interactionId);
+    let wizardInput: JsonObject | undefined;
+    if (interactionId.startsWith('wizard_')) {
+      for (const candidate of available.filter((item) => item.interaction.kind === 'MANAGED_AGENT_WIZARD')) {
+        const page = await this.managedWizard.project(candidate);
+        const step = wizardQuestion(page.interaction);
+        if (step.interaction.interactionId === interactionId) {
+          binding = candidate;
+          wizardInput = step.input(input);
+          break;
+        }
       }
     }
     if (!binding)
@@ -920,7 +888,7 @@ export class CreationRuntime {
     }
     const validate = async () => {
       const fresh = collectInteractions(await this.load(sessionId)).find(
-        (item) => item.interaction.interactionId === interactionId,
+        (item) => item.interaction.interactionId === binding.interaction.interactionId,
       );
       if (
         !fresh ||
@@ -928,26 +896,11 @@ export class CreationRuntime {
       )
         throw new CliError('STALE_INTERACTION', '交互已结束或问题已变化，请查询当前状态');
     };
-    if ('response' in input) {
-      const projected = await this.projectInteraction(binding);
-      input = translateResponse(projected.interaction, input, {
-        questions: isQuestionnaire(binding) ? binding.interaction.questions : undefined,
-        messages: projectText([binding.round])
-          .messages.filter((message) => message.role === 'assistant')
-          .map((message) => message.text),
-      });
-      if (typeof input.genericMessage === 'string') {
-        await validate();
-        return this.command.chat({ sessionId, content: input.genericMessage });
-      }
+    if (binding.interaction.kind === 'MANAGED_AGENT_WIZARD') {
+      if (!wizardInput) throw new CliError('STALE_INTERACTION', '请查询并使用当前向导问题的交互 ID');
+      if (wizardInput.action === 'QUERY_STATE') return { sessionId, localInteraction: true };
+      return this.managedWizard.reply(binding, wizardInput, validate);
     }
-    if (binding.interaction.kind === 'MANAGED_AGENT_WIZARD')
-      return this.managedWizard.reply(binding, input, validate);
-    if (isQuestionnaire(binding))
-      return this.questionPages.reply(binding, input, async (answers) => {
-        await validate();
-        return object(await dispatchReply({ runtime: this, binding, input: answers }));
-      });
     return object(await dispatchReply({ runtime: this, binding, input }));
   }
 }

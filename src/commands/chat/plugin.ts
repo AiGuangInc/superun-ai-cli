@@ -1,5 +1,11 @@
 /** 插件查询与生命周期操作。@author xiuyu.yi */
-import { managedAgentEnableEntry } from '../../conversation/managed-agent-entry.js';
+import {
+  managedAgentEnableEntry,
+  managedAgentEntryKey,
+  managedAgentEntryState,
+  managedAgentEntryStore,
+} from '../../conversation/managed-agent-entry.js';
+import { currentRound } from '../../conversation/round-selector.js';
 import type { Command } from 'commander';
 import type { CommandContext } from '../shared.js';
 import { runtime, readInput, withWait, waitOptions, pollOperation, businessWrite } from '../shared.js';
@@ -22,6 +28,14 @@ export function registerPlugin(chat: Command, context: CommandContext): void {
     .description('查询插件状态')
     .action(async (sessionId: string, pluginId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command);
+      const entry =
+        integrationKey(pluginId) === 'SUPERUN_MANAGED_AGENT_V2'
+          ? await managedAgentEntryState(service, sessionId)
+          : undefined;
+      if (entry) {
+        context.output.write(entry);
+        return;
+      }
       context.output.write({
         state: 'COMPLETED',
         sessionId,
@@ -38,6 +52,13 @@ export function registerPlugin(chat: Command, context: CommandContext): void {
     command.action(async (sessionId: string, pluginId: string, _options: unknown, current: Command) => {
       const service = await runtime(context, current),
         options = object(current.opts());
+      if (action === 'enable' && integrationKey(pluginId) === 'SUPERUN_MANAGED_AGENT_V2') {
+        const entry = await managedAgentEntryState(service, sessionId);
+        if (entry) {
+          context.output.write(entry);
+          return;
+        }
+      }
       let result = await service.plugin.operate('status', sessionId, pluginId);
       if (
         action === 'enable' &&
@@ -46,8 +67,32 @@ export function registerPlugin(chat: Command, context: CommandContext): void {
       ) {
         if (options.input)
           throw new CliError('INVALID_ARGUMENT', '首次启用通用智能体请通过交互配置，不接受直接配置或附件');
+        const store = managedAgentEntryStore(service);
+        const key = managedAgentEntryKey(sessionId);
         const response = await businessWrite(context, service, sessionId, () =>
-          service.command.chat({ sessionId, ...managedAgentEnableEntry() }),
+          store.locked(key, async () => {
+            const existing = await managedAgentEntryState(service, sessionId);
+            if (existing)
+              throw new CliError('AMBIGUOUS_INTERACTION', '启用流程已提交，请查询插件状态', { sessionId });
+            const previousRoundId = currentRound(await service.load(sessionId))?.roundId;
+            await store.write(key, { pending: true, previousRoundId });
+            try {
+              const response = await service.command.chat({ sessionId, ...managedAgentEnableEntry() });
+              await store.write(key, {
+                pending: true,
+                previousRoundId,
+                messageId: text(response.messageId) ?? text(response.replyMessageId),
+              });
+              return response;
+            } catch (error) {
+              if (
+                error instanceof CliError &&
+                ['INVALID_ARGUMENT', 'AUTH_REQUIRED', 'BUSINESS_ERROR'].includes(error.code)
+              )
+                await store.write(key, { pending: false });
+              throw error;
+            }
+          }),
         );
         context.output.write(
           await service.accepted(object(response), sessionId, options.wait !== false, waitOptions(current)),
@@ -97,6 +142,8 @@ export function registerPlugin(chat: Command, context: CommandContext): void {
           pluginId,
           state: text(result.state),
         });
+      if (action === 'disable' && integrationKey(pluginId) === 'SUPERUN_MANAGED_AGENT_V2')
+        await managedAgentEntryStore(service).write(managedAgentEntryKey(sessionId), { pending: false });
       context.output.write({
         state: pending ? 'RUNNING' : 'COMPLETED',
         sessionId,
