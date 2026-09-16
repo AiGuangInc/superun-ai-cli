@@ -5,6 +5,8 @@ import type { JsonObject } from '../contracts/value.js';
 import { z } from 'zod';
 import { parseWire } from '../contracts/node-wire.js';
 import { CliError } from '../output/exit-codes.js';
+import { matchesRouteConfigFilename, ROUTE_CONFIG_FILENAMES } from '../conversation/route-parser.js';
+import type { RouteConfigAttachmentCandidate } from '../conversation/route-parser.js';
 
 const referenceSourcesSchema = z.array(
   z.object({
@@ -25,6 +27,47 @@ const messageContextSchema = z.object({
 const PREFIX = '/api/uxa-center/agent/AgentQuery';
 export class AgentQueryApi {
   constructor(private readonly client: ApiClient) {}
+  /** 创作按当前附件读取；发布按 sessionKey 复用 Container 的线上文件/发布快照链路。 */
+  async routeConfig(
+    source: { sessionId: string } | { sessionKey: string },
+  ): Promise<RouteConfigAttachmentCandidate | undefined> {
+    let candidates: Array<RouteConfigAttachmentCandidate>;
+    if ('sessionId' in source) {
+      const raw = await this.client.call(`${PREFIX}/querySessionAttachmentsExcludeInternalAndCompiled`, {
+        sessionId: source.sessionId,
+        withContent: false,
+        filenamesForAttachmentContent: [...ROUTE_CONFIG_FILENAMES],
+      });
+      if (!Array.isArray(raw)) throw new CliError('PROTOCOL_ERROR', '路由附件清单格式不正确');
+      candidates = raw
+        .map(object)
+        .filter((item) => typeof item.name === 'string')
+        .map((item) => ({
+          name: String(item.name),
+          content: typeof item.content === 'string' ? item.content : undefined,
+        }));
+    } else {
+      candidates = ROUTE_CONFIG_FILENAMES.flatMap((name) => [{ name }, { name: name.slice(4) }]);
+    }
+    for (const filename of ROUTE_CONFIG_FILENAMES) {
+      for (const candidate of candidates) {
+        // 使用 Glow 的文件名匹配规则，也支持返回附件带工作目录前缀的项目。
+        if (!matchesRouteConfigFilename(candidate.name, filename)) continue;
+        let content = candidate.content;
+        if (!content) {
+          const raw = await this.client.call(`${PREFIX}/queryAttachment`, {
+            ...source,
+            name: candidate.name,
+          });
+          if (raw != null && typeof raw !== 'string')
+            throw new CliError('PROTOCOL_ERROR', '路由文件内容格式不正确');
+          content = typeof raw === 'string' ? raw : undefined;
+        }
+        if (content?.trim()) return { name: candidate.name, content };
+      }
+    }
+    return undefined;
+  }
   async messageContext(sessionId: string, messageId: string) {
     const message = parseWire(
       messageContextSchema,

@@ -88,6 +88,7 @@ export const recentlySchema = z.object({
       pendingBranch: z.object({ preReplyMessageId: z.string() }).optional(),
       everDeployed: z.boolean().optional(),
       publicStatus: z.number().optional(),
+      sessionKey: z.string().optional(),
     })
     .passthrough(),
   pipeline: pipelineSchema,

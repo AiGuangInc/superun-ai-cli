@@ -5,6 +5,7 @@ import type { RuntimeConfig } from '../config/runtime-config.js';
 import type { CreationResult, InteractionKind, NextAction } from '../contracts/cli-output.js';
 import { AUTO_TEST_RESULT_INSTRUCTION } from './auto-test.js';
 import { CODE_REVIEW_RESULT_INSTRUCTION } from './code-review.js';
+import { routingInstruction } from './project-routing.js';
 
 export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
   Partial<
@@ -282,9 +283,10 @@ function nextActionsForState(
 
 function developmentActions(result: GuidanceResult, command: Array<string>): Array<NextAction> {
   const previewInstruction = result.development?.previewUrl
-    ? '先展示本轮原始结果和 development.previewUrl，链接统一命名为“查看预览”，不将预览称为已正式发布。'
+    ? `先展示本轮原始结果。${routingInstruction('preview')} 单端使用“本轮创作已完成，点击〔查看预览〕查看效果。”；多端使用“本轮创作已完成，可以分别查看以下入口：”，随后逐端列出链接，并说明“点击对应链接查看各端效果。以上为预览链接，本次改动尚未正式发布。”；只有可确认本次改动尚未发布时才使用后一状态说明，否则仅说明预览不代表发布。〔链接〕必须替换为真实可点击链接。`
     : '先按 messages 顺序展示原始对话，不把规划确认当作研发完成。';
-  const instruction = `${previewInstruction} 接着说明“接下来，你可以检查代码、实际验证功能、继续完善项目，或上线运营。”，然后按以下四条独立列表原样展示，不合并或改名：\n- **代码审查**：回复“代码审查”，检查刚才改动的代码，发现问题后先告知你，再自动修复。\n- **自动测试**：回复“自动测试”，实际验证刚才完成的功能，发现确认的问题后先告知你，再自动修复。\n- **继续创作**：直接告诉我想新增或调整的内容。\n- **上线运营**：回复 **“上线运营”**，我会发布最新版本并返回访问链接。`;
+  const multiple = result.development?.routing?.hasMultipleSides === true;
+  const instruction = `${previewInstruction} 接着说明“接下来，你可以：”，然后按以下四条独立列表原样展示，不合并或改名：\n- **代码审查**：检查本轮改动。\n- **自动测试**：${multiple ? '告诉我需要验证哪个端的什么功能。' : '验证指定功能。'}\n- **继续创作**：${multiple ? '告诉我想调整哪个端、什么功能。' : '告诉我想新增或调整的内容。'}\n- **上线运营**：将本次成果发布为正式版本。`;
   return [
     {
       action: 'CODE_REVIEW',

@@ -9,6 +9,11 @@ import { runtime, withWait, waitOptions, pollOperation, businessWrite } from '..
 import { COMMAND_NAME } from '../../config/constants.js';
 import type { CreationRuntime } from '../../runtime.js';
 import type { NextAction } from '../../contracts/cli-output.js';
+import {
+  missingPublishedRouting,
+  readProjectRouting,
+  routingInstruction,
+} from '../../conversation/project-routing.js';
 
 function versions(value: JsonObject): Array<JsonObject> {
   return [
@@ -108,8 +113,7 @@ function publishActions(
     return [
       {
         action: 'CONTINUE_CHAT',
-        instruction:
-          '展示发布成功结果、目标版本的 changeLog 原文和 publishUrl 可点击链接；未指定版本时使用 updatedAt 最新的已发布版本。最后另起一行原样展示：\n**继续创作**：直接告诉我想新增或调整的内容。\n等待用户响应；收到新的创作要求后，将用户原文不经改写或扩充地放入 content，通过 --input - 提交 JSON，不自动追加需求或重复发布。',
+        instruction: `展示发布成功结果和目标版本的 changeLog 原文；未指定版本时使用 updatedAt 最新的已发布版本。${routingInstruction('published')} 单端使用“本次已成功上线，点击〔访问网站〕进入正式网站。”；多端使用“本次已成功上线，可以通过以下入口访问：”，随后逐端列出正式链接，再说“点击对应链接即可进入相应端，以上均为正式访问链接。”。〔链接〕必须替换为真实可点击链接。最后另起一行展示单端“**继续创作**：直接告诉我想新增或调整的内容。”或多端“**继续创作**：直接告诉我想新增或调整哪个端的什么功能。”。等待用户响应；收到新的创作要求后，将用户原文不经改写或扩充地放入 content，通过 --input - 提交 JSON，不自动追加需求或重复发布。`,
         requiresUserInput: true,
         command: [...command.slice(0, -1), 'send', '--input', '-', '--', sessionId],
       },
@@ -128,10 +132,25 @@ async function publishResult(
   const running = versions(value).some(
     (item) => (!encryptedId || item.encryptedId === encryptedId) && item.deployStatus === 2,
   );
+  const deployed = versions(value).some(
+    (item) => (!encryptedId || item.encryptedId === encryptedId) && item.deployStatus === 1,
+  );
+  const publishUrl = text(value.publishUrl);
+  const sessionKey = text(session.sessionKey);
+  const routing =
+    !running && !waitTimedOut && deployed
+      ? publishUrl && sessionKey
+        ? await readProjectRouting(service.query, publishUrl, { sessionKey })
+        : missingPublishedRouting()
+      : undefined;
   return {
     state: running || waitTimedOut ? 'RUNNING' : 'COMPLETED',
     sessionId,
-    publish: { ...projectPublish(value, encryptedId), publicStatus: session.publicStatus },
+    publish: {
+      ...projectPublish(value, encryptedId),
+      publicStatus: session.publicStatus,
+      ...(routing ? { routing } : {}),
+    },
     ...(waitTimedOut ? { waitTimedOut } : {}),
     nextActions: publishActions(
       service,

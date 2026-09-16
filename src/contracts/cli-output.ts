@@ -74,6 +74,23 @@ export type DemoPreview = {
   url: string;
   viewed: boolean;
 };
+/** 从对应环境的路由源码解析的全部端入口；链接存在不代表功能或公开访问已验证。 */
+export type ProjectRouting = {
+  status: 'ready' | 'fallback' | 'unavailable';
+  sourceFile?: string;
+  hasMultipleSides: boolean;
+  defaultSide?: string;
+  groups: Array<{
+    side: string;
+    label: string;
+    basePath: string;
+    entryPath: string;
+    entryUrl?: string;
+    shareUrl?: string;
+    routes: Array<{ name: string; path: string; url?: string }>;
+  }>;
+  warnings: Array<string>;
+};
 export type DevelopmentProgress = {
   stage:
     | 'READY'
@@ -87,6 +104,7 @@ export type DevelopmentProgress = {
   planApproved: boolean;
   /** 研发主线的稳定预览地址，随主线构建结果更新。 */
   previewUrl?: string;
+  routing?: ProjectRouting;
 };
 export type TaskProgressStatus =
   | 'submitted'

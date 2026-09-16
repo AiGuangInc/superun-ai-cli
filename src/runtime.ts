@@ -54,6 +54,7 @@ import { readCheckQuestionContext } from './conversation/check-question-context.
 import { checkContextFromExtra, reportReference } from './conversation/check-context.js';
 import { styleResultNotice } from './conversation/style-guidance.js';
 import { creditCode, throwCreditResult } from './conversation/insufficient-credits.js';
+import { readProjectRouting, routingInstruction } from './conversation/project-routing.js';
 import { stylePlanningChoice } from './conversation/style-planning.js';
 import { generateInitialStyles, appendStyle, retryStyle } from './conversation/style-generation.js';
 
@@ -230,6 +231,7 @@ export class CreationRuntime {
       }
       if (autoTest) result.autoTest = autoTest;
       if (codeReview) result.codeReview = codeReview;
+      await this.attachDevelopmentPreview(result, view);
       return result;
     }
     const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
@@ -324,23 +326,31 @@ export class CreationRuntime {
         result.attachments = (await this.query.attachments(view.session.sessionId, ['README.md'])).filter(
           (attachment) => attachment.name === 'README.md',
         );
-      const current = currentRound(view);
-      const onlyFeatureSelection = result.interactions.every((item) => item.kind === 'SELECT_FEATURES');
-      if (
-        started &&
-        planApproved &&
-        current &&
-        onlyFeatureSelection &&
-        ['COMPLETED', 'NEEDS_INPUT'].includes(result.state) &&
-        !['start_dev', 'architecture_plan_approve'].includes(String(roundExtra.business_type))
-      ) {
-        const sessionId = view.session.sessionId;
-        if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,57}[a-zA-Z0-9])?$/.test(sessionId))
-          throw new CliError('PROTOCOL_ERROR', '会话标识无法生成有效的预览地址');
-        result.development.previewUrl = `https://id--${sessionId}.${getSuperunHostingDomain(this.client.config.endpoint)}`;
-      }
+      await this.attachDevelopmentPreview(result, view);
     }
     return result;
+  }
+  /** 普通研发与 QA 修复共用入口交付，运行中或真实业务提问时不额外读取路由。 */
+  private async attachDevelopmentPreview(result: CreationResult, view: SessionView): Promise<void> {
+    const current = currentRound(view);
+    const extra = roundMessage(view, current)?.roundExtra ?? {};
+    if (
+      !current ||
+      !enabled(extra.startDevelopment) ||
+      !enabled(extra.architecturePlanApproved) ||
+      !result.interactions.every((item) => item.kind === 'SELECT_FEATURES') ||
+      !['COMPLETED', 'NEEDS_INPUT'].includes(result.state) ||
+      ['start_dev', 'architecture_plan_approve'].includes(String(extra.business_type))
+    )
+      return;
+    const sessionId = view.session.sessionId;
+    if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,57}[a-zA-Z0-9])?$/.test(sessionId))
+      throw new CliError('PROTOCOL_ERROR', '会话标识无法生成有效的预览地址');
+    result.development ??= { started: true, planApproved: true, stage: 'COMPLETED' };
+    result.development.previewUrl = `https://id--${sessionId}.${getSuperunHostingDomain(this.client.config.endpoint)}`;
+    result.development.routing = await readProjectRouting(this.query, result.development.previewUrl, {
+      sessionId,
+    });
   }
   async resolveChecks(view: SessionView): Promise<Pick<CreationResult, 'autoTest' | 'codeReview'>> {
     const current = currentRound(view);
@@ -451,7 +461,11 @@ export class CreationRuntime {
         ? { toolUsage: this.taskProgress.completionSummary(visible.sessionId, visible.messageId) }
         : {}),
     };
-    return { ...completed, nextActions: buildNextActions(completed, this.client.config) };
+    const nextActions = buildNextActions(completed, this.client.config);
+    // QA 完成/修复仍保留报告引导，同时交付该轮真实预览的全部端入口。
+    if (completed.development?.previewUrl && (completed.autoTest || completed.codeReview))
+      for (const action of nextActions) action.instruction += ` ${routingInstruction('preview')}`;
+    return { ...completed, nextActions };
   }
   async wait(sessionId: string, options: WaitOptions): Promise<CreationResult> {
     const deadline = options.timeout === undefined ? undefined : Date.now() + options.timeout * 1000;

@@ -370,6 +370,21 @@ superun-ai chat publish visibility <sessionId> private
 
 研发完成后的“查看预览”使用 `development.previewUrl`，返回与 Glow 研发主线一致的稳定地址 `https://id--<sessionId>.<托管域名>`，随主线构建结果更新。研发主线不再查找或等待快照；风格候选和独立演示版本继续使用各自的快照页面。上线运营返回正式发布域名。
 
+### 单端与多端入口
+
+每轮创作/修复完成新增 `development.routing`；发布完成新增 `publish.routing`，覆盖等待发布、异步发布后的状态查询以及部署后的公开操作。原 `development.previewUrl` 和 `publish.publishUrl` 保留。路由读取失败不改变已经完成的业务结果。
+
+创作从项目附件读取 `src/routes.tsx`，其次 `src/App.tsx`；发布按项目 `sessionKey` 读取线上发布文件，不用当前开发文件替代。分组沿用 Glow 的 `handle.side`、`@side` 注释和 JSX 变量名兜底规则，支持任意数量的端。解析器只读取源码文本，不执行项目代码。
+
+`routing` 包含 `status`（ready/fallback/unavailable）、`sourceFile`、`hasMultipleSides`、`defaultSide`、`groups` 和 `warnings`。每组包含 `side`、`label`、`basePath`、`entryPath`、`entryUrl`、`shareUrl` 及 `routes`（名称、路径、可生成的 URL）。默认端取第一组，进入地址取该组第一条路由，分享地址使用 basePath；动态参数路径不虚构参数和链接。
+
+- **单端创作完成**：直接展示该端 entryUrl，命名为“查看预览”，再给“代码审查 / 自动测试 / 继续创作 / 上线运营”。
+- **多端创作完成**：按原顺序逐端展示全部有名预览链接，引导点击进入；测试和继续创作引导用户说明对应端与功能。
+- **单端发布完成**：展示“访问网站”和继续创作引导。
+- **多端发布完成**：逐端展示全部有名正式链接，引导进入对应端，再提供继续创作引导。
+
+有 N 个有效端入口就向用户展示 N 项，不能只展示默认端或仅将其余链接留在 JSON。`routes` 保留各端页面明细，不把所有子页面都当独立端。缺少路由元数据时保留原基础链接并说明 warnings，不声称项目只有一个端。发布成功还须核对本次部署记录及公开状态；预览链接、部署成功和正式上线不能互相替代。
+
 用户选择风格后，`chat style select` 默认内部完成演示就绪等待、状态衔接和版本保留，再静默生成并确认研发规划，直接返回开发功能清单。调用方只提示“已采用方案 B，正在整理开发功能清单”，中间不展示演示、研发规划或“确认规划 / 调整功能”入口。清单返回后按原始对话和功能编号展示，提示“请回复要开发的功能编号或具体需求”，等待用户选择后再开发。缺少必要信息、密钥或需要确认数据库变更时仍展示实际问题，等待回答；不自动回答业务问题或选择功能。
 
 自动规划确认仅适用于本次风格选择衔接，并在提交前重新核对当前交互；后续独立的规划调整保留原有确认流程。`--no-wait` 或等待超时返回时，按 `CONTINUE_STYLE_PLANNING` 继续执行 `chat wait`；`chat state` 只读并返回续等指引，不发起确认写请求。旧项目仍可使用 `chat demo` 和 `chat develop`。
