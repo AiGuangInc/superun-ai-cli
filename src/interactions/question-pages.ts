@@ -91,8 +91,10 @@ export class QuestionPages {
         interaction = binding.interaction;
       if (draft.sending)
         throw new CliError('OUTCOME_UNKNOWN', '本组回答已提交或结果未确认，请查询状态，勿重复提交');
-      if (Object.keys(input).some((key) => !['action', 'answers', 'pageRevision'].includes(key)))
+      if (Object.keys(input).some((key) => !['action', 'answers', 'pageRevision', 'saveOnly'].includes(key)))
         throw new CliError('INVALID_ARGUMENT', '回答包含不支持的字段');
+      if (input.saveOnly !== undefined && typeof input.saveOnly !== 'boolean')
+        throw new CliError('INVALID_ARGUMENT', 'saveOnly 必须为布尔值');
       const action =
         input.action ?? (interaction.kind === 'PRD_CLARIFICATION' ? 'GENERATE_STYLES' : 'SUBMIT');
       const revision = fingerprint([this.key(binding), draft.revision]);
@@ -111,7 +113,7 @@ export class QuestionPages {
       if (action !== 'SKIP') {
         const parsed = z.array(answer).min(1).safeParse(input.answers);
         if (!parsed.success) throw new CliError('INVALID_ARGUMENT', '请提供当前问题的有效答案');
-        // 完整旧协议仍接受；部分回答必须携带页面版本。
+        // 内部处理器接收整组或部分答案；部分回答必须携带页面版本。
         if (parsed.data.length !== interaction.questions.length && input.pageRevision !== revision)
           throw new CliError('STALE_INTERACTION', '逐题回答需要携带当前 pageRevision');
         const ids = parsed.data.map((item) => item.questionId);
@@ -121,8 +123,8 @@ export class QuestionPages {
         parsed.data.forEach((item) => byId.set(item.questionId, item));
         draft.answers = [...byId.values()];
         const missing = interaction.questions.findIndex((item) => !byId.has(item.id));
-        if (missing >= 0) {
-          draft.index = missing;
+        if (missing >= 0 || input.saveOnly === true) {
+          draft.index = missing >= 0 ? missing : interaction.questions.length - 1;
           draft.revision++;
           await this.store.write(this.key(binding), draft);
           return { localInteraction: true, sessionId: binding.round.sessionId };

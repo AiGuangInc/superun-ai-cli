@@ -1,4 +1,4 @@
-/** 面向终端、Agent 和 MCP 调用方的稳定输出协议。@author xiuyu.yi */
+/** 创作内部结果模型；交互由输出层统一投影为 view。@author xiuyu.yi */
 export type CreationState =
   | 'ACCEPTED'
   | 'QUEUED'
@@ -35,6 +35,7 @@ export type Question = {
   recommendedIndices?: Array<number>;
 };
 export type Interaction = {
+  view?: import('./interaction-view.js').InteractionView;
   page?: { id: string; revision: string; index?: number; total?: number; title: string };
   supported?: boolean;
   interactionId: string;
@@ -174,6 +175,8 @@ export type CreationResult = {
   toolUsage?: { toolCount?: number; complete: boolean; markdown: string };
   interactions: Array<Interaction>;
   choices?: Array<Choice>;
+  /** 内部风格视图，输出时归入统一 interactions。 */
+  selectionView?: import('./interaction-view.js').InteractionView;
   /** 当前等待的批次与同轮全部方案分开，追加不会隐藏旧方案。 */
   styleGeneration?: { choiceIds: Array<string>; phase: 'initial' | 'append' | 'retry'; notice?: string };
   /** 用户选定风格后，静默完成演示、规划及确认，直到返回开发功能清单。 */

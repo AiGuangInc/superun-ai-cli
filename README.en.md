@@ -99,8 +99,7 @@ superun-ai
 │   ├── demo <sessionId>                                          # View the demo and record it as viewed
 │   ├── develop <sessionId>                                       # Keep the demo and plan development
 │   ├── interaction                                               # Answer or skip interactions
-│   │   ├── reply <sessionId> <interactionId>                     # Submit an answer
-│   │   └── skip <sessionId> <interactionId>                      # Skip an eligible interaction
+│   │   └── reply <sessionId> <interactionId>                     # Submit an answer
 │   ├── plugin                                                    # Query, enable, and disable plugins
 │   │   ├── list <sessionId>                                      # List available plugins
 │   │   ├── status <sessionId> <pluginId>                         # Inspect a plugin
@@ -178,37 +177,38 @@ Overall completion retains the existing session, message, interaction, and backg
 
 The CLI connects to Superun by default. Use the global `--endpoint <URL>` option to specify an API endpoint and `--locale <language>` to choose the response language.
 
-## Answering interactions
+## 回答交互
 
-When the CLI returns `NEEDS_INPUT`, read the questions, allowed `actions`, and `answerSchema` in `interactions`. Always reply using the `interactionId` from that result.
+CLI 与专家团使用同一套交互协议。读取 `data.interactions[].view` 的标题、完整 content、问题 fields、操作 actions 和 links；旧的内部 questions/details/answerSchema 不再作为另一套格式返回，风格选择也归入 interactions。
+
+每个字段保留真实 ID、题目和选项说明。普通问卷可整组、逐题或按宿主容量分批展示；动态后续问题由 CLI 决定。推荐标记只展示，不代表用户已选。密钥字段必须用安全输入，不得降级为普通聊天。
+
+沿 `view.reply.command` 回复，保留 `view.reply.input.response` 的版本，补入所选 actionId 和字段值：
 
 ```json
 {
-  "action": "SUBMIT",
-  "answers": [
-    { "questionId": "q0", "selectedIndices": [0], "otherValue": "" }
-  ]
+  "response": {
+    "version": "1",
+    "revision": "当前 view.revision",
+    "actionId": "当前 view.actions 中用户选择的操作 ID",
+    "values": {
+      "字段 ID": { "optionIds": ["当前选项 ID"] }
+    }
+  }
 }
 ```
 
-```bash
-superun-ai chat interaction reply <sessionId> <interactionId> --input ./answer.json
-superun-ai chat interaction skip <sessionId> <interactionId>
-```
+文本字段使用 `{"text":"用户原文"}`。不能用显示编号代替 optionIds。`chat interaction reply <sessionId> <interactionId> --input <file>` 只接受 response；返回、跳过、撤回等也通过同一入口提交，不再提供独立 skip 命令。
 
-Selection indices start at `0`. Skip only when the interaction allows `SKIP`. Completing the requirements questionnaire starts style generation directly; omit `action` or use `GENERATE_STYLES`. The `SUBMIT` example above applies to ordinary questions. Stage transitions, database approvals, and other interactions use their own returned actions.
+按当前操作的 fieldIds 和 validation 收答：complete 收齐所需必填字段；partial 只保存明确答案，全部填好也不自动执行；none 不要求填写其他字段。用户已经在回答本次提交的问题时，答齐直接提交，不追加“是否提交”；CLI 返回独立确认题时才收集确认。
 
-For secret input, submit `{"values":{"requested-key":"secret-value"}}` with only the requested keys. Values are not echoed. Stale or ambiguous interactions are rejected; query the current state again.
+普通问卷整组答齐并提交后才回复服务端，PRD 沿原流程继续生成风格。原页面中的继续、智能修改、快速创建、确认创建等选项直接复用，不在通用层再生成一套等价按钮。规划、功能选择、密钥和风格的答案由 CLI 转换后交给既有处理器。
 
-`chat interaction reply --no-wait` controls waiting for subsequent creation after the reply has been processed. Some plugin configuration steps must finish in the foreground before submitting their interaction result; this option does not skip those steps. After an interruption, check the plugin and conversation states first.
+托管智能体依次处理设定、知识和记忆、扩展能力及最终确认，保留智能修改、返回与终止流程。本次知识文件为空，不提供附件路径或技能包上传入口；普通 chat create/send 的附件能力不受影响。快速创建、跳过、确认及失败恢复继续使用原业务逻辑，只有最终确认或明确选择快速创建后才创建资源。
 
-## 托管智能体与逐题交互
+草稿按环境、凭据作用域和交互来源隔离。回答带当前 revision，网页已完成或内容变化时拒绝旧答案。主子角色交接保留 sessionId、interactionId、stepId、revision、原始输出和字段映射；不能因 interactionId 相同而漏掉下一步。
 
-托管智能体沿用 Glow 流程：服务端按需提问，CLI 每次展示一个问题，收齐一组答案后统一提交。回复使用当前 `pageRevision`；普通完整 `answers` 协议仍兼容。`BACK` 返回上一题，`SKIP` 跳过整组。部分回答保存在本地，无论是否 `--no-wait` 都返回下一题。
-
-`MANAGED_AGENT_WIZARD` 展示设定、记忆库方式、名称/已有资源、可选技能及最终确认，确认前不创建资源。支持智能修改、撤回、返回修改、快速创建和终止确认。向导不上传知识文件或技能包，也不要求本地路径；普通聊天附件能力不受影响。快速创建清空可选配置；资源 ID 持久化用于恢复，未知创建结果不盲目重发。未知交互返回 `supported: false` 和网页处理说明。
-
-首次 `chat plugin enable <sessionId> SUPERUN_MANAGED_AGENT_V2` 使用 Glow 同源 Skill 入口；已有插件不重复创建，恢复仍走原流程。实际问题由服务端返回，不固定插入产品选择。完整中文协议见 README.md 的“托管智能体与逐题交互”。
+CLI 与专家团须同步升级。本版不维护两套对外交互协议；业务处理器参数只是内部实现，专家团不直接构造。未知必要展示能力应报告缺口，不猜测答案或自动跳过。
 
 
 ## Automatic testing and code review

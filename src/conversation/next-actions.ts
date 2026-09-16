@@ -13,6 +13,7 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
       CreationResult,
       | 'interactions'
       | 'choices'
+      | 'selectionView'
       | 'messageId'
       | 'cursor'
       | 'demo'

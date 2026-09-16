@@ -101,8 +101,7 @@ superun-ai
 │   ├── demo <sessionId>                                          # 查看演示快照并记录已查看状态
 │   ├── develop <sessionId>                                       # 保留演示，进入研发并生成规划
 │   ├── interaction                                               # 回答或跳过交互
-│   │   ├── reply <sessionId> <interactionId>                     # 提交回答
-│   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互
+│   │   └── reply <sessionId> <interactionId>                     # 回复当前交互
 │   ├── plugin                                                    # 查询、启用和禁用插件
 │   │   ├── list <sessionId>                                      # 查询可用插件
 │   │   ├── status <sessionId> <pluginId>                         # 查询插件状态
@@ -186,49 +185,36 @@ superun-ai chat stop <sessionId>
 
 ## 回答交互
 
-当返回 `NEEDS_INPUT` 时，读取 `interactions` 中的问题、允许的 `actions` 和 `answerSchema`。每次回复都使用该结果中的 `interactionId`。
+CLI 与专家团使用同一套交互协议。读取 `data.interactions[].view` 的标题、完整 content、问题 fields、操作 actions 和 links；旧的内部 questions/details/answerSchema 不再作为另一套格式返回，风格选择也归入 interactions。
+
+每个字段保留真实 ID、题目和选项说明。普通问卷可整组、逐题或按宿主容量分批展示；动态后续问题由 CLI 决定。推荐标记只展示，不代表用户已选。密钥字段必须用安全输入，不得降级为普通聊天。
+
+沿 `view.reply.command` 回复，保留 `view.reply.input.response` 的版本，补入所选 actionId 和字段值：
 
 ```json
 {
-  "action": "SUBMIT",
-  "answers": [
-    { "questionId": "q0", "selectedIndices": [0], "otherValue": "" }
-  ]
+  "response": {
+    "version": "1",
+    "revision": "当前 view.revision",
+    "actionId": "当前 view.actions 中用户选择的操作 ID",
+    "values": {
+      "字段 ID": { "optionIds": ["当前选项 ID"] }
+    }
+  }
 }
 ```
 
-```bash
-superun-ai chat interaction reply <sessionId> <interactionId> --input ./answer.json
-superun-ai chat interaction skip <sessionId> <interactionId>
-```
+文本字段使用 `{"text":"用户原文"}`。不能用显示编号代替 optionIds。`chat interaction reply <sessionId> <interactionId> --input <file>` 只接受 response；返回、跳过、撤回等也通过同一入口提交，不再提供独立 skip 命令。
 
-选择下标从 `0` 开始。只有交互声明支持 `SKIP` 时才可跳过。需求问卷答齐后直接生成风格，`action` 可省略或填写 `GENERATE_STYLES`；上面的 `SUBMIT` 示例适用于普通问答。阶段交接、数据库变更确认等交互应使用各自返回的动作。
+按当前操作的 fieldIds 和 validation 收答：complete 收齐所需必填字段；partial 只保存明确答案，全部填好也不自动执行；none 不要求填写其他字段。用户已经在回答本次提交的问题时，答齐直接提交，不追加“是否提交”；CLI 返回独立确认题时才收集确认。
 
-密钥输入使用 `{"values":{"请求的键名":"密钥值"}}`，只提交当前交互要求的键；内容不会回显。过期或存在歧义的交互会被拒绝，请重新查询状态。
+普通问卷整组答齐并提交后才回复服务端，PRD 沿原流程继续生成风格。原页面中的继续、智能修改、快速创建、确认创建等选项直接复用，不在通用层再生成一套等价按钮。规划、功能选择、密钥和风格的答案由 CLI 转换后交给既有处理器。
 
-`chat interaction reply --no-wait` 控制回答处理完成后的创作等待。部分插件配置需要在前台等待配置结束并提交交互结果，这一步不会因该选项被省略；中断后应先查询插件与会话状态。
+托管智能体依次处理设定、知识和记忆、扩展能力及最终确认，保留智能修改、返回与终止流程。本次知识文件为空，不提供附件路径或技能包上传入口；普通 chat create/send 的附件能力不受影响。快速创建、跳过、确认及失败恢复继续使用原业务逻辑，只有最终确认或明确选择快速创建后才创建资源。
 
-## 托管智能体与逐题交互
+草稿按环境、凭据作用域和交互来源隔离。回答带当前 revision，网页已完成或内容变化时拒绝旧答案。主子角色交接保留 sessionId、interactionId、stepId、revision、原始输出和字段映射；不能因 interactionId 相同而漏掉下一步。
 
-沿用 Glow 的产品判断和创建流程。`chat plugin enable <sessionId> SUPERUN_MANAGED_AGENT_V2` 首次启用时发送 Glow 同源的创建 Skill 入口；已启用不重复创建，停用恢复仍沿用原插件流程。是否询问用途、是否推荐 Superun AI，由实际返回的问题决定。托管智能体创建需要项目处于服务端支持的研发阶段。
-
-普通问卷每次仅展示当前一题的原文、完整选项、单选/多选规则和说明。返回 `page.id/revision/index/total`，回答携带 `pageRevision`；CLI 在本机保存部分答案，整组答齐后才提交服务端。`BACK` 返回上一题，`SKIP` 保持服务端“跳过整组”语义。已有调用方一次提交完整 `answers` 的协议继续兼容。不要选择未回答的推荐项，也不要把本地翻页当作已提交创作任务。无论是否 `--no-wait`，本地翻页都立即返回下一题的 `NEEDS_INPUT`。
-
-```json
-{
-  "action": "SUBMIT",
-  "pageRevision": "使用当前 interaction.page.revision",
-  "answers": [{ "questionId": "q0", "selectedIndices": [0] }]
-}
-```
-
-`MANAGED_AGENT_WIZARD` 依次展示：完整智能体设定、记忆库方式、条件出现的记忆库名称/已有记忆库、可选技能、最终确认。每页只问一个问题，最终确认前不创建资源。设定可直接改写或通过 Glow 的智能修改接口调整，修改后返回设定页，支持撤回。返回修改保留无关配置，最新摘要需重新确认。
-
-知识文件本次不配置，只提示创建后到网页补充；向导不要求上传附件、输入文件路径或上传技能包。普通 `chat create/send --file` 不受影响。技能按真实目录选择；内置文件/代码与联网能力保持 Glow 实际行为，仅展示说明。第一步明确选择“快速创建”即确认按当前设定创建，清空本次知识文件、记忆库和可选技能；第二步跳过清空记忆库，第三步跳过清空可选技能。MCP 在创建后详情页配置。
-
-向导回复同样携带当前 `pageRevision` 并使用返回的 `actions/answerSchema`。`TERMINATE` 先进入终止确认页；`BACK` 返回修改；`UNDO` 撤回当前设定修改。已确认并部分创建后只允许 `RESUME` 补齐剩余步骤，不能修改已冻结的提交配置。成功资源 ID 持久化后再推进下一步，回填失败不会重复创建；创建结果不确定时阻止重发，先到网页核验。未知交互以 `supported: false` 和网页处理说明返回，状态查询不再因未知 variant 直接失败，也不会自动跳过它。
-
-草稿位于 `~/.config/superun-ai-cli/interactions/`，按连接环境、凭据作用域和交互来源隔离，不保存 PAT；查询只读，回复时原子更新并防止并发提交。网页已结束或替换的交互不能用旧页继续提交。换设备或换凭据不自动迁移本机草稿。
+CLI 与专家团须同步升级。本版不维护两套对外交互协议；业务处理器参数只是内部实现，专家团不直接构造。未知必要展示能力应报告缺口，不猜测答案或自动跳过。
 
 ## 自动测试
 

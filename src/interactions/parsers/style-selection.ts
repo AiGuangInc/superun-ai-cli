@@ -3,7 +3,9 @@ import { enabled, list, object, text } from '../../contracts/value.js';
 import type { SessionView } from '../../contracts/node-wire.js';
 import { currentRound, roundMessage } from '../../conversation/round-selector.js';
 import type { JsonObject } from '../../contracts/value.js';
-import type { Choice } from '../../contracts/cli-output.js';
+import { fingerprint } from '../draft-store.js';
+import { interactionView } from '../view-adapter.js';
+import type { Choice, Interaction } from '../../contracts/cli-output.js';
 import { CliError } from '../../output/exit-codes.js';
 import { DEFAULT_ENDPOINT } from '../../config/constants.js';
 import { getSuperunHostingDomain } from '../../config/runtime-config.js';
@@ -78,14 +80,11 @@ export function styleBatchState(
   return choices.some((choice) => choice.status === 'success') ? 'NEEDS_SELECTION' : 'FAILED';
 }
 
-/** 与 Glow 的分支 iframe 同源，snapshotUrl 是图片，snapshotId 才用于生成页面地址。 */
+/** 与 Glow 的分支 iframe 同源，使用后端加密 ID；snapshotUrl 是图片，不回退数字 ID。 */
 function stylePreviewUrl(item: JsonObject, endpoint: string): string | undefined {
-  const snapshotId =
-    typeof item.snapshotId === 'number' && Number.isSafeInteger(item.snapshotId) && item.snapshotId > 0
-      ? String(item.snapshotId)
-      : text(item.snapshotId)?.trim();
-  if (!snapshotId || !/^[a-zA-Z0-9_-]+$/.test(snapshotId)) return undefined;
-  const url = new URL(`https://snapshot--${snapshotId}.${getSuperunHostingDomain(endpoint)}`);
+  const encryptedSnapshotId = text(item.encryptedSnapshotId)?.trim();
+  if (!encryptedSnapshotId || !/^[a-zA-Z0-9_-]+$/.test(encryptedSnapshotId)) return undefined;
+  const url = new URL(`https://snapshot--${encryptedSnapshotId}.${getSuperunHostingDomain(endpoint)}`);
   if (
     typeof item.updateTimestamp === 'number' &&
     Number.isSafeInteger(item.updateTimestamp) &&
@@ -131,4 +130,32 @@ export function projectChoices(
       };
     });
   });
+}
+
+/** 将当前就绪候选提供为通用选择，执行仍沿用 selectStyle。 */
+export function styleInteraction(
+  sessionId: string,
+  messageId: string | undefined,
+  anchor: string,
+  choices: Choice[],
+): Interaction | undefined {
+  if (!readyStyleChoices(choices).length) return undefined;
+  const interaction: Interaction = {
+    interactionId: `style_${fingerprint([sessionId, anchor])}`,
+    kind: 'STYLE_SELECTION',
+    source: {
+      roundId: anchor,
+      messageId: messageId ?? anchor,
+      contentId: 'style-selection',
+      variant: 'style-selection',
+    },
+    questions: [],
+    actions: ['SELECT'],
+    answerSchema: {
+      type: 'object',
+      required: ['action', 'choiceId'],
+      properties: { action: { const: 'SELECT' }, choiceId: { type: 'string' } },
+    },
+  };
+  return { ...interaction, view: interactionView(interaction, { choices }).view };
 }
