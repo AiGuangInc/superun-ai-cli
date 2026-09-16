@@ -15,9 +15,9 @@ import {
 } from '../interactions/parsers/style-selection.js';
 
 export const APPEND_STYLE_OPTION =
-  '**委托高级设计师再设计一版方案**：预计消耗 **50～100 算力值**，按实际用量扣费。';
+  '**委托高级设计师再设计一版方案**：预计消耗 **50～100 算力值**，按实际用量扣费，预计耗时 **30 分钟**。';
 export const APPEND_STYLE_NOTICE =
-  '高级设计师已接受委托，正在根据你的需求定制一版新方案，完成后按实际用量扣费（预计 50–100 算力值），这可能需要一些时间。';
+  '高级设计师已接受委托，正在根据你的需求定制一版新方案，完成后按实际用量扣费（预计 50–100 算力值），预计耗时 30 分钟。';
 
 export function existingStyleLinks(choices: Array<Choice>): string {
   return readyStyleChoices(choices)
@@ -148,7 +148,7 @@ export async function appendStyle(
     list(response.items).length > 0 && list(response.items).every((item) => object(item).tokenFree === true);
   const notice = [
     free
-      ? '高级设计师已接受委托，正在根据你的需求定制一版新方案；本次为免费委托，不扣算力值，这可能需要一些时间。'
+      ? '高级设计师已接受委托，正在根据你的需求定制一版新方案；本次为免费委托，不扣算力值，预计耗时 30 分钟。'
       : APPEND_STYLE_NOTICE,
     existingStyleLinks(choices),
   ]

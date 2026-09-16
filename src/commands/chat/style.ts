@@ -68,7 +68,7 @@ export function registerStyle(chat: Command, context: CommandContext): void {
   withWait(
     style
       .command('append <sessionId>')
-      .description('委托高级设计师再设计一版方案，每版预计消耗 50～100 算力值，按实际用量扣费')
+      .description('委托高级设计师再设计一版方案，每版预计消耗 50～100 算力值，按实际用量扣费，预计耗时 30 分钟')
       .requiredOption('--anchor <preReplyMessageId>', '当前风格轮次，使用查询结果中的 branchAnchor'),
   ).action(async (sessionId: string, _options: unknown, command: Command) => {
     const options = object(command.opts());

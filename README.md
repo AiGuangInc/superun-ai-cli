@@ -95,7 +95,7 @@ superun-ai
 │   ├── style                                                     # 管理创作风格
 │   │   ├── generate <sessionId>                                  # 生成风格候选
 │   │   ├── list <sessionId>                                      # 查询全部风格批次
-│   │   ├── append <sessionId>                                    # 委托高级设计师再设计一版方案，每版预计消耗 50～100 算力值，按实际用量扣费
+│   │   ├── append <sessionId>                                    # 委托高级设计师再设计一版方案，每版预计消耗 50～100 算力值，按实际用量扣费，预计耗时 30 分钟
 │   │   ├── retry <sessionId> <choiceId>                          # 重试失败的原方案任务
 │   │   └── select <sessionId> <choiceId>                         # 选择风格并展示开发功能清单
 │   ├── demo <sessionId>                                          # 查看演示快照并记录已查看状态

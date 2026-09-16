@@ -15,7 +15,7 @@ export function styleResultNotice(result: GuidanceResult): string | undefined {
       result.styleGeneration.notice ??
       (result.styleGeneration.phase === 'append'
         ? batch.length && batch.every((choice) => choice.tokenFree === true)
-          ? '高级设计师已接受委托，正在根据你的需求定制一版新方案；本次为免费委托，不扣算力值，这可能需要一些时间。'
+          ? '高级设计师已接受委托，正在根据你的需求定制一版新方案；本次为免费委托，不扣算力值，预计耗时 30 分钟。'
           : APPEND_STYLE_NOTICE
         : result.styleGeneration.phase === 'retry'
           ? '正在重新生成失败的方案。'
