@@ -21,6 +21,8 @@ export function registerList(session: Command, context: CommandContext): void {
         options = object(command.opts());
       const page = await service.query.sessions({
         pageSize: options.limit,
+        // 与 Glow 项目列表一致，只查询创作项目。
+        modes: [6],
         keyword: options.keyword,
         scopes: [options.scope],
         cursorUpdatedAt: options.cursorUpdatedAt,
