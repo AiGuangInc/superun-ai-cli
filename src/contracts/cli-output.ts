@@ -22,7 +22,9 @@ export type InteractionKind =
   | 'ENTER_IDEATION'
   | 'APPROVE_ARCHITECTURE_PLAN'
   | 'SELECT_FEATURES'
-  | 'START_EXECUTION';
+  | 'START_EXECUTION'
+  | 'MANAGED_AGENT_WIZARD'
+  | 'UNSUPPORTED';
 export type Question = {
   id: string;
   question: string;
@@ -33,6 +35,8 @@ export type Question = {
   recommendedIndices?: Array<number>;
 };
 export type Interaction = {
+  page?: { id: string; revision: string; index?: number; total?: number; title: string };
+  supported?: boolean;
   interactionId: string;
   kind: InteractionKind;
   source: { roundId: string; messageId: string; contentId: string; variant: string; toolId?: string };
@@ -66,7 +70,7 @@ export type NextAction = {
   interactionId?: string;
   choiceId?: string;
   /** 回复的固定字段，用户数据仍需按对应交互的 answerSchema 补齐。 */
-  input?: { action: string };
+  input?: { action: string; pageRevision?: string };
 };
 export type DemoPreview = {
   snapshotId: string;

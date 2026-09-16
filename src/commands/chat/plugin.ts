@@ -1,4 +1,5 @@
 /** 插件查询与生命周期操作。@author xiuyu.yi */
+import { managedAgentEnableEntry } from '../../conversation/managed-agent-entry.js';
 import type { Command } from 'commander';
 import type { CommandContext } from '../shared.js';
 import { runtime, readInput, withWait, waitOptions, pollOperation, businessWrite } from '../shared.js';
@@ -38,6 +39,21 @@ export function registerPlugin(chat: Command, context: CommandContext): void {
       const service = await runtime(context, current),
         options = object(current.opts());
       let result = await service.plugin.operate('status', sessionId, pluginId);
+      if (
+        action === 'enable' &&
+        integrationKey(pluginId) === 'SUPERUN_MANAGED_AGENT_V2' &&
+        result.state === 'NOT_ENABLED'
+      ) {
+        if (options.input)
+          throw new CliError('INVALID_ARGUMENT', '首次启用通用智能体请通过交互配置，不接受直接配置或附件');
+        const response = await businessWrite(context, service, sessionId, () =>
+          service.command.chat({ sessionId, ...managedAgentEnableEntry() }),
+        );
+        context.output.write(
+          await service.accepted(object(response), sessionId, options.wait !== false, waitOptions(current)),
+        );
+        return;
+      }
       const completed =
         action === 'enable'
           ? result.state === 'ENABLED'

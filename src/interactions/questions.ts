@@ -26,7 +26,7 @@ export function projectQuestions(raw: unknown, preserveIds = false): Array<Quest
       question: label,
       header: text(question.header),
       multiSelect: question.multiSelect === true,
-      allowOther: true,
+      allowOther: question.allowOther !== false,
       options,
       ...(typeof recommended === 'number' &&
       Number.isInteger(recommended) &&
@@ -68,6 +68,8 @@ export function resolveAnswers(
     if (!answer || new Set(answer.selectedIndices).size !== answer.selectedIndices.length)
       throw new CliError('INVALID_ARGUMENT', '问题 ID 或选项下标重复/无效');
     const otherValue = answer.otherValue.trim();
+    if (otherValue && !question.allowOther)
+      throw new CliError('INVALID_ARGUMENT', '当前问题不允许自定义回答');
     if (!answer.selectedIndices.length && !otherValue)
       throw new CliError('INVALID_ARGUMENT', `请回答：${question.question}`);
     if (!question.multiSelect && answer.selectedIndices.length + (otherValue ? 1 : 0) > 1)

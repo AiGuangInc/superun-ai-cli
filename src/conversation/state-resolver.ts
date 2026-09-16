@@ -96,11 +96,27 @@ export function resolveState(
   }
   if (waitingForStyles) return result;
   if (hasPendingCreationWork(view)) return result;
-  if (view.session.status === 4)
-    throw new CliError('UNSUPPORTED_INTERACTION', '会话正在等待当前 CLI 未识别的交互', {
-      sessionId: result.sessionId,
-      messageId: result.messageId,
-    });
+  if (view.session.status === 4) {
+    result.state = 'NEEDS_INPUT';
+    result.interactions = [
+      {
+        interactionId: `unsupported:${result.sessionId}:${result.messageId ?? 'session'}`,
+        kind: 'UNSUPPORTED',
+        supported: false,
+        source: {
+          roundId: round?.roundId ?? '',
+          messageId: result.messageId ?? '',
+          contentId: '',
+          variant: 'unknown',
+        },
+        questions: [],
+        actions: [],
+        answerSchema: {},
+        details: { notice: '服务端正在等待未识别的交互，请到 Superun 网页处理后再查询。' },
+      },
+    ];
+    return result;
+  }
   if (view.session.status === 10) result.state = 'QUEUED';
   else if (view.session.status === 2) result.state = 'PAUSED';
   else if (round?.status === 'interrupted') result.state = 'INTERRUPTED';

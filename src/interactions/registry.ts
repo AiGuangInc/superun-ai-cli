@@ -11,8 +11,9 @@ import { parsePlugin } from './parsers/plugin-action.js';
 import { parseDdl } from './parsers/ddl-approval.js';
 import { semanticInteraction } from './parsers/semantic-action.js';
 import { isStyleSelected } from './parsers/style-selection.js';
-import { pendingTool, toolId } from './context.js';
-import { CliError } from '../output/exit-codes.js';
+import { pendingTool, toolId, bind } from './context.js';
+import { interactionId } from './interaction-id.js';
+import { text } from '../contracts/value.js';
 
 const parsers: Record<string, InteractionParser> = {
   prd_questions: parsePrd,
@@ -22,6 +23,8 @@ const parsers: Record<string, InteractionParser> = {
   tool_plugin_secrets_create: parseSecret,
   tool_plugin: parsePlugin,
   tool_execute_ddl: parseDdl,
+  managed_agent_wizard: (context) =>
+    pendingTool(context.item) ? bind(context, 'MANAGED_AGENT_WIZARD', { actions: [] }) : undefined,
 };
 
 export function collectInteractions(
@@ -33,25 +36,41 @@ export function collectInteractions(
   for (const round of view.pipeline.render?.rounds ?? []) {
     if (round.meta?.consult || round.meta?.passive) continue;
     for (const item of round.agentItems) {
+      const parser = parsers[item.variant];
       if (
         pendingTool(item) &&
-        !toolId(item) &&
-        !(item.variant === 'tool_execute_ddl' && item.payload.autoApprove === true)
+        (!parser ||
+          (!toolId(item) && !(item.variant === 'tool_execute_ddl' && item.payload.autoApprove === true)))
       ) {
-        throw new CliError('UNSUPPORTED_INTERACTION', '等待中的工具缺少可回复标识', {
+        const source = {
+          roundId: round.roundId,
+          messageId: item.source?.messageId ?? text(item.payload.messageId) ?? '',
+          contentId: item.source?.contentId ?? text(item.payload.contentId) ?? item.id,
           variant: item.variant,
-          sessionId: view.session.sessionId,
+          toolId: toolId(item),
+        };
+        bindings.push({
+          item,
+          round,
+          view,
+          current: round.roundId === latest?.roundId,
+          interaction: {
+            interactionId: interactionId(round.sessionId, source),
+            kind: 'UNSUPPORTED',
+            source,
+            supported: false,
+            questions: [],
+            actions: [],
+            answerSchema: {},
+            details: {
+              variant: item.variant,
+              notice: '当前 CLI 暂不支持该交互或缺少回复标识，请到 Superun 网页处理。',
+            },
+          },
         });
-      }
-      const parser = parsers[item.variant];
-      if (!parser) {
-        if (pendingTool(item))
-          throw new CliError('UNSUPPORTED_INTERACTION', '当前 CLI 尚未支持该阻断交互', {
-            variant: item.variant,
-            sessionId: view.session.sessionId,
-          });
         continue;
       }
+      if (!parser) continue;
       const binding = parser({
         item,
         round,

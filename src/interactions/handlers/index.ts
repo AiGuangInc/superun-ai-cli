@@ -11,7 +11,12 @@ import { replyDdl } from './reply-ddl.js';
 import { replyStyle } from './reply-style.js';
 import { replySemantic } from './reply-semantic.js';
 
+const unsupported: ReplyHandler = async () => {
+  throw new CliError('UNSUPPORTED_INTERACTION', '此交互不能通过通用回复提交');
+};
 const handlers: Record<InteractionKind, ReplyHandler> = {
+  MANAGED_AGENT_WIZARD: unsupported,
+  UNSUPPORTED: unsupported,
   PRD_CLARIFICATION: replyPrd,
   ASK_USER_TOOL: replyAsk,
   ASK_USER_MESSAGE: replyUniversalAsk,
@@ -27,6 +32,8 @@ const handlers: Record<InteractionKind, ReplyHandler> = {
 };
 export async function dispatchReply(context: ReplyContext): Promise<Record<string, unknown>> {
   const fields: Record<InteractionKind, Array<string>> = {
+    MANAGED_AGENT_WIZARD: [],
+    UNSUPPORTED: [],
     PRD_CLARIFICATION: ['action', 'answers'],
     ASK_USER_TOOL: ['action', 'answers'],
     ASK_USER_MESSAGE: ['action', 'answers'],

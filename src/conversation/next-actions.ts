@@ -51,7 +51,10 @@ export function hasCompletedCreationResult(result: GuidanceResult): boolean {
 }
 
 const QUESTIONNAIRE_INSTRUCTION =
-  '请一次性向用户完整展示当前交互 questions 中的全部问题和选项：保留原始问题、选项标签及说明，标明题号、选项编号、multiSelect 单选/多选规则和 allowOther 自定义回答能力；展示编号须与 question.id、options.index 对应，不要只概括问题、逐题提问或省略选项。提示用户“请按题号回答，例如1A、2B，也可以补充自己的要求”，示例不代表固定题数或默认答案。收集整份问卷的回答；若用户仅回答部分题目，保留已答内容并一次性展示剩余问题及选项，不要替用户选择推荐项，答案齐全后再统一提交';
+  '每次只展示当前 questions 中的一个问题及完整选项，保留原文、选项说明、单选/多选、自定义回答和预览能力。按 page 显示当前题号，使用原 question.id 与 options.index 回填，不替用户选择推荐项。用户回答后携带 page.revision 作为 pageRevision 提交，CLI 保存本题并返回下一题；整组答齐才回复服务端。用户主动一次明确回答多题时保留答案，不能推断未回答题。BACK 仅返回上一题；SKIP 是跳过本组问题，仅用户明确要求时执行';
+
+const WIZARD_INSTRUCTION =
+  '沿用 Glow 创建智能体流程，每次只展示当前 questions 的一个问题，完整保留设定、问题和选项说明。展示 page.title；设定页和最终确认页必须展示 details.workDescription 全文，确认页同时展示记忆库和所选技能。知识文件本次不配置，只提示创建后到网页补充，不能要求上传附件或提供文件路径，也不提供技能包上传。内置能力仅说明，可选技能以真实目录为准。仅收到用户对当前页面的明确回答后携带 pageRevision 提交；推荐和建议值不代表已选。快速创建明确说明不配置知识文件、记忆库和可选技能。支持智能修改、撤回、返回修改、跳过可选步骤；终止先显示终止确认。创建确认后继续返回的步骤，已创建资源不得重复创建；details.notice 和 warnings 如实展示。';
 
 const PLAN_REVIEW_INSTRUCTION =
   '请按 messages 顺序展示原始规划对话，与产品页面保持一致，不自行摘要、改写或追加 attachments 中的完整研发规划。然后展示：\n- **确认规划**：回复 **“确认规划”** 继续。\n- **调整功能**：直接告诉我需要增加或修改的内容。\n每次调整后都要等待并展示更新方案，再次给出这两个入口；如果服务端再次提问，先回答问题再等待方案。补充要求不等于确认，不能确认旧方案。';
@@ -60,7 +63,9 @@ const FEATURE_SELECTION_INSTRUCTION =
   '请按 messages 顺序展示原始对话和功能清单，保留展示编号与 details.features 中真实 id 的对应关系；无需额外生成或链接功能清单文档，也不追加勾选状态提示。此时功能尚待选择开发，不展示“继续创作”或“上线运营”入口。最后只提示：“请回复要开发的功能编号或具体需求。”';
 
 const INTERACTION_INSTRUCTIONS: Record<InteractionKind, string> = {
-  PRD_CLARIFICATION: `${QUESTIONNAIRE_INSTRUCTION}；提交后直接生成风格并默认等待风格预览页面供用户选择，不再额外询问是否生成`,
+  MANAGED_AGENT_WIZARD: WIZARD_INSTRUCTION,
+  UNSUPPORTED: '当前 CLI 无法处理该交互，请到 Superun 网页完成后再查询，不自动跳过。',
+  PRD_CLARIFICATION: `${QUESTIONNAIRE_INSTRUCTION}；整组答齐提交后直接生成风格并默认等待风格预览页面供用户选择，不再额外询问是否生成`,
   ASK_USER_TOOL: `${QUESTIONNAIRE_INSTRUCTION}；提交后等待实际返回的问题或方案，不自动确认规划`,
   ASK_USER_MESSAGE: `${QUESTIONNAIRE_INSTRUCTION}；提交后等待实际返回的问题或方案，不自动确认规划`,
   SECRET_INPUT: '请用户安全提供当前要求的密钥，不要回显密钥内容',
@@ -166,35 +171,56 @@ function nextActionsForState(
     const interactions = result.interactions ?? [];
     if (interactions.length) {
       const nextActions = interactions.flatMap((interaction) =>
-        interaction.actions.map((action): NextAction => {
-          if (action === 'SKIP') {
-            return {
-              action,
-              instruction: '仅在用户明确要求跳过当前交互后执行此命令。',
-              requiresUserInput: true,
-              interactionId: interaction.interactionId,
-              command: [...command, 'interaction', 'skip', '--', result.sessionId, interaction.interactionId],
-            };
-          }
-          const instruction = INTERACTION_INSTRUCTIONS[interaction.kind];
-          return {
-            action,
-            instruction: `${instruction}。使用此 interactionId 对应的 questions、details 和 answerSchema，补齐 input 后通过 --input - 提交 JSON；不要替用户填写或选择。`,
-            requiresUserInput: true,
-            interactionId: interaction.interactionId,
-            command: [
-              ...command,
-              'interaction',
-              'reply',
-              '--input',
-              '-',
-              '--',
-              result.sessionId,
-              interaction.interactionId,
-            ],
-            input: { action },
-          };
-        }),
+        !interaction.actions.length
+          ? [
+              {
+                action: 'QUERY_STATE',
+                instruction: String(interaction.details?.notice ?? '请查询服务端当前状态，不重复提交。'),
+                requiresUserInput: true,
+                interactionId: interaction.interactionId,
+                command: [...command, 'state', '--', result.sessionId],
+              },
+            ]
+          : interaction.actions.map((action): NextAction => {
+              if (action === 'SKIP' && interaction.kind !== 'MANAGED_AGENT_WIZARD') {
+                return {
+                  action,
+                  instruction: ['PRD_CLARIFICATION', 'ASK_USER_TOOL', 'ASK_USER_MESSAGE'].includes(
+                    interaction.kind,
+                  )
+                    ? '仅在用户明确要求跳过当前整组问题后执行此命令，不是跳过单题。'
+                    : '仅在用户明确要求跳过当前交互后执行此命令。',
+                  requiresUserInput: true,
+                  interactionId: interaction.interactionId,
+                  command: [
+                    ...command,
+                    'interaction',
+                    'skip',
+                    '--',
+                    result.sessionId,
+                    interaction.interactionId,
+                  ],
+                };
+              }
+              const instruction = INTERACTION_INSTRUCTIONS[interaction.kind];
+              return {
+                action,
+                instruction: `${instruction}。使用此 interactionId 对应的 questions、details 和 answerSchema，补齐 input 后通过 --input - 提交 JSON；不要替用户填写或选择。`,
+                requiresUserInput: true,
+                interactionId: interaction.interactionId,
+                command: [
+                  ...command,
+                  'interaction',
+                  'reply',
+                  '--input',
+                  '-',
+                  '--',
+                  result.sessionId,
+                  interaction.interactionId,
+                ],
+                input: { action, ...(interaction.page ? { pageRevision: interaction.page.revision } : {}) },
+              };
+            }),
       );
       if (
         result.development?.stage === 'PLAN_REVIEW' &&

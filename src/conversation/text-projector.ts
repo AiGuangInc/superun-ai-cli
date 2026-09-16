@@ -21,7 +21,11 @@ export function projectText(rounds: Array<NodeRound>): Pick<CreationResult, 'mes
     for (const item of [...round.userItems, ...round.agentItems]) {
       const isRequirementChecklist = item.kind === 'card' && item.variant === 'requirement_checklist';
       if (item.kind === 'bubble' || isRequirementChecklist) {
-        const content = visibleText(item.payload)
+        const content = (
+          item.role === 'user'
+            ? (text(object(item.payload.skillDisplay).name) ?? visibleText(item.payload))
+            : visibleText(item.payload)
+        )
           .replace(/<superun-action\s+type=["']start-executing["']\s*\/?>/g, '')
           .trim();
         if (content)

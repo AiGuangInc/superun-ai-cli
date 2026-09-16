@@ -12,6 +12,7 @@ export type HttpRequest = {
   timeoutMs?: number;
   signal?: AbortSignal;
   write?: boolean;
+  native?: boolean;
 };
 
 export class HttpClient {
@@ -74,6 +75,9 @@ export class HttpClient {
       throw new CliError(request.write ? 'OUTCOME_UNKNOWN' : 'PROTOCOL_ERROR', '接口未返回有效 JSON');
     }
     const envelope = object(body);
+    // 托管资源原生响应只在明确为 BFF 信封时拆包。
+    if (request.native && !(typeof envelope.code === 'number' && typeof envelope.msg === 'string'))
+      return { status: response.status, etag, data: body };
     if ('code' in envelope) {
       if (String(envelope.code) !== '0') {
         throw new CliError(

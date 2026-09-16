@@ -14,6 +14,9 @@ import type { CreationResult, Choice } from './contracts/cli-output.js';
 import { enabled, object, text } from './contracts/value.js';
 import { getSuperunHostingDomain } from './config/runtime-config.js';
 import type { JsonObject } from './contracts/value.js';
+import { InteractionDraftStore } from './interactions/draft-store.js';
+import { QuestionPages, isQuestionnaire } from './interactions/question-pages.js';
+import { ManagedAgentWizard } from './interactions/managed-agent-wizard.js';
 import { collectInteractions } from './interactions/registry.js';
 import { toolId as sourceToolId, toolData } from './interactions/context.js';
 import { integrationKey } from './interactions/handlers/reply-plugin.js';
@@ -62,6 +65,8 @@ import { generateInitialStyles, appendStyle, retryStyle } from './conversation/s
 const DEMO_SNAPSHOT_SYNC_MS = 15_000;
 
 export class CreationRuntime {
+  readonly questionPages: QuestionPages;
+  readonly managedWizard: ManagedAgentWizard;
   readonly command: AgentCommandApi;
   readonly query: AgentQueryApi;
   readonly config: ConfigApi;
@@ -78,6 +83,9 @@ export class CreationRuntime {
     readonly client: ApiClient,
     readonly output: OutputWriter,
   ) {
+    const drafts = new InteractionDraftStore(client.interactionScope);
+    this.questionPages = new QuestionPages(drafts);
+    this.managedWizard = new ManagedAgentWizard(this, drafts);
     this.command = new AgentCommandApi(client);
     this.query = new AgentQueryApi(client);
     this.config = new ConfigApi(client);
@@ -145,9 +153,15 @@ export class CreationRuntime {
         ? await this.autoTestTasks.pending(view)
         : [];
     if (pendingReports.length) view.activeSubagentWork = true;
-    const bindings = collectInteractions(view, !styleTarget && isStyleSelected(view, choices)).filter(
-      (binding) => !check || binding.interaction.kind !== 'SELECT_FEATURES',
-    );
+    const bindings = (
+      await Promise.all(
+        collectInteractions(view, !styleTarget && isStyleSelected(view, choices)).map((binding) =>
+          binding.interaction.kind === 'MANAGED_AGENT_WIZARD'
+            ? this.managedWizard.project(binding)
+            : this.questionPages.project(binding),
+        ),
+      )
+    ).filter((binding) => !check || binding.interaction.kind !== 'SELECT_FEATURES');
     const processingIds = new Set<string>();
     for (const binding of bindings) {
       if (binding.interaction.kind !== 'PLUGIN_ACTION') continue;
@@ -531,6 +545,7 @@ export class CreationRuntime {
     const id = text(response.sessionId) ?? sessionId;
     if (!id)
       throw new CliError('OUTCOME_UNKNOWN', '写请求已返回，但响应中缺少 sessionId，请查询会话列表确认');
+    if (response.localInteraction === true) return this.withGuidance(await this.inspect(await this.load(id)));
     if (wait)
       return this.wait(id, {
         ...options,
@@ -842,6 +857,23 @@ export class CreationRuntime {
           interactionId,
         });
     }
+    const validate = async () => {
+      const fresh = collectInteractions(await this.load(sessionId)).find(
+        (item) => item.interaction.interactionId === interactionId,
+      );
+      if (
+        !fresh ||
+        JSON.stringify(fresh.interaction.questions) !== JSON.stringify(binding.interaction.questions)
+      )
+        throw new CliError('STALE_INTERACTION', '交互已结束或问题已变化，请查询当前状态');
+    };
+    if (binding.interaction.kind === 'MANAGED_AGENT_WIZARD')
+      return this.managedWizard.reply(binding, input, validate);
+    if (isQuestionnaire(binding))
+      return this.questionPages.reply(binding, input, async (answers) => {
+        await validate();
+        return object(await dispatchReply({ runtime: this, binding, input: answers }));
+      });
     return object(await dispatchReply({ runtime: this, binding, input }));
   }
 }

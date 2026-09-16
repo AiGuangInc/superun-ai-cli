@@ -202,6 +202,15 @@ For secret input, submit `{"values":{"requested-key":"secret-value"}}` with only
 
 `chat interaction reply --no-wait` controls waiting for subsequent creation after the reply has been processed. Some plugin configuration steps must finish in the foreground before submitting their interaction result; this option does not skip those steps. After an interruption, check the plugin and conversation states first.
 
+## 托管智能体与逐题交互
+
+托管智能体沿用 Glow 流程：服务端按需提问，CLI 每次展示一个问题，收齐一组答案后统一提交。回复使用当前 `pageRevision`；普通完整 `answers` 协议仍兼容。`BACK` 返回上一题，`SKIP` 跳过整组。部分回答保存在本地，无论是否 `--no-wait` 都返回下一题。
+
+`MANAGED_AGENT_WIZARD` 展示设定、记忆库方式、名称/已有资源、可选技能及最终确认，确认前不创建资源。支持智能修改、撤回、返回修改、快速创建和终止确认。向导不上传知识文件或技能包，也不要求本地路径；普通聊天附件能力不受影响。快速创建清空可选配置；资源 ID 持久化用于恢复，未知创建结果不盲目重发。未知交互返回 `supported: false` 和网页处理说明。
+
+首次 `chat plugin enable <sessionId> SUPERUN_MANAGED_AGENT_V2` 使用 Glow 同源 Skill 入口；已有插件不重复创建，恢复仍走原流程。实际问题由服务端返回，不固定插入产品选择。完整中文协议见 README.md 的“托管智能体与逐题交互”。
+
+
 ## Automatic testing and code review
 
 ```bash
