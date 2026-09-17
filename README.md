@@ -420,11 +420,29 @@ superun-ai chat publish visibility <sessionId> private
 
 `chat publish start --indexing allow|deny` 控制搜索引擎索引，不限制用户访问；站点上下线使用 `chat publish visibility`。若服务端要求确认云服务费用，了解费用后可显式传入 `--acknowledge-cloud-fee`。
 
-## 文本输入与结果文件
+## 文本输入与附件
 
-`chat create/send/test/review` 只接受纯文本，不支持 `--file` 或 JSON `attachments`（包括空数组）。通过 `--message <text>` 传入文本，或通过 `--input <file>` / `--input -` 读取仅含 `content` 或 `message` 字段的 JSON，两个文本字段不能同时提供。`--input` 读取的是请求 JSON，不会上传该文件。
+`chat create/send/test/review` 支持重复使用 `--file <path>` 上传本地文件。文本仍通过互斥的 `--message <text>` 或 `--input <file>` / `--input -` 传入；JSON 只包含 `content` 或 `message`，不接受 `attachments`、内联文件内容或附件 URL。`--input` 读取的是请求 JSON，不会将该 JSON 文件上传；要上传文件必须显式使用 `--file`。create/send 也支持仅传文件。
 
-需求及文本素材应完整放入 `content`，例如 `{"content":"完整需求正文\n\n## 参考素材\n完整素材正文"}`。宿主读取文本文件后应将正文并入文本，不使用“正文见附件”或只传本地路径；不能读取的素材应明确告知用户，不能假装已经提交。
+```bash
+superun-ai chat create --message "根据附件制作聊天消息总结应用" --file ./feishu-group-digest.md
+superun-ai chat send <sessionId> --input ./request.json --file ./design.png --file ./requirements.pdf
+```
+
+CLI 每次上传前读取 Glow 同源的服务端格式和大小限制。当前主站配置如下，实际限制以当前连接环境返回为准：
+
+| 文件类别 | 支持扩展名 | 当前单文件上限 |
+| --- | --- | --- |
+| 图片 | png、jpg、jpeg、webp、gif | 20MB，超限时按 Glow 流程尝试压缩 |
+| 文本及代码 | txt、md、svg、js、ts、jsx、tsx、py、java、cpp、c、h、cs、php、rb、go、rs、swift、html、css、scss、less、json、xml、yaml、yml | 5MB |
+| 文档 | pdf、docx | 50MB |
+| 表格 | xlsx、xls；csv | Excel 30MB，CSV 5MB |
+| 视频 | mp4、mov、webm、avi、wmv、flv、mkv | 15MB，必须能读取时长且不超过 5 分钟（含 2 秒容差） |
+| 音频及压缩包 | mp3、wav、ogg、flac、m4a、aac、zip、rar | 15MB |
+
+每条消息最多 10 个文件，其中 PDF 最多 5 个；图片宽高、总像素、PDF 页数和 Word 图片数按同源规则校验。当前主站图片单边不超过 29900 像素，总像素不超过 24999999，PDF 页数和 Word 图片数上限为 800。格式配置不可用、文件不合法、审核失败或预处理失败时整条消息停止，不静默丢弃附件。
+
+所有文件（包括很小的 Markdown/TXT）都先上传、审核，再按 Glow 的 `name/url/mediaType/meta` 结构发送；PDF、Word、Excel/CSV 按同源服务预处理，保留解析元数据。不会把文件正文或 Base64 放入附件 `content`。上传过程写入 stderr，只有全部附件就绪后才发出一次创作消息；`--no-wait` 也会完成上传、审核和预处理。图片尺寸和视频时长由随包依赖在本机读取，无需安装 FFmpeg。不要上传 `.env` 或 CLI 凭据等敏感文件。
 
 `session get --include-attachments` 返回可见附件清单；`chat state --include-file <name>` 读取指定可见附件正文。系统文件和密钥配置文件不会作为结果附件返回。
 

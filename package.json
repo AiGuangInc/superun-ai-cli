@@ -34,6 +34,8 @@
   },
   "dependencies": {
     "commander": "14.0.0",
+    "image-dimensions": "2.5.0",
+    "mediainfo.js": "0.3.5",
     "semver": "7.7.2",
     "zod": "3.25.76"
   },

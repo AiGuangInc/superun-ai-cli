@@ -292,11 +292,29 @@ After the user explicitly asks to launch the site, use `chat publish status <ses
 
 `chat publish start --indexing allow|deny` controls search-engine indexing, not visitor access. Change site visibility with `chat publish visibility`. If the service requires acknowledgment of cloud costs, review them before explicitly passing `--acknowledge-cloud-fee`.
 
-## Text input and result files
+## Text input and attachments
 
-`chat create/send/test/review` accepts plain text only. Neither `--file` nor JSON `attachments` (including an empty array) is supported. Use `--message <text>` or load JSON containing only `content` or `message` with `--input <file>` / `--input -`; the two text fields are mutually exclusive. `--input` reads request JSON and does not upload the file.
+`chat create/send/test/review` supports repeated `--file <path>` options for local uploads. Supply text through mutually exclusive `--message <text>` or `--input <file>` / `--input -`. JSON accepts only `content` or `message`, not `attachments`, inline file data, or attachment URLs. `--input` reads request JSON; only `--file` uploads a file. create/send also accepts files without text.
 
-Put the complete requirements and text material in `content`, for example `{"content":"Full requirements\n\n## Reference material\nFull material text"}`. Hosts should read text files and include their contents in the text, rather than saying “see attachment” or passing only a local path. Report any material that cannot be read instead of claiming it was submitted.
+```bash
+superun-ai chat create --message "Build a chat summary app using the attachment" --file ./feishu-group-digest.md
+superun-ai chat send <sessionId> --input ./request.json --file ./design.png --file ./requirements.pdf
+```
+
+The CLI loads Glow's current file extension and size rules before uploading. Current China production limits are listed below; the connected environment's response is authoritative.
+
+| Category | Supported extensions | Current per-file limit |
+| --- | --- | --- |
+| Images | png, jpg, jpeg, webp, gif | 20 MB; try Glow's compression flow when exceeded |
+| Text and code | txt, md, svg, js, ts, jsx, tsx, py, java, cpp, c, h, cs, php, rb, go, rs, swift, html, css, scss, less, json, xml, yaml, yml | 5 MB |
+| Documents | pdf, docx | 50 MB |
+| Spreadsheets | xlsx, xls; csv | Excel 30 MB; CSV 5 MB |
+| Video | mp4, mov, webm, avi, wmv, flv, mkv | 15 MB; readable duration of at most 5 minutes plus 2 seconds tolerance |
+| Audio and archives | mp3, wav, ogg, flac, m4a, aac, zip, rar | 15 MB |
+
+Each message allows at most 10 files, including at most 5 PDFs. Image dimensions/pixel count, PDF pages, and Word image counts follow the same rules as Glow. Current China production limits are 29900 pixels per image edge, 24999999 total pixels, and 800 PDF pages or Word images. Missing configuration, invalid files, audit failures, or preprocessing failures stop the entire message instead of silently dropping attachments.
+
+Every file, including small Markdown/TXT files, is uploaded and audited before being sent as `name/url/mediaType/meta`. PDFs, Word documents, and Excel/CSV files use Glow's preprocessing services and retain their parsed metadata. File text and Base64 are never sent as attachment `content`. Progress goes to stderr; the creation message is sent once, after every attachment is ready. `--no-wait` still completes upload, audit, and preprocessing. Bundled dependencies read image dimensions and video duration locally without requiring FFmpeg. Do not upload `.env` or CLI credential files.
 
 `session get --include-attachments` returns visible attachments. `chat state --include-file <name>` reads a named visible file. System files and secret configuration are not returned as result attachments.
 
