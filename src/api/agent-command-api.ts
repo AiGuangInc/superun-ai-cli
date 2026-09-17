@@ -1,6 +1,7 @@
 /** 对话创建、工具回复和项目内容更新。@author xiuyu.yi */
 import type { ApiClient } from '../transport/api-client.js';
 import type { JsonObject } from '../contracts/value.js';
+import type { InputAttachment } from './upload-api.js';
 import { object } from '../contracts/value.js';
 import { AUTO_TEST_OPERATION_KEY, AUTO_TEST_SOURCE_KEY } from '../conversation/auto-test.js';
 import { CODE_REVIEW_OPERATION_KEY, CODE_REVIEW_SOURCE_KEY } from '../conversation/code-review.js';
@@ -8,6 +9,7 @@ import { CODE_REVIEW_OPERATION_KEY, CODE_REVIEW_SOURCE_KEY } from '../conversati
 export type ChatInput = {
   sessionId?: string;
   content: string;
+  attachments?: InputAttachment[];
   model?: string;
   minDuration?: number;
   previewVersionId?: number;

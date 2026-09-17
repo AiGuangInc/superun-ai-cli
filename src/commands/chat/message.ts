@@ -1,8 +1,11 @@
-/** 创建与续写共用的纯文本消息输入和发送流程。@author xiuyu.yi */
+/** 创建与续写共用的消息输入、附件上传和发送流程。@author xiuyu.yi */
 import type { Command } from 'commander';
 import { z } from 'zod';
 import { object, text } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
+import { prepareUploadFiles } from '../../api/upload-files.js';
+import { uploadAttachment } from '../../api/upload-api.js';
+import type { InputAttachment } from '../../api/upload-api.js';
 import { currentRound, roundMessage } from '../../conversation/round-selector.js';
 import {
   AUTO_TEST_DEFAULT_MESSAGE,
@@ -29,7 +32,8 @@ export function messageOptions(command: Command): Command {
   return withWait(
     command
       .option('--message <text>', '需求文本')
-      .option('--input <file>', '仅含 content 或 message 文本字段的 JSON 文件，- 表示标准输入'),
+      .option('--input <file>', '仅含 content 或 message 文本字段的 JSON 文件，- 表示标准输入')
+      .option('--file <path>', '上传本地附件，可重复使用；格式和大小以服务端限制为准', appendValue, []),
   );
 }
 export async function sendMessage(
@@ -39,6 +43,7 @@ export async function sendMessage(
   check?: 'test' | 'review',
 ): Promise<void> {
   const options = object(command.opts());
+  const files = z.array(z.string()).parse(options.file ?? []);
   const testFollowup = text(options.testFollowup),
     reviewFollowup = text(options.reviewFollowup);
   if (testFollowup && reviewFollowup)
@@ -50,8 +55,11 @@ export async function sendMessage(
   const sourceKey = checkKind === 'review' ? CODE_REVIEW_SOURCE_KEY : AUTO_TEST_SOURCE_KEY;
   const hasMessage = typeof options.message === 'string',
     hasInput = typeof options.input === 'string';
-  if ((hasMessage && hasInput) || (!check && !hasMessage && !hasInput))
-    throw new CliError('INVALID_ARGUMENT', '必须且只能指定 --message 或 --input');
+  if ((hasMessage && hasInput) || (!check && !hasMessage && !hasInput && !files.length))
+    throw new CliError(
+      'INVALID_ARGUMENT',
+      '请指定 --message、--input 或 --file；--message 与 --input 不能同时使用',
+    );
   const raw =
     typeof options.input === 'string'
       ? await readInput(options.input)
@@ -68,16 +76,17 @@ export async function sendMessage(
   if (!parsed.success || (parsed.data.content !== undefined && parsed.data.message !== undefined))
     throw new CliError(
       'INVALID_ARGUMENT',
-      '输入只接受 content 或 message 文本字段，不能同时提供；不支持附件，请将完整文本放入 content',
+      'JSON 只接受 content 或 message 文本字段，不能同时提供；附件请使用 --file，不接受内联内容或附件 URL',
     );
   const input = parsed.data,
     content = input.content ?? input.message ?? '';
-  if (!content.trim())
+  if (!content.trim() && (check || !files.length))
     throw new CliError(
       'INVALID_ARGUMENT',
       check ? `${label}范围不能为空；省略 --message 可检查刚才完成的内容` : '需求文本不能为空',
     );
   const service = await runtime(context, command);
+  const preparedFiles = await prepareUploadFiles(service, files);
   const previous =
     sessionId && (options.wait !== false || checkKind) ? await service.load(sessionId) : undefined;
   let operation: 'test' | 'review' | 'repair' | undefined;
@@ -102,12 +111,15 @@ export async function sendMessage(
       });
     operation = check ?? 'repair';
   }
+  const attachments: InputAttachment[] = [];
+  for (const file of preparedFiles) attachments.push(await uploadAttachment(service, file));
   const previousMessageId = previous ? roundMessage(previous, currentRound(previous))?.messageId : undefined;
   const create = sessionId ? undefined : await service.config.creation(content);
   const response = await businessWrite(context, service, sessionId, () =>
     service.command.chat({
       sessionId,
       content,
+      ...(attachments.length ? { attachments } : {}),
       model: text(options.model),
       workspaceId: text(options.workspaceId),
       ...(operation
