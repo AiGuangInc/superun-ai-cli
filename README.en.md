@@ -292,9 +292,11 @@ After the user explicitly asks to launch the site, use `chat publish status <ses
 
 `chat publish start --indexing allow|deny` controls search-engine indexing, not visitor access. Change site visibility with `chat publish visibility`. If the service requires acknowledgment of cloud costs, review them before explicitly passing `--acknowledge-cloud-fee`.
 
-## Attachments
+## Text input and result files
 
-`chat create/send` accepts repeated `--file <path>` options. Small text files may be included directly in the message; other files are uploaded and approved before the message is sent. The per-file limit is 20 MB.
+`chat create/send/test/review` accepts plain text only. Neither `--file` nor JSON `attachments` (including an empty array) is supported. Use `--message <text>` or load JSON containing only `content` or `message` with `--input <file>` / `--input -`; the two text fields are mutually exclusive. `--input` reads request JSON and does not upload the file.
+
+Put the complete requirements and text material in `content`, for example `{"content":"Full requirements\n\n## Reference material\nFull material text"}`. Hosts should read text files and include their contents in the text, rather than saying “see attachment” or passing only a local path. Report any material that cannot be read instead of claiming it was submitted.
 
 `session get --include-attachments` returns visible attachments. `chat state --include-file <name>` reads a named visible file. System files and secret configuration are not returned as result attachments.
 
