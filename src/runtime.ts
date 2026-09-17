@@ -16,6 +16,7 @@ import { getSuperunHostingDomain } from './config/runtime-config.js';
 import type { JsonObject } from './contracts/value.js';
 import { InteractionDraftStore } from './interactions/draft-store.js';
 import { wizardQuestion } from './interactions/managed-agent-model.js';
+import { pluginForm } from './interactions/plugin-config.js';
 import type { InteractionBinding } from './interactions/context.js';
 import { ManagedAgentWizard } from './interactions/managed-agent-wizard.js';
 import { collectInteractions } from './interactions/registry.js';
@@ -180,11 +181,12 @@ export class CreationRuntime {
       .filter((binding): binding is InteractionBinding => !!binding)
       .filter((binding) => !check || binding.interaction.kind !== 'SELECT_FEATURES');
     const processingIds = new Set<string>();
-    for (const binding of bindings) {
+    for (const [index, binding] of bindings.entries()) {
       if (binding.interaction.kind !== 'PLUGIN_ACTION') continue;
       const pluginName = text(toolData(binding.item).pluginName);
       if (!pluginName) continue;
       const state = await this.integration.status(view.session.sessionId, integrationKey(pluginName));
+      bindings[index] = this.pluginInteraction(binding, state);
       if (['ENABLING', 'RESTORING', 'PAUSING', 'DISABLING'].includes(String(state.integrationStatus)))
         processingIds.add(binding.interaction.interactionId);
     }
@@ -361,6 +363,64 @@ export class CreationRuntime {
       await this.attachDevelopmentPreview(result, view);
     }
     return result;
+  }
+  private pluginInteraction(binding: InteractionBinding, state: JsonObject): InteractionBinding {
+    if (binding.interaction.kind === 'UNSUPPORTED') return binding;
+    const data = toolData(binding.item);
+    if (data.toolName === 'PluginConfigurationModify')
+      return {
+        ...binding,
+        interaction: {
+          ...binding.interaction,
+          details: { ...binding.interaction.details, settingsUrl: this.client.config.endpoint },
+        },
+      };
+    const plugin = integrationKey(text(data.pluginName) ?? '');
+    const form = pluginForm(plugin, state, object(data.pluginConfig));
+    const needsCredentials = form.requiredKeys.length > 0;
+    return {
+      ...binding,
+      interaction: {
+        ...binding.interaction,
+        kind: needsCredentials ? 'PLUGIN_SECRET_INPUT' : 'PLUGIN_ACTION',
+        actions: needsCredentials ? ['SUBMIT', 'SKIP'] : ['ENABLE', 'SKIP'],
+        details: {
+          ...binding.interaction.details,
+          ...form,
+          ...(needsCredentials
+            ? {
+                instruction:
+                  '通过安全输入提供所需字段；不得在普通聊天中索取或回显凭据。提交后由 CLI 启用插件，不另写环境变量或重复回填工具。',
+              }
+            : {}),
+        },
+        ...(needsCredentials
+          ? {
+              answerSchema: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  action: { enum: ['SUBMIT', 'SKIP'], default: 'SUBMIT' },
+                  values: {
+                    type: 'object',
+                    properties: Object.fromEntries(
+                      form.keys.map((key) => [
+                        key,
+                        { type: 'string', ...(key === 'SMS_PROVIDER' ? { default: 'tencent' } : {}) },
+                      ]),
+                    ),
+                    required: form.requiredKeys,
+                    additionalProperties: false,
+                  },
+                },
+                allOf: [
+                  { if: { properties: { action: { const: 'SUBMIT' } } }, then: { required: ['values'] } },
+                ],
+              },
+            }
+          : {}),
+      },
+    };
   }
   /** 普通研发与 QA 修复共用入口交付，运行中或真实业务提问时不额外读取路由。 */
   private async attachDevelopmentPreview(result: CreationResult, view: SessionView): Promise<void> {
@@ -874,7 +934,10 @@ export class CreationRuntime {
         }
       for (const message of view.pipeline.messages)
         for (const content of message.displayContents) {
-          if (object(object(content.tool).toolData).toolId === toolId)
+          if (
+            content.type !== 'customize_display_tool_thinking' &&
+            object(object(content.tool).toolData).toolId === toolId
+          )
             sources.add(
               `${message.messageId}:${text(content.contentId) ?? binding.interaction.source.contentId}`,
             );
@@ -886,13 +949,14 @@ export class CreationRuntime {
           interactionId,
         });
     }
+    const originalInteraction = binding.interaction;
     const validate = async () => {
       const fresh = collectInteractions(await this.load(sessionId)).find(
-        (item) => item.interaction.interactionId === binding.interaction.interactionId,
+        (item) => item.interaction.interactionId === originalInteraction.interactionId,
       );
       if (
         !fresh ||
-        JSON.stringify(fresh.interaction.questions) !== JSON.stringify(binding.interaction.questions)
+        JSON.stringify(fresh.interaction.questions) !== JSON.stringify(originalInteraction.questions)
       )
         throw new CliError('STALE_INTERACTION', '交互已结束或问题已变化，请查询当前状态');
     };
@@ -900,6 +964,17 @@ export class CreationRuntime {
       if (!wizardInput) throw new CliError('STALE_INTERACTION', '请查询并使用当前向导问题的交互 ID');
       if (wizardInput.action === 'QUERY_STATE') return { sessionId, localInteraction: true };
       return this.managedWizard.reply(binding, wizardInput, validate);
+    }
+    if (binding.item.variant === 'tool_plugin' && input.action !== 'SKIP') {
+      const plugin = integrationKey(text(toolData(binding.item).pluginName) ?? '');
+      binding = this.pluginInteraction(binding, await this.integration.status(sessionId, plugin));
+      if (
+        binding.interaction.kind === 'PLUGIN_SECRET_INPUT' &&
+        input.action === 'ENABLE' &&
+        input.config !== undefined &&
+        Object.keys(input).every((key) => ['action', 'config'].includes(key))
+      )
+        input = { action: 'SUBMIT', values: input.config };
     }
     return object(await dispatchReply({ runtime: this, binding, input }));
   }

@@ -8,7 +8,7 @@ import { requireCredentials } from '../shared.js';
 export function registerLogin(auth: Command, context: CommandContext): void {
   auth
     .command('login')
-    .description('登录 Superun 并保存 PAT')
+    .description('登录 superun 并保存 PAT')
     .addOption(new Option('--pat', '在终端隐藏输入现有 PAT').conflicts('stdin'))
     .option('--stdin', '从标准输入读取 PAT')
     .action(async (options: { pat?: boolean; stdin?: boolean }, command: Command) => {

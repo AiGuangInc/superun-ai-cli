@@ -44,7 +44,7 @@ export async function ensurePat(options: {
       'AUTH_REQUIRED',
       '未配置 PAT，请执行 superun-ai auth login；脚本中请设置 SUPERUN_PAT 或使用 auth login --stdin',
     );
-  // 认证统一使用 Superun 站点，业务地址不影响登录与凭据签发。
+  // 认证统一使用 superun 站点，业务地址不影响登录与凭据签发。
   const loginConfig = { ...config, endpoint: DEFAULT_ENDPOINT };
   const uuid = randomUUID();
   const loginUrl = new URL('/web/cli-token-callback', loginConfig.endpoint);
@@ -53,7 +53,7 @@ export async function ensurePat(options: {
   const signal = AbortSignal.any([commandSignal, timeout]);
   try {
     signal.throwIfAborted();
-    output.log(`请在浏览器完成 Superun 登录：${loginUrl.href}`);
+    output.log(`请在浏览器完成 superun 登录：${loginUrl.href}`);
     if (!(await openBrowser(loginUrl.href, signal))) output.log('未能自动打开浏览器，请手动打开上面的地址。');
     const anonymousClient = new ApiClient(loginConfig, '', undefined, signal);
     while (true) {

@@ -17,7 +17,7 @@
 把下面这段话发给 Claude Code、Codex 或其他 AI 编码 Agent，它会根据[安装指南](INSTALL.md)检查环境、安装 CLI，并引导你完成登录与验证：
 
 ```text
-请阅读 https://raw.githubusercontent.com/AiGuangInc/superun-ai-cli/refs/heads/main/INSTALL.md，帮我安装并配置 superun-ai-cli。请通过 npm 安装，登录 Superun 时让我在浏览器完成操作，不要索取或展示 PAT 明文。
+请阅读 https://raw.githubusercontent.com/AiGuangInc/superun-ai-cli/refs/heads/main/INSTALL.md，帮我安装并配置 superun-ai-cli。请通过 npm 安装，登录 superun 时让我在浏览器完成操作，不要索取或展示 PAT 明文。
 ```
 
 如果 Agent 已经打开本仓库，也可以直接让它阅读根目录的 `INSTALL.md`。
@@ -28,7 +28,7 @@
 npm install -g superun-ai-cli --registry=https://registry.npmjs.org
 ```
 
-`-g` 表示全局安装。全局命令目录在 `PATH` 中时，可以在任意目录使用 `superun-ai`。安装公开包不需要 npm 发布账号；安装后登录的是 Superun 账号。
+`-g` 表示全局安装。全局命令目录在 `PATH` 中时，可以在任意目录使用 `superun-ai`。安装公开包不需要 npm 发布账号；安装后登录的是 superun 账号。
 
 安装包名为 `superun-ai-cli`，使用时的命令名为 `superun-ai`。
 
@@ -77,7 +77,7 @@ superun-ai chat style generate --help
 ```text
 superun-ai
 ├── auth                                                          # 管理 PAT 登录
-│   ├── login                                                     # 登录 Superun 并保存 PAT
+│   ├── login                                                     # 登录 superun 并保存 PAT
 │   ├── status                                                    # 查看本地 PAT 配置状态
 │   └── logout                                                    # 清除本地 PAT
 ├── session                                                       # 查询项目
@@ -126,7 +126,7 @@ superun-ai auth status
 superun-ai auth logout
 ```
 
-已有 PAT 时，`auth login` 直接复用；没有时自动打开系统默认浏览器，完成 Superun 登录后领取 PAT 并保存到本地，无需手动复制。业务命令缺少 PAT 时也会自动进入同一登录流程，包括 Agent 的非 TTY Shell；登录完成后继续执行原命令，无需另行执行 `auth login`。`auth status` 仍只检查已有配置，不打开浏览器。
+已有 PAT 时，`auth login` 直接复用；没有时自动打开系统默认浏览器，完成 superun 登录后领取 PAT 并保存到本地，无需手动复制。业务命令缺少 PAT 时也会自动进入同一登录流程，包括 Agent 的非 TTY Shell；登录完成后继续执行原命令，无需另行执行 `auth login`。`auth status` 仍只检查已有配置，不打开浏览器。
 
 网页登录最多等待 5 分钟，按 Ctrl+C 可取消。浏览器未自动打开时，可以手动打开终端提示的地址。网页登录 Token 只用于申请 PAT，不会保存到本地。
 
@@ -182,7 +182,7 @@ superun-ai chat stop <sessionId>
 
 整体结束判断沿用原有会话、消息、交互和后台工作状态逻辑，`taskProgress` 仅用于展示；单项完成或进度卡更新不会结束等待，也不以进度条目数量推断整轮完成。原有单个风格方案就绪提示、本地等待超时及用户问答行为保持不变。`--progress-revision` 可传入上次版本用于计算 `changed`，但不抑制每次查询的进度输出；`chat state` 与 `chat style list` 同样支持该参数。
 
-默认连接 Superun 服务。全局参数 `--endpoint <URL>` 可指定 API 地址，`--locale <language>` 可指定响应语言。
+默认连接 superun 服务。全局参数 `--endpoint <URL>` 可指定 API 地址，`--locale <language>` 可指定响应语言。
 
 ## 回答问题与创建智能体
 
@@ -196,7 +196,7 @@ superun-ai chat stop <sessionId>
 
 完成配置后，核对信息并确认创建。需要调整时可以返回修改，也可以跳过可选步骤或终止创建。选择“快速创建”会直接按当前设定创建，不配置知识文件、记忆库和可选技能。
 
-知识文件和自定义技能包请在创建后到 Superun 网页端上传。当前内置能力随智能体提供，取消勾选不等于禁用对应能力。
+知识文件和自定义技能包请在创建后到 superun 网页端上传。当前内置能力随智能体提供，取消勾选不等于禁用对应能力。
 
 直接使用 CLI 时，按当前问题的提示准备答案文件，再提交：
 
@@ -216,9 +216,26 @@ superun-ai chat interaction skip <sessionId> <interactionId>
 superun-ai chat state <sessionId>
 ```
 
+## 启用插件
+
+使用 `superun-ai chat plugin list <sessionId>` 查看项目可用插件，再按需启用：
+
+```bash
+superun-ai chat plugin enable <sessionId> <pluginId>
+superun-ai chat plugin status <sessionId> <pluginId>
+```
+
+语音识别等支持平台托管的插件默认无需自备密钥。使用自有账号，或启用需要凭据的插件时，请按提示通过安全输入提供配置，不要把密钥发到普通聊天里。直接使用 CLI 时，可通过 `--input ./plugin-config.json` 提交配置文件。
+
+停用后需要再次启动时，仍使用同一条 `chat plugin enable` 命令。操作进行中会继续等待，无需重复提交。
+
+如果插件是在对话中请求启用的，直接回答那条启用或配置提示；不必再执行一次独立启用命令。启用过程中继续查看进度即可。已有配置的插件恢复时会按提示复用配置或要求补充凭据。
+
+需要外部平台授权或到网页修改配置时，按提示完成后再继续。暂时不需要的插件可以选择跳过。
+
 ## 自动测试
 
-自动测试验证指定 Superun 项目中的已有功能。发现确认的产品问题后，先在对话中告知，再自动修复并汇报。每次聚焦一个具体流程；测试环境异常、疑似问题和未覆盖范围会如实说明。
+自动测试验证指定 superun 项目中的已有功能。发现确认的产品问题后，先在对话中告知，再自动修复并汇报。每次聚焦一个具体流程；测试环境异常、疑似问题和未覆盖范围会如实说明。
 
 ```bash
 superun-ai chat test <sessionId>
@@ -271,7 +288,7 @@ superun-ai chat send <sessionId> --test-followup <sourceMessageId> --message "�
 
 ## 代码审查
 
-代码审查检查指定 Superun 项目的已有代码。未指定范围时检查刚才的改动；指定范围时原样传递用户要求。发现确认的问题后先告知用户，再自动修复并汇报；与用户明确意图冲突的修复先确认业务规则。代码审查与功能的实际运行验证分别表达，不把审查完成或修复完成说成测试、复审通过。
+代码审查检查指定 superun 项目的已有代码。未指定范围时检查刚才的改动；指定范围时原样传递用户要求。发现确认的问题后先告知用户，再自动修复并汇报；与用户明确意图冲突的修复先确认业务规则。代码审查与功能的实际运行验证分别表达，不把审查完成或修复完成说成测试、复审通过。
 
 ```bash
 superun-ai chat review <sessionId>
@@ -447,7 +464,7 @@ CLI 每次执行业务命令前都查询 npm `latest`。版本不一致时，使
 
 自动更新保留原 npm 安装作为稳定启动入口，新版本存放于 `~/.cache/superun-ai-cli/installations/` 下按安装来源和 Node 环境隔离的目录，通过小型入口记录切换实际执行版本，不原地覆盖全局包。每次安装使用独立目录，并发安装互不覆盖；不创建更新锁，不在业务命令中删除旧版本、失败安装目录或切换残留，避免 npm 清理旧包触发宿主的批量删除确认。历史版本会占用磁盘，本版不自动清理。CLI 不绕过宿主权限保护，其他文件写入或网络权限仍受宿主管理。
 
-公开包的版本预检与安装使用无登录凭证的 npm 配置，不读取用户、全局或项目的 npmrc。更新子进程仅接收运行和网络所需的环境变量，不继承 npm Token、Superun PAT、其他业务凭证或 `NODE_OPTIONS`，也不弹出 CLI 自己的 npm 登录步骤。环境变量中的代理、CA/证书与缓存配置继续生效；只写在 npmrc 中的配置不用于自动更新。官方 Registry 不可用时，可回退到 `npm_config_registry` / `NPM_CONFIG_REGISTRY` 环境变量指定的无凭证镜像地址，安装沿用查询成功的源。恢复过程不输出 npm 原始日志或凭据；失败只返回原因码，不关闭证书校验、不绕过宿主权限保护。AI 安装助手的首次安装与旧版升级也按 [安装指南](INSTALL.md) 使用无凭证环境，避免旧入口在加载新版之前读取 npm 凭证。
+公开包的版本预检与安装使用无登录凭证的 npm 配置，不读取用户、全局或项目的 npmrc。更新子进程仅接收运行和网络所需的环境变量，不继承 npm Token、superun PAT、其他业务凭证或 `NODE_OPTIONS`，也不弹出 CLI 自己的 npm 登录步骤。环境变量中的代理、CA/证书与缓存配置继续生效；只写在 npmrc 中的配置不用于自动更新。官方 Registry 不可用时，可回退到 `npm_config_registry` / `NPM_CONFIG_REGISTRY` 环境变量指定的无凭证镜像地址，安装沿用查询成功的源。恢复过程不输出 npm 原始日志或凭据；失败只返回原因码，不关闭证书校验、不绕过宿主权限保护。AI 安装助手的首次安装与旧版升级也按 [安装指南](INSTALL.md) 使用无凭证环境，避免旧入口在加载新版之前读取 npm 凭证。
 
 可以执行 `superun-ai update` 主动同步 npm `latest`。从源码安装也遵循相同的版本校验；修改源码后需要重新构建，如果全局命令不是链接到该目录，再执行 `npm install -g .`。
 
