@@ -15,7 +15,7 @@ Requires Node.js 22 or newer and npm.
 Send the following prompt to Claude Code, Codex, or another AI coding agent. The agent will follow the [installation guide](INSTALL.md) to check your environment, install the CLI, and guide you through login and verification:
 
 ```text
-Read https://raw.githubusercontent.com/AiGuangInc/superun-ai-cli/refs/heads/main/INSTALL.md and help me install and configure superun-ai-cli. Install from npm. Let me complete Superun login in my browser; do not request or display my PAT in plain text.
+Read https://raw.githubusercontent.com/AiGuangInc/superun-ai-cli/refs/heads/main/INSTALL.md and help me install and configure superun-ai-cli. Install from npm. Let me complete superun login in my browser; do not request or display my PAT in plain text.
 ```
 
 If the agent already has this repository open, ask it to read `INSTALL.md` in the repository root.
@@ -26,7 +26,7 @@ If the agent already has this repository open, ask it to read `INSTALL.md` in th
 npm install -g superun-ai-cli --registry=https://registry.npmjs.org
 ```
 
-`-g` installs the package globally. Once the global command directory is on your `PATH`, you can run `superun-ai` from any directory. Installing this public package does not require an npm publishing account; sign in to Superun after installation.
+`-g` installs the package globally. Once the global command directory is on your `PATH`, you can run `superun-ai` from any directory. Installing this public package does not require an npm publishing account; sign in to superun after installation.
 
 The package name is `superun-ai-cli`; the shell command is `superun-ai`.
 
@@ -124,7 +124,7 @@ superun-ai auth status
 superun-ai auth logout
 ```
 
-`auth login` reuses an existing PAT. If none is configured, it opens the system default browser for Superun login and saves the resulting PAT locally. Business commands without a PAT use the same login flow, including commands run from an agent's non-TTY shell, then resume the original operation without requiring a separate `auth login` command. `auth status` only checks existing configuration and does not open a browser.
+`auth login` reuses an existing PAT. If none is configured, it opens the system default browser for superun login and saves the resulting PAT locally. Business commands without a PAT use the same login flow, including commands run from an agent's non-TTY shell, then resume the original operation without requiring a separate `auth login` command. `auth status` only checks existing configuration and does not open a browser.
 
 Browser login waits for up to five minutes. Press Ctrl+C to cancel. If the browser does not open automatically, use the URL printed in the terminal. The website login token is only used to obtain a PAT and is not stored locally.
 
@@ -176,7 +176,7 @@ While `chat wait` or a write command is waiting, progress from every polling ite
 
 Overall completion retains the existing session, message, interaction, and background-work rules. `taskProgress` is display-only: a completed item or changed card does not end the wait, and item counts do not determine overall completion. Existing early style-preview notifications, local timeouts, and user-input behavior remain unchanged. Pass `--progress-revision` with the previous revision to compute `changed`; it does not suppress progress output on subsequent queries, and `chat state` and `chat style list` also accept this option.
 
-The CLI connects to Superun by default. Use the global `--endpoint <URL>` option to specify an API endpoint and `--locale <language>` to choose the response language.
+The CLI connects to superun by default. Use the global `--endpoint <URL>` option to specify an API endpoint and `--locale <language>` to choose the response language.
 
 ## Answer questions and create an agent
 
@@ -190,7 +190,7 @@ Creating a managed agent has three setup steps:
 
 Review the settings and confirm creation once you have finished. You can go back to make changes, skip optional steps, or stop creating the agent. “Quick create” uses the current description without adding knowledge files, a memory store, or optional skills.
 
-Upload knowledge files and custom skill packages through the Superun website after creation. Built-in capabilities are currently included with the agent; clearing their checkboxes does not disable them.
+Upload knowledge files and custom skill packages through the superun website after creation. Built-in capabilities are currently included with the agent; clearing their checkboxes does not disable them.
 
 When using the CLI directly, prepare an answer file following the current question's instructions, then submit it:
 
@@ -209,6 +209,23 @@ If you exit midway, the questions change, or an operation's outcome is unclear, 
 ```bash
 superun-ai chat state <sessionId>
 ```
+
+## Enable plugins
+
+Use `superun-ai chat plugin list <sessionId>` to see the plugins available to your project, then enable one as needed:
+
+```bash
+superun-ai chat plugin enable <sessionId> <pluginId>
+superun-ai chat plugin status <sessionId> <pluginId>
+```
+
+Plugins with a platform-managed option, such as speech recognition, do not require your own credentials by default. To use your own account or a plugin that requires credentials, follow the secure-input instructions. Do not paste secrets into ordinary chat. When using the CLI directly, provide a configuration file with `--input ./plugin-config.json`.
+
+To start a disabled plugin again, use the same `chat plugin enable` command. In-progress operations continue waiting without a duplicate submission.
+
+If an enable request appears in a conversation, answer that request instead of running a second enable command. Keep following its progress while it runs. Restoring a configured plugin will either reuse its settings or ask for credentials as needed.
+
+If external authorization or website configuration is needed, follow the instructions before continuing. You can skip plugins you do not need yet.
 
 ## Automatic testing and code review
 

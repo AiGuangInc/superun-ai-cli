@@ -103,7 +103,7 @@ export function wizardPage(
     actionLabels: { SKIP: '跳过此步骤' },
     actionDescriptions: { SKIP: '本次不配置知识文件和记忆库。' },
     workDescription: draft.description,
-    knowledgeNotice: '知识文件可在创建后到 Superun 网页端补充，本次不配置。',
+    knowledgeNotice: '知识文件可在创建后到 superun 网页端补充，本次不配置。',
     builtinCapabilities: ['读写文件、编辑代码', '联网搜索、抓取网页信息'],
     memory: {
       mode: draft.memoryMode,

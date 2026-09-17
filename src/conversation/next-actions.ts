@@ -61,13 +61,15 @@ const FEATURE_SELECTION_INSTRUCTION =
 
 const INTERACTION_INSTRUCTIONS: Record<InteractionKind, string> = {
   MANAGED_AGENT_WIZARD: QUESTIONNAIRE_INSTRUCTION,
-  UNSUPPORTED: '当前 CLI 无法处理该交互，请到 Superun 网页完成后再查询，不自动跳过。',
+  UNSUPPORTED: '当前 CLI 无法处理该交互，请到 superun 网页完成后再查询，不自动跳过。',
   PRD_CLARIFICATION: `${QUESTIONNAIRE_INSTRUCTION}；整组答齐提交后直接生成风格并默认等待风格预览页面供用户选择，不再额外询问是否生成`,
   ASK_USER_TOOL: `${QUESTIONNAIRE_INSTRUCTION}；提交后等待实际返回的问题或方案，不自动确认规划`,
   ASK_USER_MESSAGE: `${QUESTIONNAIRE_INSTRUCTION}；提交后等待实际返回的问题或方案，不自动确认规划`,
   SECRET_INPUT: '请用户安全提供当前要求的密钥，不要回显密钥内容',
-  PLUGIN_SECRET_INPUT: '请用户安全提供插件所需配置，不要回显密钥内容',
-  PLUGIN_ACTION: '请用户确认是否启用当前插件及相关配置',
+  PLUGIN_SECRET_INPUT:
+    '先展示 details 中的权限清单和安全设置提示，再通过安全输入收集插件所需配置；不要在普通聊天中索取或回显密钥，不替用户完成外部授权。',
+  PLUGIN_ACTION:
+    '展示当前插件的说明、权限清单和安全设置提示；引导用户处理必要的外部授权，再按当前允许的动作确认或跳过。无需密钥的托管模式不索取密钥，可选密钥不作为必填项；不得声称已经替用户完成外部授权。',
   DDL_CONFIRMATION: '请用户阅读并确认数据库变更',
   STYLE_SELECTION: '请用户打开风格预览页面并选择候选，只展示页面链接',
   ENTER_IDEATION: '请用户确认进入构想阶段',
@@ -204,7 +206,15 @@ function nextActionsForState(
                   ? action === 'SUBMIT'
                     ? String(interaction.details?.instruction ?? QUESTIONNAIRE_INSTRUCTION)
                     : `仅在用户主动要求此操作时执行 ${action}；这是可选导航，不新增题目，不追加单选或二次确认。`
-                  : INTERACTION_INSTRUCTIONS[interaction.kind];
+                  : interaction.kind === 'PLUGIN_ACTION'
+                    ? [
+                        INTERACTION_INSTRUCTIONS[interaction.kind],
+                        interaction.details?.notice,
+                        interaction.details?.instruction,
+                      ]
+                        .filter(Boolean)
+                        .join(' ')
+                    : INTERACTION_INSTRUCTIONS[interaction.kind];
               return {
                 action,
                 instruction: `${instruction}。使用此 interactionId 对应的 questions、details 和 answerSchema，补齐 input 后通过 --input - 提交 JSON；不要替用户填写或选择。`,

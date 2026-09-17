@@ -16,8 +16,11 @@ const ALIASES: Record<string, Array<string>> = {
   CUSTOM_MINIPROGRAM: ['Miniprogram', 'MINIPROGRAM', 'WeChat Miniprogram', 'WechatMiniprogram'],
 };
 export function integrationKey(name: string): string {
+  const normalized = name.trim().toUpperCase();
   return (
-    Object.entries(ALIASES).find(([key, aliases]) => key === name || aliases.includes(name))?.[0] ?? name
+    Object.entries(ALIASES).find(
+      ([key, aliases]) => key === normalized || aliases.some((alias) => alias.toUpperCase() === normalized),
+    )?.[0] ?? normalized
   );
 }
 export const replyPlugin: ReplyHandler = async ({ runtime, binding, input }) => {
@@ -30,10 +33,37 @@ export const replyPlugin: ReplyHandler = async ({ runtime, binding, input }) => 
       toolResult: JSON.stringify({ enabled: false, skipped: true, statusText: '用户已跳过插件配置' }),
     });
   const plugin = integrationKey(requiredText(toolData(binding.item).pluginName, 'pluginName'));
+  if (input.action === 'CONFIRM') {
+    if (input.config !== undefined || toolData(binding.item).toolName !== 'PluginConfigurationModify')
+      throw new CliError('INVALID_ARGUMENT', '当前操作只用于确认已在网页完成配置');
+    const state = await runtime.integration.status(sessionId, plugin);
+    return runtime.command.replySingle({
+      sessionId,
+      toolId,
+      toolResult: JSON.stringify({
+        enabled: state.integrationStatus === 'ENABLED',
+        statusText: '用户确认已在 superun 网页处理插件配置',
+      }),
+    });
+  }
+  if (
+    input.config !== undefined &&
+    (!input.config || typeof input.config !== 'object' || Array.isArray(input.config))
+  )
+    throw new CliError('INVALID_ARGUMENT', 'config 必须是配置对象');
   const config = object(input.config);
   for (const value of Object.values(config))
-    if (typeof value === 'string') runtime.output.registerSecret(value);
-  let result = await runtime.integration.connect(sessionId, plugin, config, toolId);
+    if (typeof value === 'string') {
+      runtime.output.registerSecret(value);
+      runtime.output.registerSecret(value.trim());
+    }
+  let result = await runtime.integration.connect(
+    sessionId,
+    plugin,
+    config,
+    toolId,
+    object(toolData(binding.item).pluginConfig),
+  );
   if (result.toolCallOwned === true) return { sessionId };
   const deadline = Date.now() + 1800_000;
   while (['ENABLING', 'RESTORING', 'PAUSING', 'DISABLING'].includes(String(result.integrationStatus))) {
@@ -45,7 +75,13 @@ export const replyPlugin: ReplyHandler = async ({ runtime, binding, input }) => 
       throw new CliError('INTERRUPTED', '已停止等待插件，远端任务继续运行', { sessionId });
     }
     result = await runtime.integration.status(sessionId, plugin);
+    if (result.toolCallOwned === true) return { sessionId };
   }
+  if (!['ENABLED', 'NOT_ENABLED', 'DISABLED', 'PAUSED'].includes(String(result.integrationStatus)))
+    throw new CliError('OUTCOME_UNKNOWN', '插件状态尚未确认，请查询当前状态，不重复启用或回填失败', {
+      sessionId,
+      pluginId: plugin,
+    });
   return runtime.command.replySingle({
     sessionId,
     toolId,

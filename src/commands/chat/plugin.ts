@@ -36,10 +36,11 @@ export function registerPlugin(chat: Command, context: CommandContext): void {
         context.output.write(entry);
         return;
       }
+      const status = await service.plugin.operate('status', sessionId, pluginId);
       context.output.write({
-        state: 'COMPLETED',
+        state: ACTIVE.has(String(status.state)) ? 'RUNNING' : 'COMPLETED',
         sessionId,
-        plugin: await service.plugin.operate('status', sessionId, pluginId),
+        plugin: status,
       });
     });
   for (const action of ['enable', 'disable'] as const) {
@@ -103,13 +104,22 @@ export function registerPlugin(chat: Command, context: CommandContext): void {
         action === 'enable'
           ? result.state === 'ENABLED'
           : ['NOT_ENABLED', 'DISABLED', 'PAUSED'].includes(String(result.state));
-      if (!completed) {
+      const inProgress = (
+        action === 'enable' ? ['ENABLING', 'RESTORING'] : ['DISABLING', 'PAUSING']
+      ).includes(String(result.state));
+      if (!completed && !inProgress) {
         result = object(
           await businessWrite(context, service, sessionId, async () => {
-            if (action === 'enable' && options.input) {
-              const config = await readInput(requiredText(options.input, 'input'));
+            if (
+              action === 'enable' &&
+              (options.input || ['ASR', 'FACEID'].includes(integrationKey(pluginId)))
+            ) {
+              const config = options.input ? await readInput(requiredText(options.input, 'input')) : {};
               for (const value of Object.values(config))
-                if (typeof value === 'string') context.output.registerSecret(value);
+                if (typeof value === 'string') {
+                  context.output.registerSecret(value);
+                  context.output.registerSecret(value.trim());
+                }
               const response = await service.integration.connect(sessionId, integrationKey(pluginId), config);
               return { pluginId, state: response.integrationStatus };
             }

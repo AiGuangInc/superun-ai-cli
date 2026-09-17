@@ -2,6 +2,7 @@
 import { object, list, requiredText } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
 import type { ReplyHandler } from './types.js';
+import { replyPlugin } from './reply-plugin.js';
 export const replySecret: ReplyHandler = async ({ runtime, binding, input }) => {
   const sessionId = binding.round.sessionId,
     toolId = requiredText(binding.interaction.source.toolId, 'toolId');
@@ -19,6 +20,8 @@ export const replySecret: ReplyHandler = async ({ runtime, binding, input }) => 
       throw new CliError('INVALID_ARGUMENT', 'Secret 键名必须来自当前提问，值必须为字符串');
     runtime.output.registerSecret(value);
   }
+  if (binding.item.variant === 'tool_plugin')
+    return replyPlugin({ runtime, binding, input: { action: 'ENABLE', config: values } });
   return runtime.conversation.replySecret({
     sessionId,
     toolId,

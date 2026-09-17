@@ -25,8 +25,11 @@ export const parseSecret: InteractionParser = (context) => {
       details: { keys: [...new Set(keys)], pluginName: text(data.pluginName) },
       schema: {
         type: 'object',
-        properties: { values: { type: 'object', additionalProperties: { type: 'string' } } },
-        required: ['values'],
+        properties: {
+          action: { enum: ['SUBMIT', 'SKIP'], default: 'SUBMIT' },
+          values: { type: 'object', additionalProperties: { type: 'string' } },
+        },
+        allOf: [{ if: { properties: { action: { const: 'SUBMIT' } } }, then: { required: ['values'] } }],
         additionalProperties: false,
       },
     },

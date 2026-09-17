@@ -112,7 +112,7 @@ export function resolveState(
         questions: [],
         actions: [],
         answerSchema: {},
-        details: { notice: '服务端正在等待未识别的交互，请到 Superun 网页处理后再查询。' },
+        details: { notice: '服务端正在等待未识别的交互，请到 superun 网页处理后再查询。' },
       },
     ];
     return result;

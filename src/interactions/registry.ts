@@ -64,7 +64,7 @@ export function collectInteractions(
             answerSchema: {},
             details: {
               variant: item.variant,
-              notice: '当前 CLI 暂不支持该交互或缺少回复标识，请到 Superun 网页处理。',
+              notice: '当前 CLI 暂不支持该交互或缺少回复标识，请到 superun 网页处理。',
             },
           },
         });
