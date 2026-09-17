@@ -53,9 +53,6 @@ export function hasCompletedCreationResult(result: GuidanceResult): boolean {
 const QUESTIONNAIRE_INSTRUCTION =
   '先展示 messages 中本轮需要阅读的说明，再完整展示当前 questions 的问题、选项标签和说明，保留单选/多选与自定义回答能力。可按宿主工具容量分批收答；本次问题答齐后按原 question.id 和 options.index 一次提交 answers，不代选、不追加提交确认。提交后读取新结果，有新交互 ID 就继续提问，不能把一页回答当作整个任务完成。';
 
-const WIZARD_INSTRUCTION =
-  '沿用 Glow 创建智能体流程，每次只展示当前 questions 的一个问题，完整保留设定、问题和选项说明。展示 page.title；设定页和最终确认页必须展示 details.workDescription 全文，确认页同时展示记忆库和所选技能。知识文件本次不配置，只提示创建后到网页补充，不能要求上传附件或提供文件路径，也不提供技能包上传。内置能力仅说明，可选技能以真实目录为准。仅收到用户对当前页面的明确回答后携带 pageRevision 提交；推荐和建议值不代表已选。快速创建明确说明不配置知识文件、记忆库和可选技能。支持智能修改、撤回、返回修改、跳过可选步骤；终止先显示终止确认。创建确认后继续返回的步骤，已创建资源不得重复创建；details.notice 和 warnings 如实展示。';
-
 const PLAN_REVIEW_INSTRUCTION =
   '请按 messages 顺序展示原始规划对话，与产品页面保持一致，不自行摘要、改写或追加 attachments 中的完整研发规划。然后展示：\n- **确认规划**：回复 **“确认规划”** 继续。\n- **调整功能**：直接告诉我需要增加或修改的内容。\n每次调整后都要等待并展示更新方案，再次给出这两个入口；如果服务端再次提问，先回答问题再等待方案。补充要求不等于确认，不能确认旧方案。';
 
@@ -63,7 +60,7 @@ const FEATURE_SELECTION_INSTRUCTION =
   '请按 messages 顺序展示原始对话和功能清单，保留展示编号与 details.features 中真实 id 的对应关系；无需额外生成或链接功能清单文档，也不追加勾选状态提示。此时功能尚待选择开发，不展示“继续创作”或“上线运营”入口。最后只提示：“请回复要开发的功能编号或具体需求。”';
 
 const INTERACTION_INSTRUCTIONS: Record<InteractionKind, string> = {
-  MANAGED_AGENT_WIZARD: WIZARD_INSTRUCTION,
+  MANAGED_AGENT_WIZARD: QUESTIONNAIRE_INSTRUCTION,
   UNSUPPORTED: '当前 CLI 无法处理该交互，请到 Superun 网页完成后再查询，不自动跳过。',
   PRD_CLARIFICATION: `${QUESTIONNAIRE_INSTRUCTION}；整组答齐提交后直接生成风格并默认等待风格预览页面供用户选择，不再额外询问是否生成`,
   ASK_USER_TOOL: `${QUESTIONNAIRE_INSTRUCTION}；提交后等待实际返回的问题或方案，不自动确认规划`,
@@ -202,7 +199,12 @@ function nextActionsForState(
                   ],
                 };
               }
-              const instruction = INTERACTION_INSTRUCTIONS[interaction.kind];
+              const instruction =
+                interaction.source.variant === 'managed_agent_wizard'
+                  ? action === 'SUBMIT'
+                    ? String(interaction.details?.instruction ?? QUESTIONNAIRE_INSTRUCTION)
+                    : `仅在用户主动要求此操作时执行 ${action}；这是可选导航，不新增题目，不追加单选或二次确认。`
+                  : INTERACTION_INSTRUCTIONS[interaction.kind];
               return {
                 action,
                 instruction: `${instruction}。使用此 interactionId 对应的 questions、details 和 answerSchema，补齐 input 后通过 --input - 提交 JSON；不要替用户填写或选择。`,

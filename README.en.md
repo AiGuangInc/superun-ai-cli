@@ -178,31 +178,37 @@ Overall completion retains the existing session, message, interaction, and backg
 
 The CLI connects to Superun by default. Use the global `--endpoint <URL>` option to specify an API endpoint and `--locale <language>` to choose the response language.
 
-## 回答交互
+## Answer questions and create an agent
 
-CLI 返回专家团 main 已使用的交互格式：`interactions[].kind`、`questions`、`actions`、`details` 和 `answerSchema`。先展示 `messages` 中的完整说明，再按问题原文和选项收集回答；推荐标记不代表用户已选。密钥仍走安全输入，风格仍使用 `choices` 与风格命令。
+The CLI pauses when it needs more information or a choice from you. When using the expert team, answer the questions shown in the interface. Multiple-choice questions can accept several selections; recommended options are still yours to choose.
 
-普通问卷一次返回整组问题。可以整组、逐题或按宿主容量分批展示，收齐当前全部问题后，通过 `chat interaction reply <sessionId> <interactionId> --input <file>` 一次提交：
+Creating a managed agent has three setup steps:
 
-```json
-{
-  "action": "SUBMIT",
-  "answers": [
-    { "questionId": "q0", "selectedIndices": [0], "otherValue": "" },
-    { "questionId": "q1", "selectedIndices": [], "otherValue": "用户原文" }
-  ]
-}
+1. **Agent settings**: describe what the agent should do. Edit the description directly or choose the AI-assisted editing option.
+2. **Knowledge and memory**: create a memory store, use an existing one, or continue without one. For a new store, use the suggested name or enter your own.
+3. **Capabilities**: choose file handling, web search, Word, PDF, PowerPoint, spreadsheet, and other available capabilities as needed. Longer lists span several pages. You can select “None on this page” without affecting other pages, or continue without selecting anything on any page.
+
+Review the settings and confirm creation once you have finished. You can go back to make changes, skip optional steps, or stop creating the agent. “Quick create” uses the current description without adding knowledge files, a memory store, or optional skills.
+
+Upload knowledge files and custom skill packages through the Superun website after creation. Built-in capabilities are currently included with the agent; clearing their checkboxes does not disable them.
+
+When using the CLI directly, prepare an answer file following the current question's instructions, then submit it:
+
+```bash
+superun-ai chat interaction reply <sessionId> <interactionId> --input ./answer.json
 ```
 
-保留真实 questionId 和选项 index，不能用展示编号代替。按当前 `actions` 与 `answerSchema` 选择操作；例如 PRD 使用 `GENERATE_STYLES`。用户答齐后直接提交，不追加“是否提交”。仅当当前 actions 包含 `SKIP` 时，才可使用 `chat interaction skip <sessionId> <interactionId>`。
+If the current question allows skipping, run:
 
-托管智能体向导由 CLI 内部转换成普通 `ASK_USER_TOOL`，专家团无需识别向导类型、维护步骤或构造资源参数。CLI 按 Glow 流程依次返回设定、知识和记忆、扩展能力及创建确认。返回、跳过、智能修改、撤回、快速创建、终止等操作显示为当前问题的选项；返回、跳过、终止等导航选项必须单独选择。每次页面变化都会获得新的 interactionId，回答当前问题后继续处理命令返回的下一条问答。
+```bash
+superun-ai chat interaction skip <sessionId> <interactionId>
+```
 
-本次知识文件为空，不提供附件路径或技能包上传入口；普通 chat create/send 的附件能力不受影响。只有最终确认或明确选择快速创建后才创建资源。创建成功的资源 ID 立即保存，失败恢复复用已创建资源；结果不确定时禁止盲目重发。
+If you exit midway, the questions change, or an operation's outcome is unclear, check the current status before continuing to avoid creating duplicates:
 
-首次启用通用智能体保留 Glow 的产品适配判断和配置入口。`chat plugin enable` 返回处理中后，原有 `chat plugin status` 会继续返回该入口的进度或普通问答；调用方无需增加专用等待分支。重复 enable 会读取已提交的流程，不重复发起；其他插件仍使用原有生命周期接口。
-
-草稿按环境、凭据作用域和交互来源隔离。CLI 在内部校验页面版本；调用方只需保留 sessionId、当前 interactionId 和原始输出，无需传 pageRevision、view 或 response。网页已完成、页面或选项目录变化时，旧回答会被拒绝，需重新查询。单页答完不代表整个任务完成，最终状态仍以 CLI 返回为准。
+```bash
+superun-ai chat state <sessionId>
+```
 
 ## Automatic testing and code review
 
