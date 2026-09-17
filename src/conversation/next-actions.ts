@@ -13,7 +13,6 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
       CreationResult,
       | 'interactions'
       | 'choices'
-      | 'selectionView'
       | 'messageId'
       | 'cursor'
       | 'demo'
@@ -52,7 +51,7 @@ export function hasCompletedCreationResult(result: GuidanceResult): boolean {
 }
 
 const QUESTIONNAIRE_INSTRUCTION =
-  '每次只展示当前 questions 中的一个问题及完整选项，保留原文、选项说明、单选/多选、自定义回答和预览能力。按 page 显示当前题号，使用原 question.id 与 options.index 回填，不替用户选择推荐项。用户回答后携带 page.revision 作为 pageRevision 提交，CLI 保存本题并返回下一题；整组答齐才回复服务端。用户主动一次明确回答多题时保留答案，不能推断未回答题。BACK 仅返回上一题；SKIP 是跳过本组问题，仅用户明确要求时执行';
+  '先展示 messages 中本轮需要阅读的说明，再完整展示当前 questions 的问题、选项标签和说明，保留单选/多选与自定义回答能力。可按宿主工具容量分批收答；本次问题答齐后按原 question.id 和 options.index 一次提交 answers，不代选、不追加提交确认。提交后读取新结果，有新交互 ID 就继续提问，不能把一页回答当作整个任务完成。';
 
 const WIZARD_INSTRUCTION =
   '沿用 Glow 创建智能体流程，每次只展示当前 questions 的一个问题，完整保留设定、问题和选项说明。展示 page.title；设定页和最终确认页必须展示 details.workDescription 全文，确认页同时展示记忆库和所选技能。知识文件本次不配置，只提示创建后到网页补充，不能要求上传附件或提供文件路径，也不提供技能包上传。内置能力仅说明，可选技能以真实目录为准。仅收到用户对当前页面的明确回答后携带 pageRevision 提交；推荐和建议值不代表已选。快速创建明确说明不配置知识文件、记忆库和可选技能。支持智能修改、撤回、返回修改、跳过可选步骤；终止先显示终止确认。创建确认后继续返回的步骤，已创建资源不得重复创建；details.notice 和 warnings 如实展示。';

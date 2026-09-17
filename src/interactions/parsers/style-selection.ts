@@ -3,9 +3,7 @@ import { enabled, list, object, text } from '../../contracts/value.js';
 import type { SessionView } from '../../contracts/node-wire.js';
 import { currentRound, roundMessage } from '../../conversation/round-selector.js';
 import type { JsonObject } from '../../contracts/value.js';
-import { fingerprint } from '../draft-store.js';
-import { interactionView } from '../view-adapter.js';
-import type { Choice, Interaction } from '../../contracts/cli-output.js';
+import type { Choice } from '../../contracts/cli-output.js';
 import { CliError } from '../../output/exit-codes.js';
 import { DEFAULT_ENDPOINT } from '../../config/constants.js';
 import { getSuperunHostingDomain } from '../../config/runtime-config.js';
@@ -130,32 +128,4 @@ export function projectChoices(
       };
     });
   });
-}
-
-/** 将当前就绪候选提供为通用选择，执行仍沿用 selectStyle。 */
-export function styleInteraction(
-  sessionId: string,
-  messageId: string | undefined,
-  anchor: string,
-  choices: Choice[],
-): Interaction | undefined {
-  if (!readyStyleChoices(choices).length) return undefined;
-  const interaction: Interaction = {
-    interactionId: `style_${fingerprint([sessionId, anchor])}`,
-    kind: 'STYLE_SELECTION',
-    source: {
-      roundId: anchor,
-      messageId: messageId ?? anchor,
-      contentId: 'style-selection',
-      variant: 'style-selection',
-    },
-    questions: [],
-    actions: ['SELECT'],
-    answerSchema: {
-      type: 'object',
-      required: ['action', 'choiceId'],
-      properties: { action: { const: 'SELECT' }, choiceId: { type: 'string' } },
-    },
-  };
-  return { ...interaction, view: interactionView(interaction, { choices }).view };
 }

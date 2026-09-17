@@ -99,7 +99,8 @@ superun-ai
 │   ├── demo <sessionId>                                          # View the demo and record it as viewed
 │   ├── develop <sessionId>                                       # Keep the demo and plan development
 │   ├── interaction                                               # Answer or skip interactions
-│   │   └── reply <sessionId> <interactionId>                     # Submit an answer
+│   │   ├── reply <sessionId> <interactionId>                     # Submit an answer
+│   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互
 │   ├── plugin                                                    # Query, enable, and disable plugins
 │   │   ├── list <sessionId>                                      # List available plugins
 │   │   ├── status <sessionId> <pluginId>                         # Inspect a plugin
@@ -179,37 +180,29 @@ The CLI connects to Superun by default. Use the global `--endpoint <URL>` option
 
 ## 回答交互
 
-CLI 与专家团使用同一套交互协议。读取 `data.interactions[].view` 的标题、完整 content、问题 fields、操作 actions 和 links；旧的内部 questions/details/answerSchema 不再作为另一套格式返回，风格选择也归入 interactions。
+CLI 返回专家团 main 已使用的交互格式：`interactions[].kind`、`questions`、`actions`、`details` 和 `answerSchema`。先展示 `messages` 中的完整说明，再按问题原文和选项收集回答；推荐标记不代表用户已选。密钥仍走安全输入，风格仍使用 `choices` 与风格命令。
 
-每个字段保留真实 ID、题目和选项说明。普通问卷可整组、逐题或按宿主容量分批展示；动态后续问题由 CLI 决定。推荐标记只展示，不代表用户已选。密钥字段必须用安全输入，不得降级为普通聊天。
-
-沿 `view.reply.command` 回复，保留 `view.reply.input.response` 的版本，补入所选 actionId 和字段值：
+普通问卷一次返回整组问题。可以整组、逐题或按宿主容量分批展示，收齐当前全部问题后，通过 `chat interaction reply <sessionId> <interactionId> --input <file>` 一次提交：
 
 ```json
 {
-  "response": {
-    "version": "1",
-    "revision": "当前 view.revision",
-    "actionId": "当前 view.actions 中用户选择的操作 ID",
-    "values": {
-      "字段 ID": { "optionIds": ["当前选项 ID"] }
-    }
-  }
+  "action": "SUBMIT",
+  "answers": [
+    { "questionId": "q0", "selectedIndices": [0], "otherValue": "" },
+    { "questionId": "q1", "selectedIndices": [], "otherValue": "用户原文" }
+  ]
 }
 ```
 
-文本字段使用 `{"text":"用户原文"}`。不能用显示编号代替 optionIds。`chat interaction reply <sessionId> <interactionId> --input <file>` 只接受 response；返回、跳过、撤回等也通过同一入口提交，不再提供独立 skip 命令。
+保留真实 questionId 和选项 index，不能用展示编号代替。按当前 `actions` 与 `answerSchema` 选择操作；例如 PRD 使用 `GENERATE_STYLES`。用户答齐后直接提交，不追加“是否提交”。仅当当前 actions 包含 `SKIP` 时，才可使用 `chat interaction skip <sessionId> <interactionId>`。
 
-按当前操作的 fieldIds 和 validation 收答：complete 收齐所需必填字段；partial 只保存明确答案，全部填好也不自动执行；none 不要求填写其他字段。用户已经在回答本次提交的问题时，答齐直接提交，不追加“是否提交”；CLI 返回独立确认题时才收集确认。
+托管智能体向导由 CLI 内部转换成普通 `ASK_USER_TOOL`，专家团无需识别向导类型、维护步骤或构造资源参数。CLI 按 Glow 流程依次返回设定、知识和记忆、扩展能力及创建确认。返回、跳过、智能修改、撤回、快速创建、终止等操作显示为当前问题的选项；返回、跳过、终止等导航选项必须单独选择。每次页面变化都会获得新的 interactionId，回答当前问题后继续处理命令返回的下一条问答。
 
-普通问卷整组答齐并提交后才回复服务端，PRD 沿原流程继续生成风格。原页面中的继续、智能修改、快速创建、确认创建等选项直接复用，不在通用层再生成一套等价按钮。规划、功能选择、密钥和风格的答案由 CLI 转换后交给既有处理器。
+本次知识文件为空，不提供附件路径或技能包上传入口；普通 chat create/send 的附件能力不受影响。只有最终确认或明确选择快速创建后才创建资源。创建成功的资源 ID 立即保存，失败恢复复用已创建资源；结果不确定时禁止盲目重发。
 
-托管智能体依次处理设定、知识和记忆、扩展能力及最终确认，保留智能修改、返回与终止流程。本次知识文件为空，不提供附件路径或技能包上传入口；普通 chat create/send 的附件能力不受影响。快速创建、跳过、确认及失败恢复继续使用原业务逻辑，只有最终确认或明确选择快速创建后才创建资源。
+首次启用通用智能体保留 Glow 的产品适配判断和配置入口。`chat plugin enable` 返回处理中后，原有 `chat plugin status` 会继续返回该入口的进度或普通问答；调用方无需增加专用等待分支。重复 enable 会读取已提交的流程，不重复发起；其他插件仍使用原有生命周期接口。
 
-草稿按环境、凭据作用域和交互来源隔离。回答带当前 revision，网页已完成或内容变化时拒绝旧答案。主子角色交接保留 sessionId、interactionId、stepId、revision、原始输出和字段映射；不能因 interactionId 相同而漏掉下一步。
-
-CLI 与专家团须同步升级。本版不维护两套对外交互协议；业务处理器参数只是内部实现，专家团不直接构造。未知必要展示能力应报告缺口，不猜测答案或自动跳过。
-
+草稿按环境、凭据作用域和交互来源隔离。CLI 在内部校验页面版本；调用方只需保留 sessionId、当前 interactionId 和原始输出，无需传 pageRevision、view 或 response。网页已完成、页面或选项目录变化时，旧回答会被拒绝，需重新查询。单页答完不代表整个任务完成，最终状态仍以 CLI 返回为准。
 
 ## Automatic testing and code review
 

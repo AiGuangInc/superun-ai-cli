@@ -22,7 +22,8 @@ export async function readCheckQuestionContext(
   const messages = new Map<string, CreationResult['messages'][number]>();
   const snapshots = new Map<string, Array<Record<string, unknown>>>();
   for (const interaction of interactions) {
-    if (interaction.kind !== 'ASK_USER_TOOL') continue;
+    if (interaction.kind !== 'ASK_USER_TOOL' || interaction.source.variant === 'managed_agent_wizard')
+      continue;
     const { messageId, contentId } = interaction.source;
     let contents = snapshots.get(messageId);
     if (!contents) {

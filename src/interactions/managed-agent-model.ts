@@ -3,7 +3,9 @@ import { z } from 'zod';
 import type { Interaction, Question } from '../contracts/cli-output.js';
 import type { WizardCatalog } from '../api/managed-agent-api.js';
 import { fingerprint } from './draft-store.js';
-import { ANSWER_JSON_SCHEMA } from './questions.js';
+import { CliError } from '../output/exit-codes.js';
+import { object, text, type JsonObject } from '../contracts/value.js';
+import { resolveAnswers, ANSWER_JSON_SCHEMA } from './questions.js';
 export const wizardStage = z.enum([
   'description',
   'rewrite',
@@ -207,6 +209,80 @@ export function wizardPage(
         action: { enum: actions },
         pageRevision: { const: revision },
       },
+    },
+  };
+}
+
+/** 只对外暴露专家团已支持的普通问答；每次步骤变化都会生成新的不透明 ID。 */
+export function wizardQuestion(page: Interaction): {
+  interaction: Interaction;
+  input: (answer: JsonObject) => JsonObject;
+} {
+  const revision = page.page?.revision;
+  if (!revision) throw new CliError('PROTOCOL_ERROR', '向导缺少当前步骤标识');
+  const original = page.questions[0];
+  const controls = new Map<number, string>();
+  const labels: Record<string, string> = {
+    BACK: '上一步',
+    SKIP: '跳过此步骤',
+    TERMINATE: '终止创建',
+    UNDO: '撤回设定修改',
+    RESUME: '继续未完成的步骤',
+    QUERY_STATE: '重新查询状态',
+  };
+  const question: Question = original
+    ? { ...original, options: [...original.options] }
+    : {
+        id: 'operation',
+        question: text(page.details?.notice) || '请选择下一步操作',
+        multiSelect: false,
+        allowOther: false,
+        options: [],
+      };
+  for (const action of page.actions.length
+    ? page.actions.filter((action) => action !== 'SUBMIT')
+    : ['QUERY_STATE']) {
+    const index = question.options.length;
+    controls.set(index, action);
+    question.options.push({
+      index,
+      label: labels[action] ?? action,
+      description:
+        [
+          text(object(page.details?.actionDescriptions)[action]),
+          question.multiSelect ? '请单独选择，不与其他选项同时选择。' : undefined,
+        ]
+          .filter(Boolean)
+          .join(' ') || undefined,
+    });
+  }
+  const interaction: Interaction = {
+    interactionId: `wizard_${fingerprint([page.interactionId, revision, question])}`,
+    kind: 'ASK_USER_TOOL',
+    source: page.source,
+    questions: [question],
+    actions: ['SUBMIT', ...(page.actions.includes('SKIP') ? ['SKIP'] : [])],
+    answerSchema: ANSWER_JSON_SCHEMA,
+    details: { title: page.page?.title },
+  };
+  return {
+    interaction,
+    input: (input) => {
+      if (Object.keys(input).some((key) => !['action', 'answers'].includes(key)))
+        throw new CliError('INVALID_ARGUMENT', '请使用当前问答的 action 和 answers');
+      const action = input.action ?? 'SUBMIT';
+      if (!interaction.actions.includes(String(action)))
+        throw new CliError('INVALID_ARGUMENT', '当前问答不支持该操作');
+      if (action === 'SKIP') return { action: 'SKIP', pageRevision: revision };
+      const [answer] = resolveAnswers([question], input.answers);
+      if (!answer) throw new CliError('INVALID_ARGUMENT', '请回答当前问题');
+      const selected = answer.selectedIndices.filter((index) => controls.has(index));
+      if (selected.length) {
+        if (answer.selectedIndices.length !== 1 || answer.otherValue)
+          throw new CliError('INVALID_ARGUMENT', '返回、跳过、终止等操作必须单独选择');
+        return { action: controls.get(selected[0]!), pageRevision: revision };
+      }
+      return { action: 'SUBMIT', pageRevision: revision, answers: input.answers };
     },
   };
 }
