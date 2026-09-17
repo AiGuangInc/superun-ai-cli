@@ -420,9 +420,11 @@ superun-ai chat publish visibility <sessionId> private
 
 `chat publish start --indexing allow|deny` 控制搜索引擎索引，不限制用户访问；站点上下线使用 `chat publish visibility`。若服务端要求确认云服务费用，了解费用后可显式传入 `--acknowledge-cloud-fee`。
 
-## 附件
+## 文本输入与结果文件
 
-`chat create/send` 支持重复传入 `--file <path>`。小型文本文件可以直接作为内容输入，其余文件上传并完成审核后才发送消息。单文件上限 20MB。
+`chat create/send/test/review` 只接受纯文本，不支持 `--file` 或 JSON `attachments`（包括空数组）。通过 `--message <text>` 传入文本，或通过 `--input <file>` / `--input -` 读取仅含 `content` 或 `message` 字段的 JSON，两个文本字段不能同时提供。`--input` 读取的是请求 JSON，不会上传该文件。
+
+需求及文本素材应完整放入 `content`，例如 `{"content":"完整需求正文\n\n## 参考素材\n完整素材正文"}`。宿主读取文本文件后应将正文并入文本，不使用“正文见附件”或只传本地路径；不能读取的素材应明确告知用户，不能假装已经提交。
 
 `session get --include-attachments` 返回可见附件清单；`chat state --include-file <name>` 读取指定可见附件正文。系统文件和密钥配置文件不会作为结果附件返回。
 

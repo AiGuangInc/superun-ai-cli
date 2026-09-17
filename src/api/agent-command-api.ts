@@ -20,7 +20,6 @@ export type ChatInput = {
   preReplyMessageId?: string;
   parallelSelectRequest?: JsonObject;
   excludedInheritedRoundExtraKeys?: Array<string>;
-  attachments?: Array<JsonObject>;
 };
 const PREFIX = '/api/uxa-center/agent/AgentCommand';
 export class AgentCommandApi {
