@@ -184,31 +184,37 @@ superun-ai chat stop <sessionId>
 
 默认连接 Superun 服务。全局参数 `--endpoint <URL>` 可指定 API 地址，`--locale <language>` 可指定响应语言。
 
-## 回答交互
+## 回答问题与创建智能体
 
-CLI 返回专家团 main 已使用的交互格式：`interactions[].kind`、`questions`、`actions`、`details` 和 `answerSchema`。先展示 `messages` 中的完整说明，再按问题原文和选项收集回答；推荐标记不代表用户已选。密钥仍走安全输入，风格仍使用 `choices` 与风格命令。
+需要你补充信息或做选择时，CLI 会暂停等待。通过专家团使用时，按界面上的问题回答即可；多选题可以选择多项，标有推荐的选项也由你决定是否采用。
 
-普通问卷一次返回整组问题。可以整组、逐题或按宿主容量分批展示，收齐当前全部问题后，通过 `chat interaction reply <sessionId> <interactionId> --input <file>` 一次提交：
+创建通用智能体时，依次完成三步：
 
-```json
-{
-  "action": "SUBMIT",
-  "answers": [
-    { "questionId": "q0", "selectedIndices": [0], "otherValue": "" },
-    { "questionId": "q1", "selectedIndices": [], "otherValue": "用户原文" }
-  ]
-}
+1. **智能体设定**：说明它负责什么，可以直接修改设定，或选择“智能修改”。
+2. **知识和记忆**：选择新建记忆库、使用已有记忆库，或不使用。新建时可使用建议名称，也可以填写自己的名称。
+3. **扩展能力**：按需选择文件处理、联网搜索、Word、PDF、PPT、表格等能力。选项较多时会分页，每页都可以选择“本页不选”，不会影响其他页的选择；全部不选也可以继续。
+
+完成配置后，核对信息并确认创建。需要调整时可以返回修改，也可以跳过可选步骤或终止创建。选择“快速创建”会直接按当前设定创建，不配置知识文件、记忆库和可选技能。
+
+知识文件和自定义技能包请在创建后到 Superun 网页端上传。当前内置能力随智能体提供，取消勾选不等于禁用对应能力。
+
+直接使用 CLI 时，按当前问题的提示准备答案文件，再提交：
+
+```bash
+superun-ai chat interaction reply <sessionId> <interactionId> --input ./answer.json
 ```
 
-保留真实 questionId 和选项 index，不能用展示编号代替。按当前 `actions` 与 `answerSchema` 选择操作；例如 PRD 使用 `GENERATE_STYLES`。用户答齐后直接提交，不追加“是否提交”。仅当当前 actions 包含 `SKIP` 时，才可使用 `chat interaction skip <sessionId> <interactionId>`。
+当前问题允许跳过时，可以执行：
 
-托管智能体向导由 CLI 内部转换成普通 `ASK_USER_TOOL`，专家团无需识别向导类型、维护步骤或构造资源参数。CLI 按 Glow 流程依次返回设定、知识和记忆、扩展能力及创建确认。返回、跳过、智能修改、撤回、快速创建、终止等操作显示为当前问题的选项；返回、跳过、终止等导航选项必须单独选择。每次页面变化都会获得新的 interactionId，回答当前问题后继续处理命令返回的下一条问答。
+```bash
+superun-ai chat interaction skip <sessionId> <interactionId>
+```
 
-本次知识文件为空，不提供附件路径或技能包上传入口；普通 chat create/send 的附件能力不受影响。只有最终确认或明确选择快速创建后才创建资源。创建成功的资源 ID 立即保存，失败恢复复用已创建资源；结果不确定时禁止盲目重发。
+中途退出、问题已更新或操作结果不明确时，先查询当前状态，再按返回的提示继续，避免重复创建：
 
-首次启用通用智能体保留 Glow 的产品适配判断和配置入口。`chat plugin enable` 返回处理中后，原有 `chat plugin status` 会继续返回该入口的进度或普通问答；调用方无需增加专用等待分支。重复 enable 会读取已提交的流程，不重复发起；其他插件仍使用原有生命周期接口。
-
-草稿按环境、凭据作用域和交互来源隔离。CLI 在内部校验页面版本；调用方只需保留 sessionId、当前 interactionId 和原始输出，无需传 pageRevision、view 或 response。网页已完成、页面或选项目录变化时，旧回答会被拒绝，需重新查询。单页答完不代表整个任务完成，最终状态仍以 CLI 返回为准。
+```bash
+superun-ai chat state <sessionId>
+```
 
 ## 自动测试
 

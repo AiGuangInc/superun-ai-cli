@@ -48,6 +48,7 @@ const answerSchema = z
 export function resolveAnswers(
   questions: Array<Question>,
   input: unknown,
+  options: { allowEmpty?: boolean } = {},
 ): Array<{
   question: Question;
   selectedIndices: Array<number>;
@@ -70,7 +71,7 @@ export function resolveAnswers(
     const otherValue = answer.otherValue.trim();
     if (otherValue && !question.allowOther)
       throw new CliError('INVALID_ARGUMENT', '当前问题不允许自定义回答');
-    if (!answer.selectedIndices.length && !otherValue)
+    if (!answer.selectedIndices.length && !otherValue && !options.allowEmpty)
       throw new CliError('INVALID_ARGUMENT', `请回答：${question.question}`);
     if (!question.multiSelect && answer.selectedIndices.length + (otherValue ? 1 : 0) > 1)
       throw new CliError('INVALID_ARGUMENT', `该题只允许单选：${question.question}`);

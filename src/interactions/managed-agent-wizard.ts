@@ -95,12 +95,7 @@ export class ManagedAgentWizard {
           memory: 'description',
           memory_name: 'memory',
           memory_existing: 'memory',
-          skills:
-            draft.memoryMode === 'new'
-              ? 'memory_name'
-              : draft.memoryMode === 'existing'
-                ? 'memory_existing'
-                : 'memory',
+          skills: 'memory',
           confirm: 'skills',
         };
         draft.stage = previous[draft.stage] || 'description';
@@ -118,7 +113,9 @@ export class ManagedAgentWizard {
         }
         return local();
       }
-      const [answer] = resolveAnswers(page.questions, input.answers);
+      const [answer] = resolveAnswers(page.questions, input.answers, {
+        allowEmpty: draft.stage === 'skills',
+      });
       if (!answer) throw new CliError('INVALID_ARGUMENT', '请回答当前问题');
       if (answer.otherValue && !answer.question.allowOther)
         throw new CliError('INVALID_ARGUMENT', '本题只能选择已展示的选项');
@@ -129,7 +126,9 @@ export class ManagedAgentWizard {
             validateDescription(answer.otherValue);
             draft.undoDescription = draft.description;
             draft.description = answer.otherValue;
-            return local();
+            draft.quick = false;
+            draft.stage = 'memory';
+            break;
           }
           validateDescription(draft.description);
           if (index === 1) draft.stage = 'rewrite';
@@ -161,9 +160,11 @@ export class ManagedAgentWizard {
         }
         case 'memory':
           delete draft.existingMemory;
-          if (index === 0) {
+          if (index === 0 || answer.otherValue) {
             draft.memoryMode = 'new';
-            draft.stage = 'memory_name';
+            draft.memoryName =
+              answer.otherValue || draft.memoryName || suggestedMemoryName(draft.description);
+            draft.stage = 'skills';
           } else if (catalog.memories.length && index === 1) {
             draft.memoryMode = 'existing';
             draft.memoryName = '';
@@ -184,12 +185,12 @@ export class ManagedAgentWizard {
           draft.stage = 'skills';
           break;
         case 'skills':
-          if (answer.selectedIndices.includes(catalog.skills.length) && answer.selectedIndices.length !== 1)
-            throw new CliError('INVALID_ARGUMENT', '暂不添加不能和其他技能同时选择');
+          draft.builtinFileSelected = answer.selectedIndices.includes(0);
+          draft.builtinWebSelected = answer.selectedIndices.includes(1);
           draft.skills = answer.selectedIndices
-            .filter((i) => i !== catalog.skills.length)
+            .filter((i) => i >= 2)
             .map((i) => {
-              const skill = catalog.skills[i];
+              const skill = catalog.skills[i - 2];
               if (!skill) throw new CliError('STALE_INTERACTION', '技能目录已变化');
               return skill;
             });

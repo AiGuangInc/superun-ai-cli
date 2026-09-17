@@ -22,6 +22,8 @@ export const wizardDraftSchema = z.object({
   previousStage: wizardStage.optional(),
   description: z.string(),
   undoDescription: z.string().optional(),
+  builtinFileSelected: z.boolean().default(true),
+  builtinWebSelected: z.boolean().default(true),
   memoryMode: z.enum(['new', 'existing', 'none']).default('new'),
   memoryName: z.string().default(''),
   existingMemory: z.object({ id: z.string(), label: z.string() }).optional(),
@@ -80,7 +82,7 @@ const titles: Record<WizardDraft['stage'], string> = {
   memory_name: '第二步，记忆库名称',
   memory_existing: '第二步，选择记忆库',
   skills: '第三步，扩展能力',
-  confirm: '第四步，确认信息并创建',
+  confirm: '确认信息并创建',
   terminate: '终止创建智能体',
 };
 export function wizardPage(
@@ -135,11 +137,13 @@ export function wizardPage(
       break;
     case 'memory':
       question.question = '如何配置记忆库？';
+      question.allowOther = true;
       question.options = labels([
         '新建记忆库并使用',
         ...(catalog.memories.length ? ['使用已有记忆库'] : []),
         '不使用记忆库',
       ]);
+      question.options[0]!.description = `默认名称：${draft.memoryName || suggestedMemoryName(draft.description)}。如需其他名称，可直接在自定义输入中填写新名称。`;
       question.recommendedIndices = [0];
       actions.push('SKIP');
       break;
@@ -159,9 +163,18 @@ export function wizardPage(
       question.question = '需要添加哪些扩展能力？';
       question.multiSelect = true;
       question.options = [
-        ...catalog.skills.map((item, index) => ({ index, label: item.label, description: item.description })),
-        { index: catalog.skills.length, label: '暂不添加' },
+        ...labels(['读写文件、编辑代码（推荐）', '联网搜索、抓取网页信息（推荐）']),
+        ...catalog.skills.map((item, index) => ({
+          index: index + 2,
+          label: item.label,
+          description: item.description,
+        })),
       ];
+      question.recommendedIndices = [0, 1];
+      details.instruction =
+        '扩展能力是同一道可多选题，所有能力都可不选。按 questions 已给出的页序和选项顺序原样展示，每页都是多选，不再拆成单选或追问是否暂不添加。每页可提交空选择，控件不支持空选时使用该页现有的“本页不选”。本页不选只清空本页，不影响其他页；未勾选不是漏答。收齐所有页的明确答案后，一次提交 answers；不能逐页提交、追加逐页确认或漏掉其他页。';
+      details.capabilityNotice =
+        '内置能力的勾选与 Glow 一致；当前创建接口统一提供内置工具集，取消勾选不等于关闭对应工具权限。';
       actions.push('SKIP');
       break;
     case 'confirm':
@@ -186,12 +199,11 @@ export function wizardPage(
     details.notice = '创建已确认，只能继续尚未完成的步骤；已有资源会复用，不再重复创建。';
   }
   // 设定、能力和确认摘要与原页面共用数据，适配器不再按步骤重写一份。
-  details.content = [draft.description, details.knowledgeNotice, details.instruction];
-  if (draft.stage === 'skills')
-    (details.content as unknown[]).push(`内置能力：${(details.builtinCapabilities as string[]).join('、')}`);
+  details.content = [draft.description, details.knowledgeNotice];
+  if (draft.stage === 'skills') (details.content as unknown[]).push(details.capabilityNotice);
   if (draft.stage === 'confirm')
     (details.content as unknown[]).push(
-      `记忆库：${draft.memoryMode === 'none' ? '不使用' : `${draft.memoryMode === 'new' ? '新建' : '使用已有'}「${draft.memoryMode === 'new' ? draft.memoryName : draft.existingMemory?.label}」`}\n可选技能：${draft.skills.map((skill) => skill.label).join('、') || '无'}\n知识文件：本次不配置`,
+      `记忆库：${draft.memoryMode === 'none' ? '不使用' : `${draft.memoryMode === 'new' ? '新建' : '使用已有'}「${draft.memoryMode === 'new' ? draft.memoryName : draft.existingMemory?.label}」`}\n能力勾选：${[draft.builtinFileSelected ? '读写文件、编辑代码' : '', draft.builtinWebSelected ? '联网搜索、抓取网页信息' : ''].filter(Boolean).join('、') || '未勾选内置能力'}\n可选技能：${draft.skills.map((skill) => skill.label).join('、') || '无'}\n知识文件：本次不配置\n内置工具集按 Glow 的现有创建接口提供，未勾选不表示工具权限已关闭。`,
     );
   const revision = fingerprint([interaction.interactionId, draft, question, catalog]);
   return {
@@ -230,40 +242,98 @@ export function wizardQuestion(page: Interaction): {
     RESUME: '继续未完成的步骤',
     QUERY_STATE: '重新查询状态',
   };
-  const question: Question = original
-    ? { ...original, options: [...original.options] }
-    : {
-        id: 'operation',
-        question: text(page.details?.notice) || '请选择下一步操作',
-        multiSelect: false,
-        allowOther: false,
-        options: [],
-      };
-  for (const action of page.actions.length
-    ? page.actions.filter((action) => action !== 'SUBMIT')
-    : ['QUERY_STATE']) {
-    const index = question.options.length;
-    controls.set(index, action);
-    question.options.push({
-      index,
-      label: labels[action] ?? action,
-      description:
-        [
-          text(object(page.details?.actionDescriptions)[action]),
-          question.multiSelect ? '请单独选择，不与其他选项同时选择。' : undefined,
-        ]
-          .filter(Boolean)
-          .join(' ') || undefined,
+  const actions = page.actions.length ? page.actions : ['QUERY_STATE'];
+  const paginated = page.page?.id === 'skills' && !!original;
+  const pageSize = 3;
+  const questions: Question[] = [];
+  if (paginated) {
+    // 同一道多选题按控件容量展示；每页的空选入口只影响该页。
+    const total = Math.ceil(original.options.length / pageSize);
+    for (let start = 0; start < original.options.length; start += pageSize) {
+      const number = start / pageSize + 1;
+      const options = original.options.slice(start, start + pageSize);
+      questions.push({
+        ...original,
+        id: `${original.id}_${number}`,
+        header: `扩展 ${number}/${total}`,
+        question: `${original.question} 第 ${number}/${total} 页（可多选，也可本页不选；不会影响其他页的选择）`,
+        options: [
+          ...options.map((option, index) => ({ ...option, index })),
+          {
+            index: options.length,
+            label: '本页不选',
+            description: '仅本页选择为空，不清空其他页，也不表示跳过整个步骤；请勿与本页能力同时选择。',
+          },
+        ],
+        recommendedIndices: original.recommendedIndices
+          ?.filter((index) => index >= start && index < start + options.length)
+          .map((index) => index - start),
+      });
+    }
+  } else if (original) {
+    questions.push(original);
+  } else {
+    questions.push({
+      id: 'operation',
+      question: text(page.details?.notice) || '请选择下一步操作',
+      multiSelect: false,
+      allowOther: false,
+      options: actions.map((action, index) => {
+        controls.set(index, action);
+        return { index, label: labels[action] ?? action };
+      }),
     });
   }
+  const instruction = [
+    '只按当前 questions 展示问题，严格保持问题、分页和选项的原有顺序、单选/多选属性；答齐直接提交，不增加“是否继续”“是否修改”“是否暂不添加”等问题，不组合或重排选项。',
+    '返回、跳过、撤回、终止是可选操作，只需在正文提示入口，用户主动要求时按 action 执行；不要把这些操作追加进问题选项或变成必答题。最终确认页只问当前确认题一次。',
+    text(page.details?.instruction),
+  ]
+    .filter(Boolean)
+    .join(' ');
   const interaction: Interaction = {
-    interactionId: `wizard_${fingerprint([page.interactionId, revision, question])}`,
+    interactionId: `wizard_${fingerprint([page.interactionId, revision, questions])}`,
     kind: 'ASK_USER_TOOL',
     source: page.source,
-    questions: [question],
-    actions: ['SUBMIT', ...(page.actions.includes('SKIP') ? ['SKIP'] : [])],
-    answerSchema: ANSWER_JSON_SCHEMA,
-    details: { title: page.page?.title },
+    questions,
+    actions: original ? actions : ['SUBMIT'],
+    answerSchema: {
+      ...ANSWER_JSON_SCHEMA,
+      required: [],
+      allOf: [
+        {
+          if: { properties: { action: { const: 'SUBMIT' } } },
+          then: { required: ['answers'] },
+          else: { not: { required: ['answers'] } },
+        },
+      ],
+      properties: {
+        ...ANSWER_JSON_SCHEMA.properties,
+        action: { enum: original ? actions : ['SUBMIT'], default: 'SUBMIT' },
+        ...(paginated
+          ? {
+              answers: {
+                ...ANSWER_JSON_SCHEMA.properties.answers,
+                minItems: questions.length,
+                maxItems: questions.length,
+                items: {
+                  ...ANSWER_JSON_SCHEMA.properties.answers.items,
+                  required: ['questionId', 'selectedIndices'],
+                },
+              },
+            }
+          : {}),
+      },
+    },
+    details: {
+      title: page.page?.title,
+      instruction,
+      navigation: original
+        ? actions
+            .filter((action) => action !== 'SUBMIT')
+            .map((action) => ({ action, label: labels[action] ?? action }))
+        : [],
+    },
   };
   return {
     interaction,
@@ -271,16 +341,39 @@ export function wizardQuestion(page: Interaction): {
       if (Object.keys(input).some((key) => !['action', 'answers'].includes(key)))
         throw new CliError('INVALID_ARGUMENT', '请使用当前问答的 action 和 answers');
       const action = input.action ?? 'SUBMIT';
-      if (!interaction.actions.includes(String(action)))
+      if (typeof action !== 'string' || !interaction.actions.includes(action))
         throw new CliError('INVALID_ARGUMENT', '当前问答不支持该操作');
-      if (action === 'SKIP') return { action: 'SKIP', pageRevision: revision };
-      const [answer] = resolveAnswers([question], input.answers);
-      if (!answer) throw new CliError('INVALID_ARGUMENT', '请回答当前问题');
-      const selected = answer.selectedIndices.filter((index) => controls.has(index));
-      if (selected.length) {
-        if (answer.selectedIndices.length !== 1 || answer.otherValue)
-          throw new CliError('INVALID_ARGUMENT', '返回、跳过、终止等操作必须单独选择');
-        return { action: controls.get(selected[0]!), pageRevision: revision };
+      if (action !== 'SUBMIT') {
+        if (input.answers !== undefined)
+          throw new CliError('INVALID_ARGUMENT', '导航操作不接受问题答案；请单独提交当前 action');
+        return { action, pageRevision: revision };
+      }
+      if (
+        paginated &&
+        Array.isArray(input.answers) &&
+        input.answers.some((answer) => !Array.isArray(object(answer).selectedIndices))
+      )
+        throw new CliError(
+          'INVALID_ARGUMENT',
+          '每页须明确提交所选索引；本页不选可提交 selectedIndices: []，不能省略答案',
+        );
+      const answers = resolveAnswers(questions, input.answers, { allowEmpty: paginated });
+      if (!original) return { action: controls.get(answers[0]!.selectedIndices[0]!), pageRevision: revision };
+      if (paginated) {
+        const selectedIndices = answers.flatMap((answer, pageIndex) => {
+          const emptyIndex = answer.question.options.length - 1;
+          if (answer.selectedIndices.includes(emptyIndex)) {
+            if (answer.selectedIndices.length !== 1)
+              throw new CliError('INVALID_ARGUMENT', '“本页不选”不能与同页能力同时选择；其他页的选择不冲突');
+            return [];
+          }
+          return answer.selectedIndices.map((index) => pageIndex * pageSize + index);
+        });
+        return {
+          action: 'SUBMIT',
+          pageRevision: revision,
+          answers: [{ questionId: original.id, selectedIndices }],
+        };
       }
       return { action: 'SUBMIT', pageRevision: revision, answers: input.answers };
     },
