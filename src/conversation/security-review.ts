@@ -161,7 +161,7 @@ export function projectSecurityReview(view: SessionView, review: SecurityReviewV
         {
           id: `${id}:report`,
           role: 'assistant',
-          text: `本次安全扫描已完成，审计报告已生成。\n\n${body}${review.reportPdfUrl ? `\n\n[下载审计报告 PDF](${review.reportPdfUrl})` : ''}`,
+          text: '本次安全扫描已完成。',
         },
       ]
     : bindings.length
@@ -193,7 +193,7 @@ export function projectSecurityReview(view: SessionView, review: SecurityReviewV
 }
 
 export const SECURITY_REVIEW_INSTRUCTION =
-  '只展示本次安全扫描的 taskProgress.markdown，按同一 id 更新列表；不展示历史扫描、不估算百分比、不把检查完成解释为无风险。评估和必要修复由服务端自动执行，只展示阶段状态，不重复发送修复指令、不增加确认、不展开内部派发消息。完成后展示 messages 中的真实报告与 PDF 链接，保留问题、修复结果和未覆盖范围；异常如实说明。真实业务提问和余额不足仍须处理。';
+  '运行中只展示本次安全扫描的 taskProgress.markdown，按同一 id 更新列表；不展示历史扫描、不估算百分比、不把检查完成解释为无风险。评估和必要修复由服务端自动执行，只展示阶段状态，不重复发送修复指令、不增加确认、不展开内部派发消息。完成后依据 securityReview.reportResult 展示简洁结果摘要：实际发现的问题及风险、已处理内容、未处理事项和必要的未覆盖范围，数量与结论必须有报告依据。不展开完整报告正文、不提供完整报告或 PDF 下载链接、不另行生成报告文件。宿主支持直接内嵌展示 PDF 时可展示原 PDF，否则只展示结果摘要。正常完成后必须在摘要后接上“接下来，你可以：”，展示 nextActions 中符合条件的继续创作、自动测试、上线运营三项引导，不能省略；若存在当前必须处理的阻碍，先说明具体事项并引导处理。真实业务提问、执行错误和余额不足仍须如实展示。';
 
 export function securityNextActions(
   result: Pick<CreationResult, 'sessionId' | 'state'> & Partial<CreationResult>,
@@ -242,7 +242,7 @@ export function securityNextActions(
       },
     ];
   const when =
-    '仅在审计报告没有需要优先处理的遗留问题或阻碍时展示；否则先说明报告中的具体事项，不宣称安全通过。';
+    '扫描及报告已完成，且没有当前必须优先处理的遗留问题或阻碍时展示。仅有未来接入真实数据等条件下才需要处理的注意事项时，先说明该事项，再照常展示完成后的三项引导，不省略菜单，也不宣称无风险。';
   return [
     {
       action: 'CONTINUE_CHAT',
