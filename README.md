@@ -80,9 +80,12 @@ superun-ai
 │   ├── login                                                     # 登录 superun 并保存 PAT
 │   ├── status                                                    # 查看本地 PAT 配置状态
 │   └── logout                                                    # 清除本地 PAT
-├── session                                                       # 查询项目
+├── session                                                       # 查询项目与当前会话绑定
 │   ├── list                                                      # 查询项目列表
-│   └── get <sessionId>                                           # 查询项目详情
+│   ├── get <sessionId>                                           # 查询项目详情
+│   ├── current                                                   # 读取当前宿主会话保存的项目绑定
+│   ├── use <sessionId>                                           # 选择当前会话继续使用的项目
+│   └── clear                                                     # 清除当前会话的项目绑定，保留远端项目
 ├── chat                                                          # 对话创作
 │   ├── create                                                    # 新建项目并发送需求
 │   ├── send <sessionId>                                          # 继续项目创作
@@ -117,6 +120,22 @@ superun-ai
 ```
 
 命令树以源码注册为准。新增或调整命令后执行 `npm run docs:sync` 同步中英文命令树；`npm run docs:check` 校验完整性。发包前的 `prepack` 同样执行校验，发现遗漏或过期参数时停止发包准备。
+
+## 恢复当前会话的项目
+
+在可识别会话归属的 Codex、WorkBuddy / CodeBuddy 环境中，CLI 会自动记住当前会话正在创作的一个项目。新建项目会替换原绑定；显式操作另一个项目也会切换。列出项目、查询详情或等待任务不会改变绑定。
+
+```bash
+superun-ai session current
+superun-ai session use <sessionId>
+superun-ai session clear
+```
+
+`current` 返回已保存的 `sessionId`。需要项目详情时，用该 ID 调用已有查询命令；继续创作仍使用 `chat send <sessionId>`。`use` 适用于只切换项目、暂不创作的情况；`clear` 只解除本地绑定，保留远端项目。平时无需在每次命令前执行 `use`。
+
+同一宿主会话重开后可恢复绑定，不同会话、superun 账号和连接环境分别保存。WorkBuddy 子专家在能核对主任务归属时共用主任务绑定。该记录保存在本机，不跨设备同步。
+
+`UNBOUND` 表示尚未绑定；`UNAVAILABLE` 表示无法识别宿主会话，此时继续显式传入 `sessionId`。若返回 `CREATING` 或 `CREATE_UNKNOWN`，先核对原创建请求，不要重复创建；确认已有项目后可用 `use` 恢复绑定。
 
 ## PAT 登录
 

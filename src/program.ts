@@ -28,6 +28,8 @@ export function createProgram(
     .configureOutput({ writeErr: () => undefined });
   program.hook('preAction', async (_root, action) => {
     context.connection = undefined;
+    context.sessionBinding = undefined;
+    context.selectedSessionId = undefined;
     const rootCommand = action.parent === program;
     const authCommand = action.parent?.name() === 'auth' && action.parent.parent === program;
     const offline =
@@ -35,8 +37,7 @@ export function createProgram(
       (authCommand && action.name() === 'logout');
     if (offline || action === program) return;
     await hooks.beforeBusiness();
-    if (!(authCommand && action.name() === 'login'))
-      await requireCredentials(context, action, !authCommand);
+    if (!(authCommand && action.name() === 'login')) await requireCredentials(context, action, !authCommand);
   });
   registerAuth(program, context);
   registerSession(program, context);

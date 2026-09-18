@@ -78,9 +78,12 @@ superun-ai
 │   ├── login                                                     # Sign in and save a PAT
 │   ├── status                                                    # Check local PAT configuration
 │   └── logout                                                    # Remove the locally saved PAT
-├── session                                                       # Query projects
+├── session                                                       # Query projects and conversation binding
 │   ├── list                                                      # List projects
-│   └── get <sessionId>                                           # Get project details
+│   ├── get <sessionId>                                           # Get project details
+│   ├── current                                                   # Read the saved project for this host conversation
+│   ├── use <sessionId>                                           # Select a project for this conversation
+│   └── clear                                                     # Clear the local binding and keep the remote project
 ├── chat                                                          # Conversational creation
 │   ├── create                                                    # Create a project and send a request
 │   ├── send <sessionId>                                          # Continue the conversation
@@ -115,6 +118,22 @@ superun-ai
 ```
 
 Run `npm run docs:sync` after changing command registration to update both command trees. `npm run docs:check` validates their completeness; `prepack` also checks them before packaging.
+
+## Restore the project for this conversation
+
+In Codex and WorkBuddy / CodeBuddy environments with a verifiable conversation identity, the CLI remembers one project per conversation. Creating a project or explicitly operating on another project replaces the binding. Listing projects, reading details, and waiting for tasks do not change it.
+
+```bash
+superun-ai session current
+superun-ai session use <sessionId>
+superun-ai session clear
+```
+
+`current` returns the saved `sessionId`. Use existing commands to read project details or continue with `chat send <sessionId>`. Use `use` when switching projects without starting work; `clear` removes only the local binding and keeps the remote project. You do not need to run `use` before every command.
+
+Bindings survive reopening the same host conversation and are isolated by conversation, superun account, and endpoint. WorkBuddy subagents share the main task binding when their ownership can be verified. Bindings are local to this device.
+
+`UNBOUND` means no project is selected. `UNAVAILABLE` means the host conversation cannot be identified; continue passing an explicit `sessionId`. For `CREATING` or `CREATE_UNKNOWN`, check the original creation request before creating again. Once you have confirmed the project ID, restore the binding with `use`.
 
 ## PAT login
 

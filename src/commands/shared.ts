@@ -14,6 +14,8 @@ import { CliError } from '../output/exit-codes.js';
 import { object, text } from '../contracts/value.js';
 import { creditCode } from '../conversation/insufficient-credits.js';
 import type { JsonObject } from '../contracts/value.js';
+import { SessionBinding } from '../session/binding.js';
+import { detectHostContext } from '../session/host-context.js';
 
 export type CommandContext = {
   output: OutputWriter;
@@ -21,6 +23,8 @@ export type CommandContext = {
   signal: AbortSignal;
   makeRuntime?: (config: ReturnType<typeof runtimeConfig>, pat: string) => CreationRuntime;
   connection?: Promise<CredentialContext>;
+  sessionBinding?: Promise<SessionBinding | undefined>;
+  selectedSessionId?: string;
 };
 export type CredentialContext = {
   service: CreationRuntime;
@@ -61,8 +65,51 @@ export async function requireCredentials(
   return context.connection;
 }
 
+// 统一声明会改变当前项目选择的操作；查询和等待默认不改变绑定。
+const projectOperations = new Set([
+  'send',
+  'test',
+  'review',
+  'stop',
+  'retry',
+  'demo',
+  'develop',
+  'style generate',
+  'style append',
+  'style retry',
+  'style select',
+  'interaction reply',
+  'interaction skip',
+  'plugin enable',
+  'plugin disable',
+  'publish start',
+  'publish visibility',
+]);
 export async function runtime(context: CommandContext, command: Command): Promise<CreationRuntime> {
-  return (await requireCredentials(context, command)).service;
+  const service = (await requireCredentials(context, command)).service;
+  const path: string[] = [];
+  let parent: Command | null = command;
+  while (parent?.parent && parent.name() !== 'chat') {
+    path.unshift(parent.name());
+    parent = parent.parent;
+  }
+  const sessionId = command.processedArgs[0];
+  if (parent?.name() === 'chat' && projectOperations.has(path.join(' ')) && typeof sessionId === 'string')
+    await selectSession(context, service, sessionId);
+  return service;
+}
+async function selectSession(context: CommandContext, service: CreationRuntime, sessionId: string) {
+  if (context.selectedSessionId === sessionId) return;
+  const binding = await sessionBinding(context, service);
+  if (binding) await binding.select(service, sessionId);
+  context.selectedSessionId = sessionId;
+}
+/** 绑定归属仅在公共层识别一次；宿主未提供可靠身份时保留显式调用能力。 */
+export async function sessionBinding(context: CommandContext, service: CreationRuntime) {
+  context.sessionBinding ??= detectHostContext().then((host) =>
+    host ? SessionBinding.connect(service, host) : undefined,
+  );
+  return context.sessionBinding;
 }
 export function positive(value: string): number {
   const number = Number(value);
@@ -119,9 +166,21 @@ export async function businessWrite(
   sessionId: string | undefined,
   action: () => Promise<unknown>,
 ): Promise<unknown> {
+  const binding = await sessionBinding(context, service);
+  if (!binding)
+    context.output.log('宿主未提供可确认归属的会话身份，本次不会自动保存当前项目；仍可显式传入 sessionId。');
+  if (binding && sessionId) await selectSession(context, service, sessionId);
+  const revision = !sessionId ? await binding?.beginCreation() : undefined;
+  let response: unknown;
   try {
-    return await action();
+    response = await action();
   } catch (error) {
+    if (binding && revision) {
+      const rejected =
+        error instanceof CliError &&
+        ['BUSINESS_ERROR', 'AUTH_REQUIRED', 'INVALID_ARGUMENT'].includes(error.code);
+      await binding.finishCreation(revision, { state: rejected ? 'CREATE_FAILED' : 'CREATE_UNKNOWN' });
+    }
     if (error instanceof CliError && creditCode(error.details.businessCode))
       throw new CliError(error.code, error.message, {
         ...error.details,
@@ -147,6 +206,29 @@ export async function businessWrite(
       throw new CliError('INTERRUPTED', '命令已中断，远端任务不受影响', { sessionId });
     throw error;
   }
+  if (binding && revision) {
+    const createdSessionId = text(object(response).sessionId);
+    if (!createdSessionId) {
+      await binding.finishCreation(revision, { state: 'CREATE_UNKNOWN' });
+      throw new CliError('OUTCOME_UNKNOWN', '创建回执未包含 sessionId，请先核对结果，不要重复创建', {
+        retryable: false,
+      });
+    }
+    try {
+      await binding.finishCreation(revision, { state: 'BOUND', sessionId: createdSessionId });
+    } catch {
+      throw new CliError(
+        'PROTOCOL_ERROR',
+        '项目已创建，但本地绑定保存失败；请保留 sessionId 继续查询，不要重复创建',
+        {
+          sessionId: createdSessionId,
+          remoteAccepted: true,
+          retryable: false,
+        },
+      );
+    }
+  }
+  return response;
 }
 export async function pollOperation<T>(
   read: () => Promise<T>,
