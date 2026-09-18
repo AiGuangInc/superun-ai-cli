@@ -12,6 +12,7 @@ import { registerRetry } from './retry.js';
 import { registerStyle } from './style.js';
 import { registerDemo } from './demo.js';
 import { registerDevelop } from './develop.js';
+import { registerSecurity } from './security.js';
 import { registerInteraction } from './interaction.js';
 import { registerPlugin } from './plugin.js';
 import { registerPublish } from './publish.js';
@@ -29,6 +30,7 @@ export function registerChat(program: Command, context: CommandContext): void {
   registerStyle(chat, context);
   registerDemo(chat, context);
   registerDevelop(chat, context);
+  registerSecurity(chat, context);
   registerInteraction(chat, context);
   registerPlugin(chat, context);
   registerPublish(chat, context);

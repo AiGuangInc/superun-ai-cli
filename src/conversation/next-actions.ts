@@ -6,6 +6,7 @@ import type { CreationResult, InteractionKind, NextAction } from '../contracts/c
 import { AUTO_TEST_RESULT_INSTRUCTION } from './auto-test.js';
 import { CODE_REVIEW_RESULT_INSTRUCTION } from './code-review.js';
 import { routingInstruction } from './project-routing.js';
+import { securityNextActions, SECURITY_REVIEW_INSTRUCTION } from './security-review.js';
 
 export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
   Partial<
@@ -23,6 +24,7 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
       | 'toolUsage'
       | 'autoTest'
       | 'codeReview'
+      | 'securityReview'
       | 'replyMessageId'
     >
   >;
@@ -88,15 +90,17 @@ export function buildNextActions(
       result.stylePlanning && (!result.interactions?.length || pendingStylePlanApproval(result));
     const progressInstruction = silentPlanning
       ? '只展示一次“已采用所选方案，正在整理开发功能清单”（使用实际方案编号），随后静默等待结果；不展示 taskProgress 进度卡、内部步骤或中间演示和规划正文。每 5 分钟的任务提醒照常展示。'
-      : result.codeReview
-        ? CODE_REVIEW_RESULT_INSTRUCTION
-        : result.autoTest
-          ? AUTO_TEST_RESULT_INSTRUCTION
-          : completed
-            ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
-            : result.taskProgress
-              ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
-              : '';
+      : result.securityReview
+        ? SECURITY_REVIEW_INSTRUCTION
+        : result.codeReview
+          ? CODE_REVIEW_RESULT_INSTRUCTION
+          : result.autoTest
+            ? AUTO_TEST_RESULT_INSTRUCTION
+            : completed
+              ? '整轮已结束，按 messages 顺序原样展示本轮完成说明，保留服务端返回的内容、预览链接和后续引导。不改写为步骤表或结束卡片，不以 taskProgress.markdown 替代原始回复。'
+              : result.taskProgress
+                ? '每次查询都展示 taskProgress.markdown 进度卡，即使 changed 为 false 也展示。按 Glow 开发中列表展示当前返回的功能和步骤，不从历史消息补回已完成的功能或旧步骤；等待中的功能只展示标题与状态。不追加执行详情或工具次数。界面支持原位更新时按 taskProgress.id 更新同一张卡，否则每次展示当前快照。保留状态待同步提示，不虚构阶段或百分比。'
+                : '';
     const waitInstruction = action.requiresUserInput
       ? result.codeReview
         ? '后续动作需要用户明确授权；若用户已明确要求审查后接着测试，满足当前结果条件后沿用该授权，无需重复确认。否则等待用户选择，不自动修复未确认的业务规则或发布。'
@@ -127,6 +131,8 @@ function nextActionsForState(
 ): Array<NextAction> {
   // 显式保留连接地址，避免调用方执行下一步时切回默认环境；凭据不进入命令。
   const command = [COMMAND_NAME, '--endpoint', config.endpoint, '--locale', config.locale, 'chat'];
+  const securityActions = securityNextActions(result, command);
+  if (securityActions) return securityActions;
   const styleActions = styleNextActions(result, command);
   if (styleActions) return styleActions;
   const progressRevision = result.taskProgress?.revision ?? result.cursor?.progressRevision;
@@ -324,7 +330,7 @@ function developmentActions(result: GuidanceResult, command: Array<string>): Arr
     ? `先展示本轮原始结果。${routingInstruction('preview')} 单端使用“本轮创作已完成，点击〔查看预览〕查看效果。”；多端使用“本轮创作已完成，可以分别查看以下入口：”，随后逐端列出链接，并说明“点击对应链接查看各端效果。以上为预览链接，本次改动尚未正式发布。”；只有可确认本次改动尚未发布时才使用后一状态说明，否则仅说明预览不代表发布。〔链接〕必须替换为真实可点击链接。`
     : '先按 messages 顺序展示原始对话，不把规划确认当作研发完成。';
   const multiple = result.development?.routing?.hasMultipleSides === true;
-  const instruction = `${previewInstruction} 接着说明“接下来，你可以：”，然后按以下四条独立列表原样展示，不合并或改名：\n- **代码审查**：检查本轮改动。\n- **自动测试**：${multiple ? '告诉我需要验证哪个端的什么功能。' : '验证指定功能。'}\n- **继续创作**：${multiple ? '告诉我想调整哪个端、什么功能。' : '告诉我想新增或调整的内容。'}\n- **上线运营**：将本次成果发布为正式版本。`;
+  const instruction = `${previewInstruction} 接着说明“接下来，你可以：”，然后按以下五条独立列表原样展示，不合并或改名：\n- **代码审查**：检查本轮改动。\n- **自动测试**：${multiple ? '告诉我需要验证哪个端的什么功能。' : '验证指定功能。'}\n- **安全扫描**：检查项目安全风险，必要时自动修复并生成审计报告。\n- **继续创作**：${multiple ? '告诉我想调整哪个端、什么功能。' : '告诉我想新增或调整的内容。'}\n- **上线运营**：将本次成果发布为正式版本。`;
   return [
     {
       action: 'CODE_REVIEW',
@@ -337,6 +343,12 @@ function developmentActions(result: GuidanceResult, command: Array<string>): Arr
       instruction: `${instruction} 用户明确要求“自动测试”或“测一下刚才的功能”后直接执行，无需二次确认。用户指定测试范围时使用 --input - 提交原始 content，不扩大范围。不默认测试，不宣称免费。`,
       requiresUserInput: true,
       command: [...command, 'test', '--', result.sessionId],
+    },
+    {
+      action: 'SECURITY_SCAN',
+      instruction: `${instruction} 用户选择安全扫描或安全审查后直接执行，不增加费用或耗时提示、二次确认、检查项选择。默认执行全部可用检查项；用户主动指定范围时用 --check 传实际 category，不扩大范围。已有扫描时跟进本次进度，修复由后端自动推进，不重复发送扫描或修复聊天消息。`,
+      requiresUserInput: true,
+      command: [...command, 'security', '--', result.sessionId],
     },
     {
       action: 'CONTINUE_CHAT',

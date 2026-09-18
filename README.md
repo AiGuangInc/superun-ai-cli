@@ -103,6 +103,7 @@ superun-ai
 │   │   └── select <sessionId> <choiceId>                         # 选择风格并展示开发功能清单
 │   ├── demo <sessionId>                                          # 查看演示快照并记录已查看状态
 │   ├── develop <sessionId>                                       # 保留演示，进入研发并生成规划
+│   ├── security <sessionId>                                      # 安全扫描，自动评估、必要修复并生成审计报告
 │   ├── interaction                                               # 回答或跳过交互
 │   │   ├── reply <sessionId> <interactionId>                     # 提交回答
 │   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互
@@ -266,7 +267,7 @@ superun-ai chat state <sessionId>
 
 不传内容时发送“帮我测一下刚才完成的功能。”；`--message` 与 `--input` 只能选一个，JSON 形状与 `chat send` 相同，支持附件。指定内容原样发送，空白内容会被拒绝。测试使用 `business_type=auto_test`，默认等待测试、结果回传及必要的修复结束；运行中不得重复发起。探索阶段和待回答交互先按当前流程处理。
 
-每次研发完成后，引导用户选择“代码审查 / 自动测试 / 继续创作 / 上线运营”。用户明确要求“自动测试”“测一下刚才的功能”后直接调用；指定范围时将原文作为内容提交。讨论是否需要测试不等于要求执行。普通主动调用不承诺免费。
+每次研发完成后，引导用户选择“代码审查 / 自动测试 / 安全扫描 / 继续创作 / 上线运营”。用户明确要求“自动测试”“测一下刚才的功能”后直接调用；指定范围时将原文作为内容提交。讨论是否需要测试不等于要求执行。普通主动调用不承诺免费。
 
 结果中的 `autoTest.phase` 区分 `test` 与后续 `repair`，`autoTest.reportMessages` 保留本次最新报告，`messages` 保留对话内容。`autoTest.sourceMessageId` 用于后续回复来源校验；`previousReportMessages` 如有返回，仅用于追溯上一份报告的编号和问题，不能替代本次结果。会话 `COMPLETED` 只表示操作结束，不表示测试通过。CLI 不从正文关键词推断结构化通过数或修复状态，由接入 Agent 依据实际报告按以下规则展示。
 
@@ -325,6 +326,7 @@ superun-ai chat state <sessionId>
 >
 > - **代码审查**：回复“代码审查”，检查刚才改动的代码，发现问题后先告知你，再自动修复。
 > - **自动测试**：回复“自动测试”，实际验证刚才完成的功能，发现确认的问题后先告知你，再自动修复。
+> - **安全扫描**：检查项目安全风险，必要时自动修复并生成审计报告。
 > - **继续创作**：直接告诉我想新增或调整的内容。
 > - **上线运营**：回复“上线运营”。
 
@@ -367,6 +369,27 @@ superun-ai chat send <sessionId> --review-followup <sourceMessageId> --message "
 旧报告已被后续对话替换时拒绝提交，需重新查询。修复结束更新同一份问题清单：全部处理完直接给三个选项，仍有问题继续修复，需要决定就提问。新功能需求用普通 `chat send`，不带任何 followup 参数；`--review-followup` 与 `--test-followup` 不能同时传。
 
 不增加“暂不需要”步骤。用户明确要求“审查完再自动测试”时，在审查及修复有效完成且无遗留问题后沿用已有授权衔接，否则等待用户选择。选择自动测试后沿用自动测试的结果规则；选择上线运营后沿用现有发布流程。当前审查流程不会在修复后自动重复审查同一范围。
+
+## 安全扫描
+
+研发完成后的引导增加“**安全扫描**：检查项目安全风险，必要时自动修复并生成审计报告”。用户选择即执行，默认扫描当前项目全部可用项，不展示费用和预计耗时、不增加二次确认或检查项选择。
+
+```bash
+superun-ai chat security <sessionId>
+superun-ai chat security <sessionId> --no-wait
+superun-ai chat state <sessionId> --review-id <reviewId>
+superun-ai chat wait <sessionId> --review-id <reviewId>
+superun-ai chat stop <sessionId> --review-id <reviewId>
+superun-ai chat security <sessionId> --retry-report <reviewId>
+```
+
+用户主动指定范围时，可通过可重复的 `--check <category>` 传实际检查项。启动使用 Glow 同源接口，服务端将扫描写入项目会话，并自动推进评估、必要修复和报告生成。不要再通过普通 `chat send` 发送扫描或修复指令。已有扫描进行中时直接跟进，不重复启动。
+
+`securityReview` 返回本次扫描 ID、检查项、阶段和报告；`taskProgress.markdown` 展示本次检查列表及等待中、进行中、已完成、失败、取消、跳过状态。仅变化时输出扫描进度事件，按同一 ID 更新，不展示历史扫描列表或内部任务派发消息。普通 `chat state` / `wait` 会识别当前安全扫描会话；返回的等待命令携带 `--review-id`，跨修复轮次保持本次身份。`--review-id` 和 `--message-id` 不应混用。
+
+检查完成、扫描消息结束或修复任务启动都不代表整个流程完成。CLI 等到报告成功且取得正文后，由接入 Agent 根据 `securityReview.reportResult` 展示简洁的结果摘要，保留发现的问题、修复结果和必要注意事项。报告数据用于摘要，不展开完整正文、不提供完整报告或 PDF 下载链接、不另行生成报告文件；宿主支持直接内嵌 PDF 时可展示原 PDF，否则只展示结果。正常完成后接上“继续创作 / 自动测试 / 上线运营”引导；仅有未来条件下才需处理的注意事项时不省略菜单，存在当前必须处理的阻碍时先引导解决。修复由后端自动执行，无需用户再次确认；真实业务问题仍按现有交互处理。报告生成失败时，只在用户要求后使用 `--retry-report` 重试报告；扫描失效、失败或取消时如实说明，不自动重启。
+
+本地超时或 Ctrl+C 只结束等待，远端任务继续；使用返回的扫描 ID 恢复等待。用户明确要求取消才调用专用取消接口。启动结果不确定时先查询已有记录，不重发写请求。
 
 ## 余额不足与充值后重试
 
@@ -422,7 +445,7 @@ superun-ai chat publish visibility <sessionId> private
 
 `routing` 包含 `status`（ready/fallback/unavailable）、`sourceFile`、`hasMultipleSides`、`defaultSide`、`groups` 和 `warnings`。每组包含 `side`、`label`、`basePath`、`entryPath`、`entryUrl`、`shareUrl` 及 `routes`（名称、路径、可生成的 URL）。默认端取第一组，进入地址取该组第一条路由，分享地址使用 basePath；动态参数路径不虚构参数和链接。
 
-- **单端创作完成**：直接展示该端 entryUrl，命名为“查看预览”，再给“代码审查 / 自动测试 / 继续创作 / 上线运营”。
+- **单端创作完成**：直接展示该端 entryUrl，命名为“查看预览”，再给“代码审查 / 自动测试 / 安全扫描 / 继续创作 / 上线运营”。
 - **多端创作完成**：按原顺序逐端展示全部有名预览链接，引导点击进入；测试和继续创作引导用户说明对应端与功能。
 - **单端发布完成**：展示“访问网站”和继续创作引导。
 - **多端发布完成**：逐端展示全部有名正式链接，引导进入对应端，再提供继续创作引导。

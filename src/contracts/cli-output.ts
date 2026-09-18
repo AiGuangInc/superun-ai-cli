@@ -1,4 +1,5 @@
 /** 面向终端、Agent 和 MCP 调用方的稳定输出协议。@author xiuyu.yi */
+import type { SecurityReviewResult } from './security-review.js';
 export type CreationState =
   | 'ACCEPTED'
   | 'QUEUED'
@@ -122,7 +123,7 @@ export type TaskProgressStatus =
   | 'unknown';
 export type TaskProgressItem = {
   id: string;
-  kind: 'feature' | 'message' | 'consult' | 'subtask' | 'style' | 'other-member' | 'request';
+  kind: 'feature' | 'message' | 'consult' | 'subtask' | 'style' | 'other-member' | 'request' | 'security';
   title: string;
   status: TaskProgressStatus;
   detail?: string;
@@ -167,6 +168,8 @@ export type CreationResult = {
   /** 自动测试及其后续修复的上下文；不以会话完成推断测试通过。 */
   autoTest?: CheckContext<'test'>;
   codeReview?: CheckContext<'review'>;
+  /** 本次安全扫描的完整生命周期；不以任意单条聊天消息结束判定完成。 */
+  securityReview?: SecurityReviewResult;
   messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
   progress: Array<{ id: string; text: string; status?: string }>;
   taskProgress?: TaskProgressSnapshot;

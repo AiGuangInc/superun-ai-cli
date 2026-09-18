@@ -70,6 +70,7 @@ const projectOperations = new Set([
   'send',
   'test',
   'review',
+  'security',
   'stop',
   'retry',
   'demo',
@@ -121,6 +122,7 @@ export function waitOptions(command: Command): {
   interval?: number;
   messageId?: string;
   progressRevision?: string;
+  reviewId?: string;
 } {
   const options = object(command.opts());
   return {
@@ -128,6 +130,7 @@ export function waitOptions(command: Command): {
     interval: typeof options.interval === 'number' ? options.interval : undefined,
     messageId: text(options.messageId),
     progressRevision: text(options.progressRevision),
+    reviewId: text(options.reviewId),
   };
 }
 export function withWait(command: Command, noWaitDescription = '服务端接受请求后立即返回'): Command {

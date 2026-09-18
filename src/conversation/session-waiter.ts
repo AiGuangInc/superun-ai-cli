@@ -24,6 +24,8 @@ function hasReadyStylePreview(result: CreationResult, styleTarget?: StyleWaitTar
 }
 
 export type WaitOptions = {
+  /** 跨越扫描和自动修复消息轮次，始终跟进同一次扫描。 */
+  reviewId?: string;
   timeout?: number;
   interval?: number;
   messageId?: string;
@@ -93,7 +95,11 @@ export class SessionWaiter {
       conversation: ConversationApi;
       command: AgentCommandApi;
       load: (sessionId: string) => Promise<SessionView>;
-      inspect: (view: SessionView, styleTarget?: StyleWaitTarget) => Promise<CreationResult>;
+      inspect: (
+        view: SessionView,
+        styleTarget?: StyleWaitTarget,
+        reviewId?: string,
+      ) => Promise<CreationResult>;
       /** 只展示过程，不结束等待，也不参与整体状态判断。 */
       onProgress?: (result: CreationResult) => void;
       signal?: AbortSignal;
@@ -112,6 +118,7 @@ export class SessionWaiter {
       messages = new Map<string, CreationResult['messages'][number]>();
     const progress = new Map<string, CreationResult['progress'][number]>();
     let progressRevision = options.progressRevision;
+    let reviewId = options.reviewId;
     let responseObserved = !options.requiredMessageId && !options.previousMessageId;
     const inspect = async (): Promise<CreationResult> => {
       if (!responseObserved) {
@@ -151,7 +158,9 @@ export class SessionWaiter {
             options.requiredMessageId ?? options.previousMessageId ?? sessionId,
           ),
         };
-      return this.dependencies.inspect(view, options.styleTarget);
+      const result = await this.dependencies.inspect(view, options.styleTarget, reviewId);
+      reviewId ??= result.securityReview?.reviewId;
+      return result;
     };
     while (true) {
       if (this.dependencies.signal?.aborted)
@@ -211,6 +220,7 @@ export class SessionWaiter {
       }
       const hint = view.pipeline.pollingHint;
       const interval = Math.max(
+        reviewId ? 5000 : 0,
         (options.interval ?? 0) * 1000,
         hint?.nextPollAfterMs ?? (unchanged ? 5000 : 2000),
       );
