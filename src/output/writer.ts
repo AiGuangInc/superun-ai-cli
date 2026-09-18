@@ -56,7 +56,7 @@ export class OutputWriter {
   /** stderr 输出过程事件，stdout 仍只输出一次最终结果。 */
   progress(
     data: Pick<CreationResult, 'sessionId' | 'messageId' | 'taskProgress'> &
-      Partial<Pick<CreationResult, 'autoTest' | 'codeReview' | 'messages'>>,
+      Partial<Pick<CreationResult, 'autoTest' | 'codeReview' | 'securityReview' | 'messages'>>,
   ): void {
     const checkName = data.codeReview ? '代码审查' : data.autoTest ? '自动测试' : undefined;
     if (checkName) {
@@ -79,6 +79,7 @@ export class OutputWriter {
         );
     }
     if (!data.taskProgress) return;
+    if (data.securityReview && data.taskProgress.changed === false) return;
     this.stderr(
       `${this.serialize({
         schemaVersion: SCHEMA_VERSION,
@@ -87,10 +88,13 @@ export class OutputWriter {
           sessionId: data.sessionId,
           messageId: data.messageId,
           taskProgress: data.taskProgress,
+          ...(data.securityReview ? { securityReview: data.securityReview } : {}),
         },
-        instruction: checkName
-          ? `展示 data.taskProgress.markdown 中实际任务进度，不把功能步骤数当作${checkName}的问题数或通过数。及时展示 conversation_message 中发现的问题和修复说明。继续等待当前命令的最终结果，不重复提交任务、不展示操作菜单。`
-          : '每次查询都展示 data.taskProgress.markdown 中当前开发中的功能及步骤，即使 changed 为 false 也展示；不要从历史消息补回已完成的功能或旧步骤。支持原位更新时按卡片 id 更新，否则每次展示当前快照。不追加执行详情或工具次数。这是过程更新，继续等待当前命令的最终结果，不代表整个任务结束，不重复提交任务。',
+        instruction: data.securityReview
+          ? '展示本次安全扫描的 taskProgress.markdown，按同一 id 更新检查列表和阶段状态，不展示历史扫描或内部修复指令。评估和修复自动推进，无需用户确认。继续等待本次报告，不把检查完成或单条消息结束当作整个流程结束，不重复启动任务。'
+          : checkName
+            ? `展示 data.taskProgress.markdown 中实际任务进度，不把功能步骤数当作${checkName}的问题数或通过数。及时展示 conversation_message 中发现的问题和修复说明。继续等待当前命令的最终结果，不重复提交任务、不展示操作菜单。`
+            : '每次查询都展示 data.taskProgress.markdown 中当前开发中的功能及步骤，即使 changed 为 false 也展示；不要从历史消息补回已完成的功能或旧步骤。支持原位更新时按卡片 id 更新，否则每次展示当前快照。不追加执行详情或工具次数。这是过程更新，继续等待当前命令的最终结果，不代表整个任务结束，不重复提交任务。',
       })}\n`,
     );
   }

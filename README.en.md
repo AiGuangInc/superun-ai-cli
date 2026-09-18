@@ -101,6 +101,7 @@ superun-ai
 │   │   └── select <sessionId> <choiceId>                         # Choose a style and show the development feature list
 │   ├── demo <sessionId>                                          # View the demo and record it as viewed
 │   ├── develop <sessionId>                                       # Keep the demo and plan development
+│   ├── security <sessionId>                                      # Scan security, apply necessary fixes, and generate an audit report
 │   ├── interaction                                               # Answer or skip interactions
 │   │   ├── reply <sessionId> <interactionId>                     # Submit an answer
 │   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互

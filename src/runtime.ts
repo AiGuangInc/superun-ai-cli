@@ -7,6 +7,8 @@ import { IntegrationApi } from './api/integration-api.js';
 import { PluginApi } from './api/plugin-api.js';
 import { PublishApi } from './api/publish-api.js';
 import { PreviewVersionApi } from './api/preview-version-api.js';
+import { SecurityReviewApi } from './api/security-review-api.js';
+import { inspectSecurityReview } from './conversation/security-review.js';
 import type { ApiClient } from './transport/api-client.js';
 import type { OutputWriter } from './output/writer.js';
 import type { NodeRound, SessionView } from './contracts/node-wire.js';
@@ -76,6 +78,7 @@ export class CreationRuntime {
   readonly plugin: PluginApi;
   readonly publish: PublishApi;
   readonly previewVersions: PreviewVersionApi;
+  readonly security: SecurityReviewApi;
   readonly waiter: SessionWaiter;
   readonly taskProgress: TaskProgressReader;
   readonly autoTestTasks: AutoTestTasks;
@@ -94,13 +97,14 @@ export class CreationRuntime {
     this.plugin = new PluginApi(client);
     this.publish = new PublishApi(client);
     this.previewVersions = new PreviewVersionApi(client);
+    this.security = new SecurityReviewApi(client);
     this.taskProgress = new TaskProgressReader(client);
     this.autoTestTasks = new AutoTestTasks(client);
     this.waiter = new SessionWaiter({
       conversation: this.conversation,
       command: this.command,
       load: (id) => this.load(id),
-      inspect: (view, styleTarget) => this.inspect(view, styleTarget),
+      inspect: (view, styleTarget, reviewId) => this.inspect(view, styleTarget, reviewId),
       onProgress: (result) => {
         // 静默整理清单时不输出内部进度；真实业务提问仍照常返回。
         if (!result.stylePlanning || (result.interactions.length && !pendingStylePlanApproval(result)))
@@ -138,7 +142,13 @@ export class CreationRuntime {
       this.client.config.endpoint,
     );
   }
-  async inspect(view: SessionView, styleTarget?: StyleWaitTarget): Promise<CreationResult> {
+  async inspect(
+    view: SessionView,
+    styleTarget?: StyleWaitTarget,
+    reviewId?: string,
+  ): Promise<CreationResult> {
+    const security = !styleTarget ? await inspectSecurityReview(this.security, view, reviewId) : undefined;
+    if (security) return security;
     const { autoTest, codeReview } = await this.resolveChecks(view);
     const check = codeReview ?? autoTest;
     const anchor = styleTarget?.preReplyMessageId ?? styleBranchAnchor(view);
@@ -525,8 +535,8 @@ export class CreationRuntime {
     }
     throw new CliError('PROTOCOL_ERROR', '后台回执的来源链存在循环或层数过多，无法确认当前结果');
   }
-  async state(sessionId: string): Promise<CreationResult> {
-    return this.withGuidance(await this.inspect(await this.load(sessionId)));
+  async state(sessionId: string, reviewId?: string): Promise<CreationResult> {
+    return this.withGuidance(await this.inspect(await this.load(sessionId), undefined, reviewId));
   }
   withGuidance<T extends GuidanceResult>(result: T) {
     throwCreditResult(result, this.client.config);
@@ -549,7 +559,7 @@ export class CreationRuntime {
       : visible;
     const completed = {
       ...output,
-      ...(hasCompletedCreationResult(visible)
+      ...(hasCompletedCreationResult(visible) && !visible.securityReview
         ? { toolUsage: this.taskProgress.completionSummary(visible.sessionId, visible.messageId) }
         : {}),
     };
