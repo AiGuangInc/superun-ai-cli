@@ -38,7 +38,7 @@ export function registerAgentFriendly(chat: Command, context: CommandContext): v
       const view = await service.load(sessionId);
       const enabled = await api.enabled(sessionId);
       const busy =
-        [0, 2, 4, 10].includes(view.session.status) ||
+        [0, 1, 2, 4, 10].includes(view.session.status) ||
         (await service.taskProgress.hasPendingSubagentWork(sessionId));
       const ownsTask = isAgentFriendlyRound(view);
       if (!busy && enabled) {
@@ -122,7 +122,8 @@ export function registerAgentFriendly(chat: Command, context: CommandContext): v
       const result = await waiter.wait(sessionId, {
         ...waitOptions(command),
         messageId,
-        requiredMessageId: messageId,
+        // 恢复查询时起始消息可能已被折叠；只对新提交的生成请求等待消息入流。
+        requiredMessageId: options.status ? undefined : messageId,
       });
       // 等待器会保留起始回合消息；就绪后只交付方式选择，避免展开生成时两种方式的长说明。
       if (object(object(result).agentFriendly).stage === 'READY') {

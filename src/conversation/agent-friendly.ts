@@ -7,7 +7,9 @@ import {
   LEGACY_AGENT_FRIENDLY_SKILL_ID,
   AgentFriendlyApi,
 } from '../api/agent-friendly-api.js';
-import { currentRound } from './round-selector.js';
+import { currentRound, roundMessage } from './round-selector.js';
+import { resolveState } from './state-resolver.js';
+import { collectInteractions } from '../interactions/registry.js';
 import { object, text } from '../contracts/value.js';
 import { COMMAND_NAME } from '../config/constants.js';
 import { agentFriendlyPrompt, type AgentFriendlyMethod } from './agent-friendly-prompts.js';
@@ -60,20 +62,20 @@ export function agentFriendlyGuidance(
     }));
   } else if (stage === 'INSTRUCTIONS' && method) {
     const display =
-      '先展示 messages：在一个文本代码块中完整展示所选方式的接入原文，不摘要、不截断、不把命令中的 URL 改成 Markdown 链接、不生成文件。随后展示三项引导：接入当前应用、在新会话中接入、接入其他 AI 应用。展示指令不等于执行安装，指令准备完成不等于已接入。';
+      '先展示 messages：在一个文本代码块中完整展示所选方式的接入原文，不摘要、不截断、不把命令中的 URL 改成 Markdown 链接、不生成文件。展示指令不等于执行安装，指令准备完成不等于已接入。随后原样展示以下引导，不改写标题、选项和说明：\n接下来，你可以直接回复我：\n\n- **接入当前会话**：我在当前会话中完成配置和查询验证。\n- **接入到新会话**：我新开一个会话，将完整指令交给它执行。\n- **接入其他 AI 应用**：复制上述完整指令，到目标应用中发送。';
     const read = [...command, '--method', method, '--', result.sessionId];
     actions = [
       {
         action: 'CONNECT_CURRENT_APP',
         requiresUserInput: true,
         command: read,
-        instruction: `${display} 用户明确选择“接入当前应用”后，由当前宿主 Agent 执行 messages 代码块中的完整指令（与 agentFriendly.prompt 相同），无需用户再复制发送；先检查宿主能力，浏览器登录由用户完成，拿到真实只读查询结果才可宣布成功。不要将安装指令发回 Superun 项目 chat。command 仅重新读取指令，不执行安装。`,
+        instruction: `${display} 用户明确选择“接入当前会话”后，由当前宿主 Agent 执行 messages 代码块中的完整指令（与 agentFriendly.prompt 相同），无需用户再复制发送；先检查宿主能力，浏览器登录由用户完成，拿到真实只读查询结果才可宣布成功。不要将安装指令发回 Superun 项目 chat。command 仅重新读取指令，不执行安装。`,
       },
       {
         action: 'CONNECT_NEW_CONVERSATION',
         requiresUserInput: true,
         command: read,
-        instruction: `${display} 用户明确选择“在新会话中接入”且宿主提供真实的新会话工具时，才把 messages 代码块中的所选完整指令交给新会话；不传当前研发历史或 PAT。没有该工具就说明不支持，让用户选择当前会话继续或自行复制。不能用 Superun 新建项目冒充宿主新会话。command 仅重新读取指令。`,
+        instruction: `${display} 用户明确选择“接入到新会话”且宿主提供真实的新会话工具时，才把 messages 代码块中的所选完整指令交给新会话；不传当前研发历史或 PAT。没有该工具就说明不支持，让用户选择当前会话继续或自行复制。不能用 Superun 新建项目冒充宿主新会话。command 仅重新读取指令。`,
       },
       {
         action: 'CONNECT_OTHER_AI_APP',
@@ -164,7 +166,22 @@ export async function projectAgentFriendlyGeneration(
   api: AgentFriendlyApi,
   view: SessionView,
 ): Promise<AgentFriendlyResult> {
-  const result = await service.inspect(view);
+  const activeSubagentWork = await service.taskProgress.hasPendingSubagentWork(view.session.sessionId);
+  // 主会话和子任务都已结束且技能已开启时，直接交付；末尾回执无需再回溯审查/测试来源。
+  if (view.session.status === 3 && !activeSubagentWork && (await api.enabled(view.session.sessionId)))
+    return readyAgentFriendly(service, api, view);
+  const round = currentRound(view);
+  const businessType = roundMessage(view, round)?.roundExtra?.business_type;
+  const isReceipt =
+    round?.meta?.subAgentReport ||
+    ['sub_agent_report', 'background_task_report'].includes(String(businessType));
+  let result: CreationResult;
+  if (isReceipt) {
+    // 本入口已确定是能力生成，回执只参与生命周期和真实提问，不触发审查/测试来源回溯。
+    const current = { ...view, activeSubagentWork };
+    result = resolveState(current, collectInteractions(current));
+    result.taskProgress = await service.taskProgress.read(current, [], result.interactions);
+  } else result = await service.inspect(view);
   const featureSelection =
     result.state === 'NEEDS_INPUT' &&
     result.interactions.length > 0 &&
