@@ -104,6 +104,7 @@ superun-ai
 │   ├── demo <sessionId>                                          # 查看演示快照并记录已查看状态
 │   ├── develop <sessionId>                                       # 保留演示，进入研发并生成规划
 │   ├── security <sessionId>                                      # 安全扫描，自动评估、必要修复并生成审计报告
+│   ├── agent-friendly <sessionId>                                # 准备 Agent 友好能力，选择技能或连接器接入方式
 │   ├── interaction                                               # 回答或跳过交互
 │   │   ├── reply <sessionId> <interactionId>                     # 提交回答
 │   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互
@@ -390,6 +391,25 @@ superun-ai chat security <sessionId> --retry-report <reviewId>
 检查完成、扫描消息结束或修复任务启动都不代表整个流程完成。CLI 等到报告成功且取得正文后，由接入 Agent 根据 `securityReview.reportResult` 展示简洁的结果摘要，保留发现的问题、修复结果和必要注意事项。报告数据用于摘要，不展开完整正文、不提供完整报告或 PDF 下载链接、不另行生成报告文件；宿主支持直接内嵌 PDF 时可展示原 PDF，否则只展示结果。正常完成后接上“继续创作 / 自动测试 / 上线运营”引导；仅有未来条件下才需处理的注意事项时不省略菜单，存在当前必须处理的阻碍时先引导解决。修复由后端自动执行，无需用户再次确认；真实业务问题仍按现有交互处理。报告生成失败时，只在用户要求后使用 `--retry-report` 重试报告；扫描失效、失败或取消时如实说明，不自动重启。
 
 本地超时或 Ctrl+C 只结束等待，远端任务继续；使用返回的扫描 ID 恢复等待。用户明确要求取消才调用专用取消接口。启动结果不确定时先查询已有记录，不重发写请求。
+
+## Agent 友好
+
+上线成功且站点已公开后，保留原有发布结果和访问入口，增加“**Agent 友好**：让你的 AI 应用使用这个项目，可以把项目连接到你正在使用的 AI 应用，通过对话查询数据、使用项目功能”。
+
+```bash
+superun-ai chat agent-friendly <sessionId>
+superun-ai chat agent-friendly <sessionId> --status
+superun-ai chat agent-friendly <sessionId> --method skill
+superun-ai chat agent-friendly <sessionId> --method connector
+```
+
+用户选择入口后先查询技能状态；已开启项目直接选择方式，未开启项目通过与 Glow 相同的 `skill.superun_mcp.integrate` 命令协议发送真实 chat，沿用后台任务和真实业务问题的等待机制。CLI 不使用 fakeChat，不直接写入 ENABLED，也不调用普通插件启停接口。生成中的同一任务继续等待，未就绪或请求结果未知时不自动重复提交。`--status` 只读查询或等待，`--no-wait` 接受后返回，后续使用返回的状态命令继续。
+
+方式选择使用宿主已有提问能力：仅“通过技能接入”和“通过连接器接入”，选择后执行对应 `--method`。返回 `agentFriendly.prompt` 和一个包含完整原文的文本代码块，只展示所选方式；不截断、不生成文件、不将命令里的 URL 转成 Markdown 链接。模板沿用 Glow 的项目检查、条件初始化、浏览器登录、能力刷新、Skill/MCP 配置及真实只读查询验证步骤。只使用项目的公开访问 Key，不返回整个 `.env` 或服务端密钥。
+
+展示原文后给出“接入当前应用 / 在新会话中接入 / 接入其他 AI 应用”三项引导。只有用户明确选择后，宿主 Agent 才执行安装或使用实际可用的新会话工具；不支持新会话时如实说明。CLI 本身不会安装 `superun-cli`、修改宿主 Skill/MCP 配置或创建会话，后续动作的命令只重新读取指令。目标 Agent 必须完成真实只读查询才可声称接入成功，不能把指令准备完成当作已连接。
+
+普通 `chat state/wait` 保持原有行为；需要持续跟进 Agent 友好生成和方式选择时，使用本次返回的 `agent-friendly --status` 命令。
 
 ## 余额不足与充值后重试
 
