@@ -9,6 +9,7 @@ import { runtime, withWait, waitOptions, pollOperation, businessWrite } from '..
 import { COMMAND_NAME } from '../../config/constants.js';
 import type { CreationRuntime } from '../../runtime.js';
 import type { NextAction } from '../../contracts/cli-output.js';
+import { AGENT_FRIENDLY_DESCRIPTION } from '../../conversation/agent-friendly-prompts.js';
 import {
   missingPublishedRouting,
   readProjectRouting,
@@ -111,6 +112,12 @@ function publishActions(
     records.some((item) => (!encryptedId || item.encryptedId === encryptedId) && item.deployStatus === 1)
   )
     return [
+      {
+        action: 'AGENT_FRIENDLY',
+        instruction: `保留当前发布结果和正式访问入口，随后展示“- **Agent 友好**：${AGENT_FRIENDLY_DESCRIPTION}”。与继续创作并列，只在用户选择 Agent 友好后执行；已开启则选择接入方式，未开启则通过同源技能 chat 准备能力。不要自动生成、安装或新建会话。`,
+        requiresUserInput: true,
+        command: [...command.slice(0, -1), 'agent-friendly', '--', sessionId],
+      },
       {
         action: 'CONTINUE_CHAT',
         instruction: `展示发布成功结果和目标版本的 changeLog 原文；未指定版本时使用 updatedAt 最新的已发布版本。${routingInstruction('published')} 单端使用“本次已成功上线，点击〔访问网站〕进入正式网站。”；多端使用“本次已成功上线，可以通过以下入口访问：”，随后逐端列出正式链接，再说“点击对应链接即可进入相应端，以上均为正式访问链接。”。〔链接〕必须替换为真实可点击链接。最后另起一行展示单端“**继续创作**：直接告诉我想新增或调整的内容。”或多端“**继续创作**：直接告诉我想新增或调整哪个端的什么功能。”。等待用户响应；收到新的创作要求后，将用户原文不经改写或扩充地放入 content，通过 --input - 提交 JSON，不自动追加需求或重复发布。`,

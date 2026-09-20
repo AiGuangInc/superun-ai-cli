@@ -102,6 +102,7 @@ superun-ai
 │   ├── demo <sessionId>                                          # View the demo and record it as viewed
 │   ├── develop <sessionId>                                       # Keep the demo and plan development
 │   ├── security <sessionId>                                      # Scan security, apply necessary fixes, and generate an audit report
+│   ├── agent-friendly <sessionId>                                # Prepare agent-friendly access and choose Skill or connector instructions
 │   ├── interaction                                               # Answer or skip interactions
 │   │   ├── reply <sessionId> <interactionId>                     # Submit an answer
 │   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互
