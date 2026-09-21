@@ -7,6 +7,7 @@ import { AUTO_TEST_RESULT_INSTRUCTION } from './auto-test.js';
 import { CODE_REVIEW_RESULT_INSTRUCTION } from './code-review.js';
 import { routingInstruction } from './project-routing.js';
 import { securityNextActions, SECURITY_REVIEW_INSTRUCTION } from './security-review.js';
+import { USER_CHOICE_INSTRUCTION } from './user-choice-guidance.js';
 
 export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
   Partial<
@@ -113,6 +114,7 @@ export function buildNextActions(
         progressInstruction,
         action.instruction,
         waitInstruction,
+        completed && action.requiresUserInput && !action.interactionId ? USER_CHOICE_INSTRUCTION : '',
         ...(completed && result.toolUsage
           ? [
               '只在原始完成说明之后补充 toolUsage.markdown，继续保留原有预览链接及后续操作引导；不展示读取、修改或部署次数。',
