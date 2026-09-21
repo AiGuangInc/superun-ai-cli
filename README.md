@@ -139,7 +139,7 @@ superun-ai session clear
 
 `UNBOUND` 表示尚未绑定；`UNAVAILABLE` 表示无法识别宿主会话，此时继续显式传入 `sessionId`。若返回 `CREATING` 或 `CREATE_UNKNOWN`，先核对原创建请求，不要重复创建；确认已有项目后可用 `use` 恢复绑定。
 
-如需自定义本地状态保存位置，可设置 `SUPERUN_STATE_DIR` 为持久化目录的绝对路径。默认路径不变；同一宿主的主代理、子代理及后续命令应使用相同配置。切换目录前请备份并迁移已有状态。
+会话与交互状态统一保存在用户级目录：macOS/Linux 为 `~/.local/state/superun-ai-cli/`（可通过 `XDG_STATE_HOME` 指定上级目录），Windows 为 `%LOCALAPPDATA%\superun-ai-cli\`。辅助项目映射使用其中的 `sessions.json`，绑定不变时不重复写入。
 
 ## PAT 登录
 

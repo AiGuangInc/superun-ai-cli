@@ -30,9 +30,12 @@ try {
         const binding = await SessionBinding.connect({ client }, host);
         const project = await new ConversationApi(client).recently(request.sessionId);
         if (project.session.sessionId === request.sessionId) {
-          const resolved =
-            !request.creationRevision || (await binding.finishCreation(request.creationRevision, 'UNBOUND'));
-          if (resolved) await binding.remember(request.sessionId, request.requestedAt);
+          const current =
+            !request.creationRevision || (await binding.matchesCreation(request.creationRevision));
+          if (current) {
+            await binding.remember(request.sessionId, request.requestedAt);
+            if (request.creationRevision) await binding.finishCreation(request.creationRevision, 'RESOLVED');
+          }
         }
       }
     }

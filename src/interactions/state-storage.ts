@@ -17,7 +17,7 @@ export async function stateOperation<T>(operation: string, path: string, run: ()
     throw new CliError(
       denied ? 'LOCAL_STATE_PERMISSION_DENIED' : 'LOCAL_STATE_IO_ERROR',
       denied
-        ? '本地状态目录权限不足，请由宿主授权所需文件操作，或配置可用的持久化 SUPERUN_STATE_DIR；不要重复提交业务请求'
+        ? '本地状态目录权限不足，请检查所列路径的文件操作权限；不要重复提交业务请求'
         : '本地状态文件操作失败，请根据操作和路径排查；不要重复提交业务请求',
       { filesystemCode: code, operation, path },
     );
