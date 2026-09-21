@@ -367,6 +367,7 @@ Business commands write one JSON result to stdout. Diagnostics and update progre
 | 6 | Interaction unsupported by this CLI version |
 | 7 | Timeout for an attachment or auxiliary operation |
 | 8 | Network or response-protocol error |
+| 9 | Local state permission, I/O, lock contention, or recovery error |
 | 130 | Local command interrupted |
 
 `OUTCOME_UNKNOWN` means a request may have been accepted. Do not immediately retry the write. Query the returned session ID first. If a create request did not return a session ID, check the project list before deciding what to do next.
