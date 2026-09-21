@@ -2,7 +2,7 @@
 import { Command } from 'commander';
 import { COMMAND_NAME, PACKAGE_VERSION } from './config/constants.js';
 import type { CommandContext } from './commands/shared.js';
-import { requireCredentials } from './commands/shared.js';
+import { requireCredentials, rememberExplicitSession } from './commands/shared.js';
 import { registerAuth } from './commands/auth/index.js';
 import { registerSession } from './commands/session/index.js';
 import { registerChat } from './commands/chat/index.js';
@@ -30,6 +30,8 @@ export function createProgram(
     context.connection = undefined;
     context.sessionBinding = undefined;
     context.selectedSessionId = undefined;
+    context.selectionRequestedAt = new Date().toISOString();
+    context.rememberSession = undefined;
     const rootCommand = action.parent === program;
     const authCommand = action.parent?.name() === 'auth' && action.parent.parent === program;
     const offline =
@@ -38,6 +40,7 @@ export function createProgram(
     if (offline || action === program) return;
     await hooks.beforeBusiness();
     if (!(authCommand && action.name() === 'login')) await requireCredentials(context, action, !authCommand);
+    rememberExplicitSession(context, action);
   });
   registerAuth(program, context);
   registerSession(program, context);
