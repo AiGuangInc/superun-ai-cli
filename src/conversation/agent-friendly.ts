@@ -13,6 +13,7 @@ import { collectInteractions } from '../interactions/registry.js';
 import { object, text } from '../contracts/value.js';
 import { COMMAND_NAME } from '../config/constants.js';
 import { agentFriendlyPrompt, type AgentFriendlyMethod } from './agent-friendly-prompts.js';
+import { USER_CHOICE_INSTRUCTION } from './user-choice-guidance.js';
 
 export type AgentFriendlyResult = CreationResult & {
   agentFriendly: {
@@ -56,13 +57,11 @@ export function agentFriendlyGuidance(
     actions = (result.agentFriendly.methods ?? []).map((option) => ({
       action: option.value === 'skill' ? 'SELECT_AGENT_FRIENDLY_SKILL' : 'SELECT_AGENT_FRIENDLY_CONNECTOR',
       requiresUserInput: true,
-      instruction:
-        '只询问一次“你希望通过哪种方式接入？”，展示 messages 中的两个选项及说明，支持原生选择题的宿主也可使用 agentFriendly.methods。等待用户选择，选择后执行对应命令。不要自动选择，不安装，不生成文件，不创建新会话。',
+      instruction: `只询问一次“你希望通过哪种方式接入？”，用 agentFriendly.methods 中的两个选项及说明调用宿主原生选择工具。${USER_CHOICE_INSTRUCTION} 等待用户选择，选择后执行对应命令。不要自动选择，不安装，不生成文件，不创建新会话。`,
       command: [...command, '--method', option.value, '--', result.sessionId],
     }));
   } else if (stage === 'INSTRUCTIONS' && method) {
-    const display =
-      '先展示 messages：在一个文本代码块中完整展示所选方式的接入原文，不摘要、不截断、不把命令中的 URL 改成 Markdown 链接、不生成文件。展示指令不等于执行安装，指令准备完成不等于已接入。随后原样展示以下引导，不改写标题、选项和说明：\n接下来，你可以直接回复我：\n\n- **接入当前会话**：我在当前会话中完成配置和查询验证。\n- **接入到新会话**：我新开一个会话，将完整指令交给它执行。\n- **接入其他 AI 应用**：复制上述完整指令，到目标应用中发送。';
+    const display = `先展示 messages：在一个文本代码块中完整展示所选方式的接入原文，不摘要、不截断、不把命令中的 URL 改成 Markdown 链接、不生成文件。展示指令不等于执行安装，指令准备完成不等于已接入。随后用以下选项和说明调用宿主原生选择工具，不改写选项和说明：\n- **接入当前会话**：我在当前会话中完成配置和查询验证。\n- **接入到新会话**：我新开一个会话，将完整指令交给它执行。\n- **接入其他 AI 应用**：复制上述完整指令，到目标应用中发送。\n${USER_CHOICE_INSTRUCTION}`;
     const read = [...command, '--method', method, '--', result.sessionId];
     actions = [
       {
