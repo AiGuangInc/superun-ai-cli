@@ -151,6 +151,17 @@ superun-ai auth logout
 
 已有 PAT 时，`auth login` 直接复用；没有时自动打开系统默认浏览器，完成 superun 登录后领取 PAT 并保存到本地，无需手动复制。业务命令缺少 PAT 时也会自动进入同一登录流程，包括 Agent 的非 TTY Shell；登录完成后继续执行原命令，无需另行执行 `auth login`。`auth status` 仍只检查已有配置，不打开浏览器。
 
+CLI 自动读取宿主注入的环境标识，目前支持 WorkBuddy、Codex、Claude Code、Gemini CLI、Qwen Code、Cursor 和 QoderWork 桌面端。无法识别或标识冲突时统一使用 `superun-ai-cli`；豆包工作、Qoder CLI 和千问办公暂未启用识别规则。开关标识必须为 `1`，WorkBuddy 还需同时具备产品标识和 CodeBuddy 调用上下文；QoderWork 需同时满足 `QODER_PRODUCT_ID=qoder` 和 `QODER_SESSION_TYPE=app`，渠道值为 `qoder`。
+
+新建 PAT 的默认 `name` 和业务请求的 `request-channel` 共用识别结果，无需修改专家团或 Skill。全局 `--name` 只覆盖新建 PAT 的名称，不改变请求渠道：
+
+```bash
+superun-ai auth login
+superun-ai --name my-token auth login
+```
+
+显式登录和业务命令自动登录都会在申请 PAT 时传入 `name`，注册渠道标签由服务端在创建 PAT 时处理。已有 PAT 或手动导入时不重新申请，也不修改已有令牌名称；后续请求渠道始终取当前 CLI 进程的识别结果。名称不写入浏览器登录 URL，新申请 PAT 沿用 365 天有效期。
+
 网页登录最多等待 5 分钟，按 Ctrl+C 可取消。浏览器未自动打开时，可以手动打开终端提示的地址。网页登录 Token 只用于申请 PAT，不会保存到本地。
 
 如果已经有 PAT，也可以手动导入：

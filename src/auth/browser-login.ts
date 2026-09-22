@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import { DEFAULT_ENDPOINT } from '../config/constants.js';
+import { object, text } from '../contracts/value.js';
 import { CliError } from '../output/exit-codes.js';
 import type { OutputWriter } from '../output/writer.js';
 import { ApiClient } from '../transport/api-client.js';
@@ -35,8 +36,9 @@ export async function ensurePat(options: {
   output: OutputWriter;
   signal: AbortSignal;
   allowBrowser: boolean;
+  name: string;
 }): Promise<PatCredential> {
-  const { store, config, output, signal: commandSignal, allowBrowser } = options;
+  const { store, config, output, signal: commandSignal, allowBrowser, name } = options;
   const existing = await store.readIfPresent();
   if (existing) return existing;
   if (!allowBrowser)
@@ -71,10 +73,16 @@ export async function ensurePat(options: {
       if (typeof token !== 'string') throw new CliError('PROTOCOL_ERROR', '网页登录未返回有效 Token');
       output.registerSecret(token);
       const client = new ApiClient(loginConfig, token, undefined, signal);
-      const issued = await client.call('/api/uxa-center/support/PersonalAccessToken/create', {}, true);
-      if (typeof issued !== 'string') throw new CliError('PROTOCOL_ERROR', '未取得有效 PAT');
-      output.registerSecret(issued);
-      const pat = validatePat(issued);
+      const issued = await client.call(
+        '/api/uxa-center/support/PersonalAccessToken/createWithOptions',
+        // 沿用原 CLI 创建令牌的 365 天有效期。
+        { name, expireDays: 365 },
+        true,
+      );
+      const issuedToken = text(object(issued).token);
+      if (!issuedToken) throw new CliError('PROTOCOL_ERROR', '未取得有效 PAT');
+      output.registerSecret(issuedToken);
+      const pat = validatePat(issuedToken);
       signal.throwIfAborted();
       await store.save(pat);
       output.log('登录成功，PAT 已保存到本地。');
