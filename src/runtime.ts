@@ -464,10 +464,17 @@ export class CreationRuntime {
     for (let depth = 0; depth < 8; depth++) {
       if (visited.has(sourceId)) break;
       visited.add(sourceId);
-      // 隐藏或并入其他轮的用户消息仍有持久化来源；单消息快照不保证返回渲染轮。
-      const source: Awaited<ReturnType<AgentQueryApi['messageReferenceSource']>> | undefined = sourceRound
-        ? undefined
-        : await this.query.messageReferenceSource(view.session.sessionId, sourceId);
+      const sourceMessage = view.pipeline.messages.find((message) => message.messageId === sourceId);
+      // 单消息快照可能覆盖回执来源 meta；缺少来源时按用户锚点补查，不能依赖渲染轮存在。
+      const needsSource: boolean =
+        !sourceRound ||
+        !sourceMessage ||
+        ((sourceRound.meta?.subAgentReport ||
+          sourceMessage.roundExtra?.business_type === 'sub_agent_report') &&
+          !text(sourceRound.meta?.subAgentReportFrom));
+      const source: Awaited<ReturnType<AgentQueryApi['messageReferenceSource']>> | undefined = needsSource
+        ? await this.query.messageReferenceSource(view.session.sessionId, sourceId)
+        : undefined;
       const contexts = source
         ? {
             autoTest: checkContextFromExtra(source.roundExtra, AUTO_TEST_SPEC, sourceId),
@@ -517,9 +524,7 @@ export class CreationRuntime {
             ? await this.autoTestTasks.reportParent(view, sourceId)
             : undefined;
       if (!parentId) {
-        const businessType =
-          source?.roundExtra.business_type ??
-          view.pipeline.messages.find((message) => message.messageId === sourceId)?.roundExtra?.business_type;
+        const businessType = source?.roundExtra.business_type ?? sourceMessage?.roundExtra?.business_type;
         if (
           reference ||
           sourceRound?.meta?.subAgentReport ||
