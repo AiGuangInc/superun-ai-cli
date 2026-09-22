@@ -147,6 +147,17 @@ superun-ai auth logout
 
 `auth login` reuses an existing PAT. If none is configured, it opens the system default browser for superun login and saves the resulting PAT locally. Business commands without a PAT use the same login flow, including commands run from an agent's non-TTY shell, then resume the original operation without requiring a separate `auth login` command. `auth status` only checks existing configuration and does not open a browser.
 
+The CLI detects its host from injected environment markers, currently supporting WorkBuddy, Codex, Claude Code, Gemini CLI, Qwen Code, Cursor, and the QoderWork desktop app. Missing or conflicting markers fall back to `superun-ai-cli`; detection for Doubao Work, Qoder CLI, and Qianwen Work is not enabled yet. Flag markers must equal `1`, and WorkBuddy requires both its product marker and CodeBuddy invocation context. QoderWork requires both `QODER_PRODUCT_ID=qoder` and `QODER_SESSION_TYPE=app`, producing the channel `qoder`.
+
+The default name for a new PAT and the `request-channel` header on business requests share this detection result. Expert teams and Skills need no changes. The global `--name` option only overrides the new PAT's name, not the request channel:
+
+```bash
+superun-ai auth login
+superun-ai --name my-token auth login
+```
+
+Explicit and automatic login send `name` when requesting a PAT; the server handles registration-channel tags during PAT creation. Reusing or manually importing a PAT does not request another PAT or rename an existing token. Subsequent requests use the channel detected for the current CLI process. The browser login URL does not include the name, and new PATs retain the existing 365-day validity period.
+
 Browser login waits for up to five minutes. Press Ctrl+C to cancel. If the browser does not open automatically, use the URL printed in the terminal. The website login token is only used to obtain a PAT and is not stored locally.
 
 To import an existing PAT manually:

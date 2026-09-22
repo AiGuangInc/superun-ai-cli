@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import { PACKAGE_NAME } from '../config/constants.js';
+import { requestChannel } from '../config/request-channel.js';
 import { HttpClient } from './http-client.js';
 import type { HttpResponse } from './http-client.js';
 
@@ -37,6 +38,7 @@ export class ApiClient {
         'access-token': this.pat,
         'prefer-language': this.config.locale,
         'request-source': PACKAGE_NAME,
+        'request-channel': requestChannel,
         'x-superun-client': 'cli',
         'x-superun-host': 'superun.com',
         ...(options.sessionId ? { 'X-Session-Id': options.sessionId } : {}),

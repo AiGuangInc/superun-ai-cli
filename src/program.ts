@@ -24,6 +24,7 @@ export function createProgram(
     .version(PACKAGE_VERSION)
     .option('--endpoint <URL>', 'API 地址')
     .option('--locale <language>', '回复语言', 'zh-CN')
+    .option('--name <name>', '新建 PAT 的名称（默认识别宿主，未知时为 superun-ai-cli）')
     .exitOverride()
     .configureOutput({ writeErr: () => undefined });
   program.hook('preAction', async (_root, action) => {

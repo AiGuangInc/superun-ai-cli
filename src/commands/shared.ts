@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { PatStore } from '../auth/pat-store.js';
 import { ensurePat } from '../auth/browser-login.js';
 import { runtimeConfig } from '../config/runtime-config.js';
+import { requestChannel } from '../config/request-channel.js';
 import { ApiClient } from '../transport/api-client.js';
 import { CreationRuntime } from '../runtime.js';
 import type { OutputWriter } from '../output/writer.js';
@@ -50,6 +51,7 @@ async function loadCredentialContext(
     output: context.output,
     signal: context.signal,
     allowBrowser,
+    name: text(options.name) ?? requestChannel,
   });
   context.output.registerSecret(credential.pat);
   const service =
