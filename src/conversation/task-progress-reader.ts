@@ -40,8 +40,16 @@ const discoverySchema = z.object({
   tasks: z.array(taskSchema),
   truncated: z.boolean(),
   causalAssociations: z
-    .array(z.object({ childSessionId: z.string().nullish(), associationStatus: z.number().nullish() }))
+    .array(
+      z.object({
+        childSessionId: z.string().nullish(),
+        parentReplyMessageId: z.string().nullish(),
+        associationStatus: z.number().nullish(),
+      }),
+    )
     .optional(),
+  causalStale: z.boolean().optional(),
+  causalTruncated: z.boolean().optional(),
 });
 type TaskMetadata = z.infer<typeof taskSchema>;
 const REFRESH_MS = 2_000;
@@ -109,21 +117,17 @@ export class TaskProgressReader {
   /** 孤立回执只通过真实 child → parent 关系定位来源，不能猜最近的历史轮。 */
   async parentReplyMessageId(sessionId: string, childSessionId: string): Promise<string | undefined> {
     const result = await this.discovery(sessionId);
-    if (
-      result.causalAssociations?.some(
-        (item) => item.childSessionId === childSessionId && item.associationStatus === 1,
-      )
-    )
-      return undefined;
+    if (result.truncated || result.causalStale || result.causalTruncated) return undefined;
+    // REMOVED 不参与活跃任务，但仍保留真实的历史来源；多个父消息不能猜选。
     const parents = new Set(
-      result.tasks
-        .filter(
-          (task) =>
-            task.associationStatus !== 1 &&
-            (task.childSessionId === childSessionId || task.agentId === childSessionId),
-        )
-        .map((task) => task.parentReplyMessageId)
-        .filter((id): id is string => !!id),
+      [
+        ...result.tasks
+          .filter((task) => task.childSessionId === childSessionId || task.agentId === childSessionId)
+          .map((task) => task.parentReplyMessageId),
+        ...(result.causalAssociations ?? [])
+          .filter((item) => item.childSessionId === childSessionId)
+          .map((item) => item.parentReplyMessageId),
+      ].filter((id): id is string => !!id),
     );
     return parents.size === 1 ? [...parents][0] : undefined;
   }
