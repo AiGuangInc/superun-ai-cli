@@ -1,0 +1,158 @@
+name: Build and publish npm
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci --registry=https://registry.npmjs.org/
+      - name: Check package version and release PR
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const semver = require('semver');
+          const pkg = require('./package.json');
+          const lock = require('./package-lock.json');
+          const fail = (message) => { throw new Error(message); };
+
+          if (pkg.name !== 'superun-ai-cli' || !semver.valid(pkg.version)) fail('Invalid package name or version');
+          if (lock.name !== pkg.name || lock.version !== pkg.version ||
+              lock.packages[''].name !== pkg.name || lock.packages[''].version !== pkg.version)
+            fail('package-lock.json must match package.json');
+          if (pkg.repository?.url !== 'git+https://github.com/AiGuangInc/superun-ai-cli.git')
+            fail('repository.url must match the canonical GitHub repository');
+          if (process.env.EVENT_NAME !== 'pull_request') process.exit(0);
+
+          const base = JSON.parse(execFileSync('git', ['show', `${process.env.BASE_SHA}:package.json`], { encoding: 'utf8' }));
+          if (pkg.version === base.version) process.exit(0);
+          if (!semver.gt(pkg.version, base.version)) fail('Release version must increase');
+          if (process.env.PR_TITLE.trim() !== `release: v${pkg.version}`)
+            fail(`Release PR title must be: release: v${pkg.version}`);
+          const body = process.env.PR_BODY || '';
+          const heading = /^## Release notes\s*$/im.exec(body);
+          const notes = heading && body.slice(heading.index + heading[0].length)
+            .split(/^## /m)[0].replace(/<!--[\s\S]*?-->/g, '').trim();
+          if (!notes || notes.length < 10) fail('Release PR needs a substantive ## Release notes section');
+          const latest = JSON.parse(execFileSync('npm',
+            ['view', pkg.name, 'dist-tags.latest', '--json', '--registry=https://registry.npmjs.org/'],
+            { encoding: 'utf8' }));
+          if (!semver.gt(pkg.version, latest)) fail(`Release version must exceed npm latest (${latest})`);
+          NODE
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm pack --dry-run --json --registry=https://registry.npmjs.org/ > /dev/null
+
+  publish:
+    name: Publish and verify
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci --registry=https://registry.npmjs.org/
+      - name: Detect release
+        id: release
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const pkg = require('./package.json');
+          const previous = JSON.parse(execFileSync('git',
+            ['show', `${process.env.BEFORE_SHA}:package.json`], { encoding: 'utf8' }));
+          if (pkg.version === previous.version) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'release=false\n');
+            process.exit(0);
+          }
+          const semver = require('semver');
+          if (!semver.gt(pkg.version, previous.version)) throw new Error('Release version must increase');
+          const latest = JSON.parse(execFileSync('npm',
+            ['view', pkg.name, 'dist-tags.latest', '--json', '--registry=https://registry.npmjs.org/'],
+            { encoding: 'utf8' }));
+          if (semver.lt(pkg.version, latest)) throw new Error(`npm latest (${latest}) is newer than ${pkg.version}`);
+          const alreadyPublished = semver.eq(pkg.version, latest);
+          if (alreadyPublished && Number(process.env.RUN_ATTEMPT) === 1)
+            throw new Error(`${pkg.version} was already published before this workflow ran`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,
+            `release=true\nversion=${pkg.version}\nalready_published=${alreadyPublished}\n`);
+          NODE
+      - name: Install npm with OIDC support
+        if: steps.release.outputs.release == 'true' && steps.release.outputs.already_published != 'true'
+        run: npm install --global npm@11 --registry=https://registry.npmjs.org/
+      - name: Check token-free OIDC environment
+        if: steps.release.outputs.release == 'true' && steps.release.outputs.already_published != 'true'
+        run: |
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+          test -z "${NODE_AUTH_TOKEN:-}"
+          npm --version
+      - name: Publish with npm trusted publishing
+        id: npm_publish
+        if: steps.release.outputs.release == 'true' && steps.release.outputs.already_published != 'true'
+        run: |
+          npm publish --access public --tag latest --registry=https://registry.npmjs.org/
+          echo "published_at=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - name: Verify public installation at minutes 3 through 10
+        if: steps.release.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          PUBLISHED_AT: ${{ steps.npm_publish.outputs.published_at }}
+        run: |
+          published_at="${PUBLISHED_AT:-$(date +%s)}"
+          for attempt in {1..8}; do
+            target=$((published_at + 180 + (attempt - 1) * 60))
+            now="$(date +%s)"
+            if (( now < target )); then sleep "$((target - now))"; fi
+            echo "Public install attempt ${attempt}/8"
+            scratch="$(mktemp -d)"
+            : > "$scratch/user.npmrc"
+            : > "$scratch/global.npmrc"
+            if (cd "$scratch" && \
+                NPM_CONFIG_USERCONFIG="$scratch/user.npmrc" NPM_CONFIG_GLOBALCONFIG="$scratch/global.npmrc" \
+                npm install --prefix "$scratch/install" --cache "$scratch/cache" \
+                --registry=https://registry.npmjs.org/ --ignore-scripts --no-audit --no-fund \
+                "superun-ai-cli@$VERSION"); then
+              if output="$("$scratch/install/node_modules/.bin/superun-ai" version)" && \
+                  node -e 'const result = JSON.parse(process.argv[1]); process.exit(result.ok && result.data.version === process.argv[2] ? 0 : 1)' \
+                    "$output" "$VERSION"; then
+                rm -rf "$scratch"
+                echo "Verified public superun-ai-cli@$VERSION installation and CLI version"
+                exit 0
+              fi
+            fi
+            rm -rf "$scratch"
+          done
+          echo "Public installation did not verify in the eight attempts at minutes 3 through 10" >&2
+          exit 1
