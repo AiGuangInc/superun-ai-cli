@@ -158,7 +158,8 @@ export async function sendMessage(
   let submitted = created;
   if (skipQuestion) {
     const createdSessionId = text(created.sessionId);
-    const anchor = text(created.messageId);
+    // glowChat 的 replyMessageId 是用户消息；messageId 是 Agent 消息，不能作为 Stage2 锚点。
+    const anchor = text(created.replyMessageId);
     if (!createdSessionId || !anchor)
       throw new CliError(
         'OUTCOME_UNKNOWN',

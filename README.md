@@ -198,7 +198,7 @@ superun-ai chat stop <sessionId>
 
 写命令支持 `--no-wait`：请求被接受后立即返回。`chat wait` 等待到需要输入、需要选择或任务结束；达到本地等待时限后返回当前状态和 `waitTimedOut: true`，可以继续查询。按 Ctrl+C 只结束本地等待；远端停止需要显式执行 `chat stop`。
 
-`chat create --skip-question` 在创建请求返回 `sessionId` 和用户消息 `messageId` 后，立即以该消息为锚点生成首个方案，不等待需求问卷回复。默认生成免费方案（`index: 0`）。加上 `--advanced` 则直接委托高级设计师生成方案（`index: 1`）；可能消耗 50～100 算力值，按实际用量扣费，预计耗时 30 分钟，服务端有可用免费委托额度时不扣费。`--advanced` 只适用于 `create --skip-question`。两种方式都能搭配 `--no-wait`，它只控制并行方案请求提交后的本地等待；请求结果不确定时先查询返回的项目和风格锚点，不要再次创建项目。
+`chat create --skip-question` 在创建请求返回 `sessionId` 和用户消息 `replyMessageId` 后，立即以该消息为锚点生成首个方案，不等待需求问卷回复。默认生成免费方案（`index: 0`）。加上 `--advanced` 则直接委托高级设计师生成方案（`index: 1`）；可能消耗 50～100 算力值，按实际用量扣费，预计耗时 30 分钟，服务端有可用免费委托额度时不扣费。`--advanced` 只适用于 `create --skip-question`。两种方式都能搭配 `--no-wait`，它只控制并行方案请求提交后的本地等待；请求结果不确定时先查询返回的项目和风格锚点，不要再次创建项目。
 
 聊天任务的响应还包含 `taskProgress`。当前用户已确认规划的研发阶段，`tasks` 优先展示功能和内部步骤：从 Glow 同源的 `internal/features.json`、`internal/todos.json` 独立读取，按真实 `featureId` 关联；`steps` 保留步骤原文、顺序和 `pending / in_progress / completed` 状态，`stepProgress` 返回实际完成数和总数。与 Glow 的开发中列表一致，只展示 `checked=true` 且未完成的功能，执行中优先、同状态保持服务端顺序。历史已完成项及其步骤不进入当前进度；已选但等待中的功能只显示标题和状态，不展开旧 Todo。未关联功能的旧版 Todo 不混入其他功能；执行中尚无步骤时明确提示，不显示虚构的 0/0。不再展示“执行详情”和重复的主任务、子任务表格，过程卡也不展示工具次数。整轮状态为 `COMPLETED` 后，保持原来的完成回复：原样展示 `messages` 中的完成说明，保留预览链接、“继续创作 / 上线运营”等原有引导，不用步骤表或结束卡片替代。只在完成说明后补充 `toolUsage.markdown`（如“已生成：10 次工具调用”），次数与 Glow 完成气泡同源，读取当前轮 `activity.summary.toolCount`，不累加子任务次数，也不拆分读取、修改或部署次数；统计缺失时明确提示不可用。
 
