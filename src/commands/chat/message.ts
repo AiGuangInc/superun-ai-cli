@@ -43,6 +43,9 @@ export async function sendMessage(
   check?: 'test' | 'review',
 ): Promise<void> {
   const options = object(command.opts());
+  const skipQuestion = !sessionId && options.skipQuestion === true;
+  if (options.advanced === true && !skipQuestion)
+    throw new CliError('INVALID_ARGUMENT', '--advanced 只能与 create --skip-question 一起使用');
   const files = z.array(z.string()).parse(options.file ?? []);
   const testFollowup = text(options.testFollowup),
     reviewFollowup = text(options.reviewFollowup);
@@ -151,10 +154,49 @@ export async function sendMessage(
         : {}),
     }),
   );
+  const created = object(response);
+  let submitted = created;
+  if (skipQuestion) {
+    const createdSessionId = text(created.sessionId);
+    const anchor = text(created.messageId);
+    if (!createdSessionId || !anchor)
+      throw new CliError(
+        'OUTCOME_UNKNOWN',
+        '项目已创建，但创建回执缺少生成方案所需的消息标识；请查看项目进度，勿重复创建',
+        {
+          sessionId: createdSessionId,
+          messageId: anchor,
+          retryable: false,
+        },
+      );
+    try {
+      submitted = await service.generateImmediateStyles(
+        createdSessionId,
+        anchor,
+        content,
+        attachments,
+        options.advanced === true ? 1 : 0,
+        text(options.model),
+      );
+    } catch (error) {
+      if (error instanceof CliError)
+        throw new CliError(
+          error.code,
+          `项目已创建，方案生成${error.code === 'OUTCOME_UNKNOWN' || error.code === 'INTERRUPTED' ? '结果待确认' : '未完成'}：${error.message}`,
+          {
+            ...error.details,
+            sessionId: createdSessionId,
+            preReplyMessageId: anchor,
+            retryable: false,
+          },
+        );
+      throw error;
+    }
+  }
   context.output.write(
     await service.accepted(
       {
-        ...object(response),
+        ...submitted,
         progressTitle: content,
         ...(operation
           ? checkKind === 'review'

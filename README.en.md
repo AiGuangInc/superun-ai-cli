@@ -44,17 +44,9 @@ npm install -g .
 
 If you already have a local checkout, use that directory and preserve any uncommitted changes. The build clears `dist` before generating files. Keep the source directory if your global command is linked to it.
 
-## Publish to npm
+## Automatic npm publishing
 
-Commit current changes, switch to `main`, and run:
-
-```bash
-npm run release
-```
-
-The script prints the previous version and verifies npm authentication with `npm whoami`. If authentication fails, it runs `npm login` and verifies again; failure stops the process before changing the version. It then runs `npm version patch`, prints the new version, publishes to npm with the `latest` tag, and runs `git push origin main --follow-tags`. Versioning creates a Git commit and tag. Publishing uses the existing `prepack` type check and build. Valid authentication does not guarantee package publishing permission; use an authorized account. npm may prompt for two-factor authentication.
-
-Each failure stops the sequence. If publication is uncertain, check the target version on npm first. If npm publication succeeded but Git push failed, retry only `git push origin main --follow-tags`. Publishing to `latest` affects existing CLI users through its built-in update logic.
+For a release PR, increase the version in both `package.json` and `package-lock.json`, title the PR `release: v<version>`, and include substantive `## Release notes`. The PR gate checks the version, types, build, and package contents. After the PR is merged into `main`, [GitHub Actions](.github/workflows/publish-npm.yml) publishes to npm `latest` through trusted publishing and verifies a public installation and the CLI version. Do not run the old `npm run release` manual publishing flow.
 
 ## Help
 
@@ -192,6 +184,8 @@ Help, `version`, `update`, and `auth logout` do not require an existing PAT. Wit
 superun-ai session list --limit 20
 superun-ai session get <sessionId>
 superun-ai chat create --message "Build a promotional website for a coffee shop"
+superun-ai chat create --skip-question --message "Build a promotional website for a coffee shop"
+superun-ai chat create --skip-question --advanced --message "Build a promotional website for a coffee shop"
 superun-ai chat send <sessionId> --message "Add a membership benefits section"
 superun-ai chat state <sessionId>
 superun-ai chat wait <sessionId> --timeout 120
@@ -199,6 +193,8 @@ superun-ai chat stop <sessionId>
 ```
 
 Write commands support `--no-wait`, returning as soon as the request is accepted. `chat wait` waits for input, a selection, or task completion. When an explicit local waiting limit is reached, it returns the current state with `waitTimedOut: true`; you can continue querying. Ctrl+C only ends local waiting. Use `chat stop` explicitly to stop a remote task.
+
+`chat create --skip-question` starts style generation as soon as creation returns the session and user message IDs, without waiting for the questionnaire reply. It uses the free first style (`index: 0`) by default. Add `--advanced` to request a designer style (`index: 1`), which may cost 50–100 credits based on actual usage and is expected to take about 30 minutes; an available free designer quota is applied by the server. `--advanced` requires `--skip-question`. `--no-wait` controls local waiting after style submission. If a request outcome is uncertain, inspect the returned session and style anchor before trying again; do not create another project.
 
 Chat task responses also include `taskProgress`. During development with an approved plan in the current user’s round, `tasks` contains only checked, unfinished features from Glow’s in-progress list, read independently from the same `internal/features.json` and `internal/todos.json` used by Glow. Steps are joined by the actual `featureId`; `steps` preserves their text, order, and `pending / in_progress / completed` status, while `stepProgress` contains the actual completed and total counts. Running features come first, preserving server order within each status. Historical completed features and their steps are excluded. Pending selected features show only their title and status, without stale Todos. Legacy Todos without a feature ID are not assigned to another feature. Running features without steps display a pending-generation notice rather than a fabricated 0/0. The card no longer includes execution details, duplicate message/subtask tables, or tool counts. After the whole round reaches `COMPLETED`, preserve the original completion text in `messages`, preview links, and existing continue-creation / launch guidance. Do not replace the reply with a step table or completion card. Only append `toolUsage.markdown` after the completion text. The count uses the same current-round `activity.summary.toolCount` as Glow’s completion bubble, without adding subtask counts. Read, edit, and deployment counts are not displayed separately; missing statistics are explicitly reported as unavailable.
 
