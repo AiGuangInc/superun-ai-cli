@@ -32,7 +32,7 @@ export function styleResultNotice(result: GuidanceResult): string | undefined {
         ? `**${styleChoiceLabel(choice)} 已生成**：[查看${styleChoiceLabel(choice)}](${choice.previewUrl})`
         : '方案状态待同步。',
   );
-  if (!ready.length && failed.length) lines.push('需求答案已保存。处理失败原因后，回复 **“重试生成”**。');
+  if (!ready.length && failed.length) lines.push('需求已保存。处理失败原因后，回复 **“重试生成”**。');
   if (ready.length > 1)
     lines.push(
       '你可以对比现有方案：',

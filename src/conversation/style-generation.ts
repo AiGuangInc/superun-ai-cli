@@ -1,5 +1,6 @@
 /** 与 Glow 共用风格批次、免费额度与失败重试契约。@author xiuyu.yi */
 import type { CreationRuntime } from '../runtime.js';
+import type { InputAttachment } from '../api/upload-api.js';
 import type { Choice } from '../contracts/cli-output.js';
 import { list, object, text } from '../contracts/value.js';
 import type { JsonObject } from '../contracts/value.js';
@@ -45,6 +46,59 @@ export function initialStyleContent(response: JsonObject): string {
     /* 没有原始需求时停止，不能拿追加要求替代首批需求。 */
   }
   throw new CliError('PROTOCOL_ERROR', '未能读取本轮已保存的需求，请查看项目详情后重试；尚未创建新方案');
+}
+
+/** 使用创建回执的用户消息锚点立即发起方案，不等待需求问卷或会话查询同步。 */
+export async function generateImmediateStyles(
+  runtime: CreationRuntime,
+  sessionId: string,
+  preReplyMessageId: string,
+  content: string,
+  attachments: Array<InputAttachment>,
+  index: 0 | 1,
+  model?: string,
+): Promise<JsonObject> {
+  const response = await runtime.command.parallel({
+    sessionId,
+    preReplyMessageId,
+    items: [
+      {
+        index,
+        mode: 6,
+        framework: 6,
+        content,
+        ...(model ? { model } : {}),
+        ...(attachments.length ? { attachments } : {}),
+        businessParams: { business_type: 'startMV' },
+      },
+    ],
+  });
+  if (!styleWaitTarget(response))
+    throw new CliError('OUTCOME_UNKNOWN', '生成请求已返回，但缺少方案标识；请查看进度，勿重复生成', {
+      sessionId,
+      preReplyMessageId,
+    });
+  const free = list(response.items).every((item) => object(item).tokenFree === true);
+  const notice =
+    index === 0
+      ? '已跳过需求问卷，正在为你免费生成第一个方案。'
+      : free
+        ? '已跳过需求问卷，高级设计师已接受委托；本次为免费委托，不扣算力值，预计耗时 30 分钟。'
+        : '已跳过需求问卷，高级设计师已接受委托；预计消耗 50～100 算力值，按实际用量扣费，预计耗时 30 分钟。';
+  runtime.output.log(notice);
+  try {
+    await runtime.command.sessionExtra(sessionId, {
+      hasClarifiedPrd: '1',
+      generatedByBranch: '1',
+      version: '6',
+    });
+  } catch {
+    throw new CliError('OUTCOME_UNKNOWN', '方案生成已提交，阶段状态同步未确认，请查看进度，勿重复生成', {
+      sessionId,
+      preReplyMessageId,
+    });
+  }
+  return { ...response, stylePhase: index === 0 ? 'initial' : 'append', styleNotice: notice };
 }
 
 export async function generateInitialStyles(

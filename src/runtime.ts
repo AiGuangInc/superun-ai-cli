@@ -13,6 +13,7 @@ import type { ApiClient } from './transport/api-client.js';
 import type { OutputWriter } from './output/writer.js';
 import type { NodeRound, SessionView } from './contracts/node-wire.js';
 import type { CreationResult, Choice } from './contracts/cli-output.js';
+import type { InputAttachment } from './api/upload-api.js';
 import { enabled, object, text } from './contracts/value.js';
 import { getSuperunHostingDomain } from './config/runtime-config.js';
 import type { JsonObject } from './contracts/value.js';
@@ -63,7 +64,12 @@ import { styleResultNotice } from './conversation/style-guidance.js';
 import { creditCode, throwCreditResult } from './conversation/insufficient-credits.js';
 import { readProjectRouting, routingInstruction } from './conversation/project-routing.js';
 import { stylePlanningChoice } from './conversation/style-planning.js';
-import { generateInitialStyles, appendStyle, retryStyle } from './conversation/style-generation.js';
+import {
+  generateInitialStyles,
+  generateImmediateStyles,
+  appendStyle,
+  retryStyle,
+} from './conversation/style-generation.js';
 
 // 仅独立演示版本等待快照同步，研发主线直接使用稳定预览地址。
 const DEMO_SNAPSHOT_SYNC_MS = 15_000;
@@ -732,6 +738,16 @@ export class CreationRuntime {
   }
   async generateStyles(sessionId: string, content: string, preReplyMessageId?: string): Promise<JsonObject> {
     return generateInitialStyles(this, sessionId, content, preReplyMessageId);
+  }
+  async generateImmediateStyles(
+    sessionId: string,
+    anchor: string,
+    content: string,
+    attachments: Array<InputAttachment>,
+    index: 0 | 1,
+    model?: string,
+  ): Promise<JsonObject> {
+    return generateImmediateStyles(this, sessionId, anchor, content, attachments, index, model);
   }
   async appendStyle(sessionId: string, anchor: string): Promise<JsonObject> {
     return appendStyle(this, sessionId, anchor);
