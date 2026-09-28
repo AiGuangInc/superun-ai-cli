@@ -97,7 +97,9 @@ export function styleNextActions(
     actions.push({
       action: 'APPEND_STYLE',
       requiresUserInput: true,
-      instruction: `${prefix} 用户选择“委托高级设计师再设计一版方案”后直接执行，不重复确认费用；若用户此前没看到费用说明，先展示该选项并等待确认。直接基于本轮已有需求生成，每次只追加一个方案，不引导填写调整要求或上传参考文件。`,
+      instruction: `${prefix} 展示委托选项前，先运行 superun-ai free-quota <sessionId>，在返回的 items 中找到 quotaKey 为 free_round:stage2_designer 且 scope 为 user 的条目，并按其 expectedCharge 标注本次预计免费或付费；如果查询失败或缺少该条目，明确告知无法判定，不标记免费或付费，也不执行委托。用户选择“委托高级设计师再设计一版方案”后直接执行，不重复确认费用。直接基于本轮已有需求生成，每次只追加一个方案，不引导填写调整要求或上传参考文件。`,
+      // 上层调用方从同一命令前缀拼接只读额度查询，再展示对应费用状态。
+      // command 字段仍是实际追加委托命令，查询入口由 instruction 指定。
       command: [...command, 'style', 'append', '--anchor', anchor, '--', result.sessionId],
     });
   return actions;

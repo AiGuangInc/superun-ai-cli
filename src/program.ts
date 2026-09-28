@@ -5,6 +5,7 @@ import type { CommandContext } from './commands/shared.js';
 import { requireCredentials, rememberExplicitSession } from './commands/shared.js';
 import { registerAuth } from './commands/auth/index.js';
 import { registerSession } from './commands/session/index.js';
+import { registerFreeQuota } from './commands/free-quota.js';
 import { registerChat } from './commands/chat/index.js';
 import { registerUpdate } from './commands/system/update.js';
 import { registerVersion } from './commands/system/version.js';
@@ -45,6 +46,7 @@ export function createProgram(
   });
   registerAuth(program, context);
   registerSession(program, context);
+  registerFreeQuota(program, context);
   registerChat(program, context);
   registerUpdate(program, context.output, hooks.update);
   registerVersion(program, context.output);

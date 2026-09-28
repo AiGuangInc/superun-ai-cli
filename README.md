@@ -78,6 +78,7 @@ superun-ai
 │   ├── current                                                   # 读取当前宿主会话保存的项目绑定
 │   ├── use <sessionId>                                           # 选择当前会话继续使用的项目
 │   └── clear                                                     # 清除当前会话的项目绑定，保留远端项目
+├── free-quota [sessionId]                                        # 查询当前用户及指定项目的免费额度
 ├── chat                                                          # 对话创作
 │   ├── create                                                    # 新建项目并发送需求
 │   ├── send <sessionId>                                          # 继续项目创作
@@ -90,7 +91,7 @@ superun-ai
 │   ├── style                                                     # 管理创作风格
 │   │   ├── generate <sessionId>                                  # 生成风格候选
 │   │   ├── list <sessionId>                                      # 查询全部风格批次
-│   │   ├── append <sessionId>                                    # 委托高级设计师再设计一版方案，每版预计消耗 50～100 算力值，按实际用量扣费，预计耗时 30 分钟
+│   │   ├── append <sessionId>                                    # 委托高级设计师再设计一版方案；先运行 free-quota，缺少设计师额度或查询失败时暂停，预计耗时 30 分钟
 │   │   ├── retry <sessionId> <choiceId>                          # 重试失败的原方案任务
 │   │   └── select <sessionId> <choiceId>                         # 选择风格并展示开发功能清单
 │   ├── demo <sessionId>                                          # 查看演示快照并记录已查看状态
@@ -187,6 +188,7 @@ unset SUPERUN_PAT
 ```bash
 superun-ai session list --limit 20
 superun-ai session get <sessionId>
+superun-ai free-quota
 superun-ai chat create --message "为咖啡店制作一个活动网站"
 superun-ai chat create --skip-question --message "为咖啡店制作一个活动网站"
 superun-ai chat create --skip-question --advanced --message "为咖啡店制作一个活动网站"
@@ -198,7 +200,7 @@ superun-ai chat stop <sessionId>
 
 写命令支持 `--no-wait`：请求被接受后立即返回。`chat wait` 等待到需要输入、需要选择或任务结束；达到本地等待时限后返回当前状态和 `waitTimedOut: true`，可以继续查询。按 Ctrl+C 只结束本地等待；远端停止需要显式执行 `chat stop`。
 
-`chat create --skip-question` 在创建请求返回 `sessionId` 和用户消息 `replyMessageId` 后，立即以该消息为锚点生成首个方案，不等待需求问卷回复。默认生成免费方案（`index: 0`）。加上 `--advanced` 则直接委托高级设计师生成方案（`index: 1`）；可能消耗 50～100 算力值，按实际用量扣费，预计耗时 30 分钟，服务端有可用免费委托额度时不扣费。`--advanced` 只适用于 `create --skip-question`。两种方式都能搭配 `--no-wait`，它只控制并行方案请求提交后的本地等待；请求结果不确定时先查询返回的项目和风格锚点，不要再次创建项目。
+`chat create --skip-question` 在创建请求返回 `sessionId` 和用户消息 `replyMessageId` 后，立即以该消息为锚点生成首个方案，不等待需求问卷回复。默认生成免费方案（`index: 0`）。加上 `--advanced` 则直接委托高级设计师生成方案（`index: 1`）；使用前先运行 `free-quota` 查询当前登录用户额度，并按高级设计师用户额度项的 `expectedCharge` 展示本次预计免费或付费。若额度项缺失或查询失败，不继续高级设计师委托。额度可能在查询后变化，提交后的实际状态以服务端 `tokenFree` 回执为准，预计耗时 30 分钟。`--advanced` 只适用于 `create --skip-question`。两种方式都能搭配 `--no-wait`，它只控制并行方案请求提交后的本地等待；请求结果不确定时先查询返回的项目和风格锚点，不要再次创建项目。
 
 聊天任务的响应还包含 `taskProgress`。当前用户已确认规划的研发阶段，`tasks` 优先展示功能和内部步骤：从 Glow 同源的 `internal/features.json`、`internal/todos.json` 独立读取，按真实 `featureId` 关联；`steps` 保留步骤原文、顺序和 `pending / in_progress / completed` 状态，`stepProgress` 返回实际完成数和总数。与 Glow 的开发中列表一致，只展示 `checked=true` 且未完成的功能，执行中优先、同状态保持服务端顺序。历史已完成项及其步骤不进入当前进度；已选但等待中的功能只显示标题和状态，不展开旧 Todo。未关联功能的旧版 Todo 不混入其他功能；执行中尚无步骤时明确提示，不显示虚构的 0/0。不再展示“执行详情”和重复的主任务、子任务表格，过程卡也不展示工具次数。整轮状态为 `COMPLETED` 后，保持原来的完成回复：原样展示 `messages` 中的完成说明，保留预览链接、“继续创作 / 上线运营”等原有引导，不用步骤表或结束卡片替代。只在完成说明后补充 `toolUsage.markdown`（如“已生成：10 次工具调用”），次数与 Glow 完成气泡同源，读取当前轮 `activity.summary.toolCount`，不累加子任务次数，也不拆分读取、修改或部署次数；统计缺失时明确提示不可用。
 
@@ -461,6 +463,8 @@ superun-ai chat publish visibility <sessionId> private
 ```
 
 首次固定生成 1 个方案，不再支持 `--count` 或问卷 `styleCount`。用户选择“委托高级设计师再设计一版方案”后，通过 `chat style append <sessionId> --anchor <branchAnchor>` 每次基于已有需求追加 1 个，不接受额外要求或参考文件。失败方案使用 `chat style retry <sessionId> <choiceId>` 重试原任务。选择使用查询结果中的 `choiceId`。发布使用查询结果中的 `encryptedId`，按目标版本跟踪部署状态。插件 ID 以 `chat plugin list` 返回值为准。
+
+`superun-ai free-quota` 列出后端返回的全部用户级额度；传入 `sessionId` 时也列出后端返回的该项目级额度。`items` 逐项保留 `quotaKey`、`scope`、`limit`、`used`、`remaining`，并附上人类可读的 `quotaName`、`expectedCharge`（`free` 或 `paid`）和 `expectedFree`。命令只展示后端实际返回的额度项，不补造缺少的额度。展示高级设计师委托选项前，从 `quotaKey: free_round:stage2_designer` 且 `scope: user` 的条目读取预估；若该项缺失，或额度查询失败，明确告知无法判断，不展示免费或付费状态，也不继续高级设计师委托。状态按查询时额度计算，可能在查询后变化；提交后以服务端 `tokenFree` 回执为准。
 
 风格等待会在单个方案成功且预览页面就绪时提前返回进度，整批状态仍为 `RUNNING`。结果的 `styleGeneration.notice` 为实际状态对应的展示文案，`nextActions` 提供采用、追加和重试命令；`choices` 保留同一轮全部方案，不能只展示最新批次。候选通过 `previewUrl` 返回与 Glow 分支预览相同的可交互页面，不返回截图链接，也不等待截图生成。调用方应立即提示该方案及页面链接，再按 `QUERY_STYLES` 继续查询剩余方案，例如“方案 B 已生成，继续等待方案 A”。方案 A/B/C/D 固定对应原始 `index` 0/1/2/3，同一 `choiceId` 只提示一次；已有可用方案时用户可以提前选择；追加生成不会隐藏旧方案。
 
