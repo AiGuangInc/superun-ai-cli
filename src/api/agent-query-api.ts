@@ -23,6 +23,20 @@ const messageContextSchema = z.object({
   preMessageId: z.string().nullish(),
   roundExtra: z.record(z.unknown()).default({}),
 });
+const userFreeQuotaSchema = z
+  .object({
+    items: z.array(
+      z.object({
+        quotaKey: z.string().min(1),
+        scope: z.enum(['user', 'session']),
+        limit: z.number().int().nonnegative(),
+        used: z.number().int().nonnegative(),
+        remaining: z.number().int().nonnegative(),
+      }),
+    ),
+  })
+  .passthrough();
+export type UserFreeQuotaItem = z.infer<typeof userFreeQuotaSchema>['items'][number];
 
 const PREFIX = '/api/uxa-center/agent/AgentQuery';
 export class AgentQueryApi {
@@ -127,12 +141,28 @@ export class AgentQueryApi {
       }),
     );
   }
+  async userFreeQuota(sessionId?: string): Promise<Array<UserFreeQuotaItem>> {
+    return parseWire(
+      userFreeQuotaSchema,
+      await this.client.call(`${PREFIX}/queryUserFreeQuota`, sessionId ? { sessionId } : {}),
+    ).items;
+  }
   async designerFreeRemaining(sessionId: string): Promise<number> {
     const response = object(await this.client.call(`${PREFIX}/querySessionFreeQuota`, { sessionId }));
     const item = list(response.items)
       .map(object)
       .find((item) => item.quotaKey === 'free_round:stage2_designer');
-    return typeof item?.remaining === 'number' ? Math.max(0, item.remaining) : 0;
+    if (
+      !item ||
+      typeof item.remaining !== 'number' ||
+      !Number.isInteger(item.remaining) ||
+      item.remaining < 0
+    )
+      throw new CliError(
+        'PROTOCOL_ERROR',
+        '免费额度查询未返回高级设计师额度，无法判断本次预计免费或付费；请勿按付费或免费继续操作',
+      );
+    return item.remaining;
   }
   async attachments(sessionId: string, names: Array<string> = []): Promise<Array<JsonObject>> {
     const response = await this.client.call(`${PREFIX}/querySessionAttachmentsExcludeInternalAndCompiled`, {

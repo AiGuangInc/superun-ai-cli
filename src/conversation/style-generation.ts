@@ -16,7 +16,7 @@ import {
 } from '../interactions/parsers/style-selection.js';
 
 export const APPEND_STYLE_OPTION =
-  '**委托高级设计师再设计一版方案**：预计消耗 **50～100 算力值**，按实际用量扣费，预计耗时 **30 分钟**。';
+  '**委托高级设计师再设计一版方案**：展示前按用户免费额度查询结果填写本次预计免费或付费；预计耗时 **30 分钟**。';
 export const APPEND_STYLE_NOTICE =
   '高级设计师已接受委托，正在根据你的需求定制一版新方案，完成后按实际用量扣费（预计 50–100 算力值），预计耗时 30 分钟。';
 
@@ -162,14 +162,8 @@ export async function appendStyle(
     throw new CliError('INVALID_ARGUMENT', '请先等待当前方案生成结束，委托高级设计师再设计一版方案');
   const content = initialStyleContent(raw);
   const index = Math.max(1, ...choices.map((choice) => choice.index + 1));
-  // 查询失败与 Glow 一样按付费入口处理；用户已通过含费用说明的“委托高级设计师再设计一版方案”授权。
-  let expectFree = false;
-  try {
-    expectFree = (await runtime.query.designerFreeRemaining(sessionId)) > 0;
-  } catch (error) {
-    if (runtime.client.signal?.aborted || (error instanceof CliError && error.code === 'AUTH_REQUIRED'))
-      throw error;
-  }
+  // 无法确认当前额度时停止提交，避免将免费额度状态不明的委托当作付费。
+  const expectFree = (await runtime.query.designerFreeRemaining(sessionId)) > 0;
   let response: JsonObject;
   try {
     response = await runtime.command.parallel({
