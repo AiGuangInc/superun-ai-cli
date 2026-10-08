@@ -14,8 +14,12 @@ export function detectRequestChannel(env: NodeJS.ProcessEnv): string {
   if (env.GEMINI_CLI === '1') channels.push('gemini-cli');
   if (env.QWEN_CODE === '1') channels.push('qwen-code');
   if (env.CURSOR_AGENT === '1') channels.push('cursor');
-  // QoderWork 桌面端实测标识；不凭 Qoder 会话变量推断产品。
-  if (env.QODER_PRODUCT_ID === 'qoder' && env.QODER_SESSION_TYPE === 'app') channels.push('qoder');
+  // Qoder 普通版与国内版使用各自的桌面会话标识，统一归入 qoder 渠道。
+  if (
+    (env.QODER_PRODUCT_ID === 'qoder' && env.QODER_SESSION_TYPE === 'app') ||
+    (env.QODER_PRODUCT_ID === 'qoder-cn' && env.QODERCN_SESSION_TYPE === 'app')
+  )
+    channels.push('qoder');
   // 未识别或多个宿主信号冲突时统一兜底，不猜测嵌套调用的归属。
   return channels.length === 1 ? channels[0]! : DEFAULT_REQUEST_CHANNEL;
 }
