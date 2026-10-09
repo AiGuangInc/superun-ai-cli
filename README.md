@@ -82,6 +82,7 @@ superun-ai
 ├── chat                                                          # 对话创作
 │   ├── create                                                    # 新建项目并发送需求
 │   ├── send <sessionId>                                          # 继续项目创作
+│   ├── design <sessionId>                                        # 委托高级设计师调整页面或重新设计方案
 │   ├── test <sessionId>                                          # 自动测试指定功能，告知发现的问题后自动修复；默认测试刚才完成的功能
 │   ├── review <sessionId>                                        # 代码审查，告知发现的问题后自动修复；默认审查刚才改动的代码
 │   ├── state <sessionId>                                         # 查询当前任务和交互
@@ -421,6 +422,20 @@ superun-ai chat agent-friendly <sessionId> --method connector
 展示原文后，以“接下来，你可以直接回复我：”引出“接入当前会话 / 接入到新会话 / 接入其他 AI 应用”三项引导，按返回的固定文案原样展示选项与说明。只有用户明确选择后，宿主 Agent 才执行安装或使用实际可用的新会话工具；不支持新会话时如实说明。CLI 本身不会安装 `superun-cli`、修改宿主 Skill/MCP 配置或创建会话，后续动作的命令只重新读取指令。目标 Agent 必须完成真实只读查询才可声称接入成功，不能把指令准备完成当作已连接。
 
 普通 `chat state/wait` 保持原有行为；需要持续跟进 Agent 友好生成和方式选择时，使用本次返回的 `agent-friendly --status` 命令。
+
+## 发布后的高级设计师
+
+网站发布成功且已公开后，保留原发布结果、正式链接和既有选项，新增「高级设计师：调整页面设计，也可以重新设计方案」。用户只选择该入口时，提示「请告诉我想调整哪些页面、具体想怎么改；也可以重新设计方案。」；已有具体要求时直接提交，不改写或扩充需求。
+
+```bash
+superun-ai chat design <sessionId> --message "把用户端首页改成暖色调，保留现有功能"
+superun-ai chat design <sessionId> --input ./design.json --file ./reference.png
+superun-ai chat design <sessionId> --message "重新设计首页，采用简洁的黑白风格" --no-wait
+```
+
+`--input` JSON 只接受 `content` 或 `message`，与 `--message` 互斥。要求必须非空，仅有「高级设计师」或附件不会创建任务。支持 `--file` 和现有等待参数；发送前校验项目已进入研发且当前没有未处理任务或问题，`--no-wait` 也保留此校验。现有项目不要求必须有发布记录才能显式调用此命令。
+
+本命令调用 `glowChat`，使用 `businessParams.business_type=advanced_designer_polish`。它与风格选择阶段同名的高级设计师及「再来一版」是不同功能；即使要求重新设计，也不调用 `chat style append`，不套用其免费额度或费用提示。完成后展示研发预览，用户要求重新上线后才发布到正式网站。普通创作、风格追加和其他既有命令保持原有行为。
 
 ## 余额不足与充值后重试
 

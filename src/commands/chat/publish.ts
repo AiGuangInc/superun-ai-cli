@@ -11,6 +11,7 @@ import type { CreationRuntime } from '../../runtime.js';
 import type { NextAction } from '../../contracts/cli-output.js';
 import { AGENT_FRIENDLY_DESCRIPTION } from '../../conversation/agent-friendly-prompts.js';
 import { USER_CHOICE_INSTRUCTION } from '../../conversation/user-choice-guidance.js';
+import { ADVANCED_DESIGNER_PROMPT } from './design.js';
 import {
   missingPublishedRouting,
   readProjectRouting,
@@ -118,6 +119,12 @@ function publishActions(
         instruction: `保留当前发布结果和正式访问入口，随后展示“- **Agent 友好**：${AGENT_FRIENDLY_DESCRIPTION}”。与继续创作并列，${USER_CHOICE_INSTRUCTION} 只在用户选择 Agent 友好后执行；已开启则选择接入方式，未开启则通过同源技能 chat 准备能力。不要自动生成、安装或新建会话。`,
         requiresUserInput: true,
         command: [...command.slice(0, -1), 'agent-friendly', '--', sessionId],
+      },
+      {
+        action: 'ADVANCED_DESIGNER_POLISH',
+        instruction: `保留发布结果、changeLog 原文和全部正式访问入口，将“- **高级设计师**：调整页面设计，也可以重新设计方案。”与本次已有的 Agent 友好、继续创作选项一并展示。${USER_CHOICE_INSTRUCTION} 用户只选高级设计师时，原样提问：“${ADVANCED_DESIGNER_PROMPT}” 已有具体要求时不重复询问，将用户原文放入 content，通过 --input - 提交 JSON，可用 --file 上传用户提供的本地参考附件。只有选项名称或附件而没有要求时先收答，不默认补写需求。这是调整现有项目的高级设计师，重新设计也使用本命令，不调用风格选择阶段的高级设计师或 style append，不套用其额度和费用文案。完成后按真实结果展示研发预览，说明重新上线后才会更新正式网站，不自动发布。`,
+        requiresUserInput: true,
+        command: [...command.slice(0, -1), 'design', '--input', '-', '--', sessionId],
       },
       {
         action: 'CONTINUE_CHAT',

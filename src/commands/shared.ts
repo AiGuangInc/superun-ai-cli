@@ -82,6 +82,7 @@ export async function requireCredentials(
 // 统一声明会改变当前项目选择的操作；查询和等待默认不改变绑定。
 const projectOperations = new Set([
   'send',
+  'design',
   'test',
   'review',
   'security',

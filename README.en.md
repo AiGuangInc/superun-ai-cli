@@ -80,6 +80,7 @@ superun-ai
 ├── chat                                                          # Conversational creation
 │   ├── create                                                    # Create a project and send a request
 │   ├── send <sessionId>                                          # Continue the conversation
+│   ├── design <sessionId>                                        # Ask the senior designer to adjust or redesign pages
 │   ├── test <sessionId>                                          # Test existing functionality and repair identified issues
 │   ├── review <sessionId>                                        # Review existing code and repair identified issues
 │   ├── state <sessionId>                                         # Inspect the task and interactions
@@ -323,6 +324,20 @@ After the user selects a style, `chat style select` waits for its demo, complete
 After the user explicitly asks to launch the site, use `chat publish status <sessionId> --for-launch` to get the latest pending version from the publishing panel. Show its `changeLog` unchanged, then follow the returned publishing command without a second confirmation. For a deployment already in progress, only track progress. If deployment is complete but the site is not public, finish the visibility step and return the public URL. `status` is always read-only; an ordinary status query does not grant publishing authorization.
 
 `chat publish start --indexing allow|deny` controls search-engine indexing, not visitor access. Change site visibility with `chat publish visibility`. If the service requires acknowledgment of cloud costs, review them before explicitly passing `--acknowledge-cloud-fee`.
+
+## Senior designer after publishing
+
+After a successful public launch, the follow-up menu adds **Senior designer** alongside the existing actions. It asks which pages to adjust and what to change, or whether to redesign, when the user has not already supplied requirements. Preserve the user's requirements without expanding them.
+
+```bash
+superun-ai chat design <sessionId> --message "Use warm colors on the home page and preserve existing features"
+superun-ai chat design <sessionId> --input ./design.json --file ./reference.png
+superun-ai chat design <sessionId> --message "Redesign the home page in a minimal black-and-white style" --no-wait
+```
+
+`--input` accepts only `content` or `message` and is mutually exclusive with `--message`. A concrete, nonempty requirement is required even with attachments. Existing file upload and wait options apply. The command checks that development has started and there are no pending tasks or questions, including with `--no-wait`; explicit invocation does not require a previous deployment.
+
+This calls `glowChat` with `businessParams.business_type=advanced_designer_polish`. The similarly named designer in the style-selection stage is a separate feature: redesign requests here never call `chat style append` or reuse its free quota or pricing guidance. Show the resulting development preview; publish again only when the user requests it. Existing commands and workflows keep their behavior.
 
 ## Text input and attachments
 
