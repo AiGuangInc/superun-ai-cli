@@ -40,7 +40,7 @@ export function createProgram(
       (rootCommand && (action.name() === 'version' || action.name() === 'update')) ||
       (authCommand && action.name() === 'logout');
     if (offline || action === program) return;
-    await hooks.beforeBusiness();
+    if (!authCommand) await hooks.beforeBusiness();
     if (!(authCommand && action.name() === 'login')) await requireCredentials(context, action, !authCommand);
     rememberExplicitSession(context, action);
   });
