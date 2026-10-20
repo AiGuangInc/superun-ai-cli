@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 import { object, text } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
+import { requestChannel } from '../../config/request-channel.js';
 import { prepareUploadFiles } from '../../api/upload-files.js';
 import { uploadAttachment } from '../../api/upload-api.js';
 import type { InputAttachment } from '../../api/upload-api.js';
@@ -146,6 +147,7 @@ export async function sendMessage(
               hasClarifiedPrd: '0',
               generatedByBranch: '1',
               version: '6',
+              source: requestChannel,
             },
             roundExtra: {
               ROUND_LANGUAGE: create.language,

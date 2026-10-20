@@ -68,13 +68,13 @@ export function agentFriendlyGuidance(
         action: 'CONNECT_CURRENT_APP',
         requiresUserInput: true,
         command: read,
-        instruction: `${display} 用户明确选择“接入当前会话”后，由当前宿主 Agent 执行 messages 代码块中的完整指令（与 agentFriendly.prompt 相同），无需用户再复制发送；先检查宿主能力，浏览器登录由用户完成，拿到真实只读查询结果才可宣布成功。不要将安装指令发回 Superun 项目 chat。command 仅重新读取指令，不执行安装。`,
+        instruction: `${display} 用户明确选择“接入当前会话”后，由当前宿主 Agent 执行 messages 代码块中的完整指令（与 agentFriendly.prompt 相同），无需用户再复制发送；先检查宿主能力，浏览器登录由用户完成，拿到真实只读查询结果才可宣布成功。不要将安装指令发回 superun 项目 chat。command 仅重新读取指令，不执行安装。`,
       },
       {
         action: 'CONNECT_NEW_CONVERSATION',
         requiresUserInput: true,
         command: read,
-        instruction: `${display} 用户明确选择“接入到新会话”且宿主提供真实的新会话工具时，才把 messages 代码块中的所选完整指令交给新会话；不传当前研发历史或 PAT。没有该工具就说明不支持，让用户选择当前会话继续或自行复制。不能用 Superun 新建项目冒充宿主新会话。command 仅重新读取指令。`,
+        instruction: `${display} 用户明确选择“接入到新会话”且宿主提供真实的新会话工具时，才把 messages 代码块中的所选完整指令交给新会话；不传当前研发历史或 PAT。没有该工具就说明不支持，让用户选择当前会话继续或自行复制。不能用 superun 新建项目冒充宿主新会话。command 仅重新读取指令。`,
       },
       {
         action: 'CONNECT_OTHER_AI_APP',
