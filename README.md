@@ -99,6 +99,9 @@ superun-ai
 │   ├── generate <sessionId>                                      # 检查PPT前置并生成或复用任务，不自动重试写请求
 │   ├── status <sessionId>                                        # 只读发现现有PPT任务或核对指定generationId
 │   └── get <sessionId>                                           # 读取既有deck；同时提供生成ID和主线锚点才核验本次交付
+├── agent                                                         # 搭建托管智能体配置并读回资源，不运行或部署
+│   ├── create <sessionId>                                        # 提交官方智能体创建入口，只创建资源；后续用chat state查看向导
+│   └── get <sessionId> <agentId>                                 # 在指定项目资源域只读核验已创建智能体，不创建测试运行会话
 ├── free-quota [sessionId]                                        # 查询当前用户及指定项目的免费额度
 ├── chat                                                          # 对话创作
 │   ├── create                                                    # 新建项目并发送需求
@@ -233,6 +236,25 @@ superun-ai ppt get <sessionId> --generation-id <generationId> --source-message-i
 `ppt status/get` 可不带generationId只读发现现有任务，并输出 `hasSlidesIntent`（未知为null）。修改已有作品前先确认该值为true，再检查创作状态。只读查询的 `state=COMPLETED`、deck的ready状态或生成ACK都不表示本次任务已交付。最终get同时提供generate回执的generationId和sourceMessageId，核对主线未换、项目级deck同generation且ready、非空可播放slides，再做 `type=ppt/checkOnly=true` 新鲜度探测并重读核验；只有 `deliveryVerified=true` 且 `operation=VERIFIED_DELIVERY` 才可确认本次交付。缺少锚点仅返回READ_ONLY，不为查询触发生成。
 
 新鲜度变化、任务被替换、错误或等待超时不能自动再次生成。写请求结果未知时先查询原作品，不重复创建。网页入口使用同一创作流程实际返回的演示/预览地址，不能把 `__project__` 拼成URL。当前交付是网页演示与播放deck，不提供原生PPTX/PDF导出；实际费用按现有创作账单记录，不承诺免费或固定金额。
+
+## 只搭建托管智能体
+
+```bash
+superun-ai agent create <sessionId> --message "智能体名称：资料助手。负责长期整理项目资料并回答相关问题。"
+superun-ai chat state <sessionId>
+superun-ai chat interaction reply <sessionId> <interactionId> --agent-create-only --input <answers.json> --no-wait
+superun-ai agent get <sessionId> <uxagentId>
+```
+
+`agent create` 使用本次明确的一个主项目资源域，要求项目闲置且当前账号是owner/editor。实际Agent工具profile要求：v<4当前主线已选风格；v4/5已查看演示且当前主线已进入研发；v>=6还需确认架构规划。旧版不强造演示步骤；版本未知或阶段不满足时停止，不自动推进研发或确认规划。合成的可选功能推荐菜单不阻挡用户明确提出的新需求，真实待答工具和其它交互仍须先处理，不自动开发推荐功能。工作说明用 `--message` 或只含content/message的JSON `--input`，最多4000字符。命令按插件状态走官方 `skill.superun_managed_agent_v2` 的enable/create入口并保留本次工作说明，不用普通聊天或直接POST绕过向导。它只提交入口，后续通过 `chat state` 查看真实问题并按现有向导回答。
+
+专属模式在入口发送前就持久化pending，ACK后绑定本次源消息和真实向导；首次投影即检查当前主线及view/round/payload三方session归属和owner/editor。`--agent-create-only` 是显式保险，漏传不能取消已记录模式。源消息已被替换、跨子会话或ACK结果未知时停止，不猜映射、不重复发入口。每次资源创建和最终回填前重新读取当前绑定及角色，后续角色降级不能沿用早先许可。完成或确认终止后只关闭对应入口，其它普通向导不永久继承专属模式。
+
+向导仍按当前设定、记忆库、已有技能和最终确认创建；快速创建仅按当前设定创建，不配置知识文件、记忆库和可选技能。本模式明确回填 `adminPanelRequested=false`，不追加后台开发、运行会话、试聊或对外部署。记忆库新建不把最多4000字符的角色设定塞进较短description字段。知识文件/自定义技能包上传和MCP配置仍由网页后续处理；不自动补配已跳过项。
+
+成功回复中的 `managedAgentCreation` 包含resourceSessionId、agentId、实际memoryStoreId/skillIds、checkpoint和adminPanelRequested。只搭建成功后即使漏传 `--no-wait`，也仅返回回执，不进入通用自动等待；后续读取失败会把已成功的结构化ID保留在错误details中。创建结果未知时保留原检查点；已有agentId不能再POST创建第二个智能体。
+
+`agent get` 只接受平台公开 `uxagent_...` ID，在同一X-Session-Id资源域映射读取并核对返回id，拒绝provider原生ID。输出仅含名称、简述、模型、版本等安全字段，不输出system、MCP配置或凭据。完成验收需要真实agentId及同域读回，插件ENABLED或聊天COMPLETED不能替代。GET因402、权限或网络失败不代表资源创建失败；保留已有ID，说明读回未完成，不能重建。配置存在也不表示已经运行或接入任何渠道。
 
 ## 恢复当前会话的项目
 

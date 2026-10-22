@@ -52,6 +52,7 @@ export const wizardDraftSchema = z.object({
     .default('editing'),
   confirmed: z.boolean().default(false),
   quick: z.boolean().default(false),
+  createOnly: z.boolean().optional(),
 });
 export type WizardDraft = z.infer<typeof wizardDraftSchema>;
 export function inferAgentName(description: string): string {
@@ -116,6 +117,7 @@ export function wizardPage(
     skills: draft.skills,
     creation: { checkpoint: draft.checkpoint, agentId: draft.agentId, memoryStoreId: draft.memoryStoreId },
     warnings: catalog.warnings,
+    ...(draft.createOnly ? { createOnly: true, adminPanelRequested: false } : {}),
   };
   if (draft.stage !== 'description') actions.push('BACK');
   switch (draft.stage) {

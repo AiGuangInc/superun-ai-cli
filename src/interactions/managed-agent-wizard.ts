@@ -5,6 +5,11 @@ import { object, requiredText, text, type JsonObject } from '../contracts/value.
 import type { InteractionBinding } from './context.js';
 import { InteractionDraftStore } from './draft-store.js';
 import { ManagedAgentApi, type WizardCatalog } from '../api/managed-agent-api.js';
+import {
+  managedAgentCreateOnlyMode,
+  completeAgentCreateOnly,
+  verifyManagedAgentCreateOnly,
+} from '../conversation/managed-agent-create-only.js';
 import { resolveAnswers } from './questions.js';
 import {
   inferAgentName,
@@ -48,6 +53,11 @@ export class ManagedAgentWizard {
   }
   async project(binding: InteractionBinding): Promise<InteractionBinding> {
     const draft = await this.read(binding);
+    if (
+      !['complete', 'stopped'].includes(draft.checkpoint) &&
+      (await managedAgentCreateOnlyMode(this.runtime, binding, draft.createOnly))
+    )
+      draft.createOnly = true;
     return {
       ...binding,
       interaction: wizardPage(binding.interaction, draft, await this.catalog(binding, draft)),
@@ -57,11 +67,16 @@ export class ManagedAgentWizard {
     binding: InteractionBinding,
     input: JsonObject,
     validate: () => Promise<void>,
+    createOnly = false,
   ): Promise<JsonObject> {
     return this.store.locked(this.key(binding), async () => {
       await validate();
-      const draft = await this.read(binding),
-        catalog = await this.catalog(binding, draft);
+      const draft = await this.read(binding);
+      if (await managedAgentCreateOnlyMode(this.runtime, binding, createOnly || draft.createOnly)) {
+        draft.createOnly = true;
+        await this.store.write(this.key(binding), draft);
+      }
+      const catalog = await this.catalog(binding, draft);
       const page = wizardPage(binding.interaction, draft, catalog);
       if (Object.keys(input).some((key) => !['action', 'pageRevision', 'answers'].includes(key)))
         throw new CliError('INVALID_ARGUMENT', '向导回答包含不支持的字段；不支持附件或技能上传');
@@ -241,6 +256,7 @@ export class ManagedAgentWizard {
           draft.memoryName = '';
           delete draft.existingMemory;
           await save();
+          if (draft.createOnly) await completeAgentCreateOnly(this.runtime, binding);
           return { localInteraction: true, sessionId: binding.round.sessionId };
       }
       return local();
@@ -256,6 +272,10 @@ export class ManagedAgentWizard {
     if (['agent_pending', 'memory_pending'].includes(draft.checkpoint))
       throw new CliError('OUTCOME_UNKNOWN', '资源创建结果未确认，请先核验，不能重复创建');
     const sessionId = binding.round.sessionId;
+    const verify = async () => {
+      await validate();
+      if (draft.createOnly) await verifyManagedAgentCreateOnly(this.runtime, binding);
+    };
     validateDescription(draft.description);
     try {
       if (!draft.agentId && !draft.quick && (draft.skills.length || draft.memoryMode === 'existing')) {
@@ -283,7 +303,7 @@ export class ManagedAgentWizard {
         // 创建契约的简述字段可能短于向导的完整设定；完整文本始终放入 system。
         const maxDescription =
           Number(object(object(contract.createSchema.properties).description).maxLength) || 4000;
-        await validate();
+        await verify();
         draft.checkpoint = 'agent_pending';
         await save();
         draft.agentId = await this.api.create(sessionId, 'agents', {
@@ -300,18 +320,18 @@ export class ManagedAgentWizard {
       }
       if (draft.memoryMode === 'new' && !draft.memoryStoreId) {
         const contract = await this.api.contract(sessionId, 'memory_stores');
-        await validate();
+        await verify();
         draft.checkpoint = 'memory_pending';
         await save();
         draft.memoryStoreId = await this.api.create(sessionId, 'memory_stores', {
           ...contract.defaultValue,
           name: requiredText(draft.memoryName, '记忆库名称'),
-          description: draft.description.trim(),
+          ...(draft.createOnly ? {} : { description: draft.description.trim() }),
         });
         draft.checkpoint = 'editing';
         await save();
       }
-      await validate();
+      await verify();
       draft.checkpoint = 'reply_pending';
       await save();
       const memoryStoreId = draft.memoryMode === 'existing' ? draft.existingMemory?.id : draft.memoryStoreId;
@@ -327,10 +347,26 @@ export class ManagedAgentWizard {
           ...(memoryStoreId ? { memoryStoreId } : {}),
           skillIds: draft.skills.map((skill) => skill.id),
           mcpServers: [],
+          ...(draft.createOnly ? { adminPanelRequested: false } : {}),
         },
       );
       draft.checkpoint = 'complete';
       await save();
+      if (draft.createOnly) {
+        await completeAgentCreateOnly(this.runtime, binding);
+        return {
+          ...response,
+          managedAgentCreation: {
+            createOnly: true,
+            resourceSessionId: sessionId,
+            agentId: draft.agentId,
+            ...(memoryStoreId ? { memoryStoreId } : {}),
+            skillIds: draft.skills.map((skill) => skill.id),
+            adminPanelRequested: false,
+            checkpoint: 'complete',
+          },
+        };
+      }
       return response;
     } catch (error) {
       // 明确拒绝没有创建副作用，允许修正后继续；网络不确定或进程中断保留检查点阻止重建。

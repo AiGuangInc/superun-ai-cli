@@ -97,6 +97,9 @@ superun-ai
 │   ├── generate <sessionId>                                      # Check PPT prerequisites and submit or reuse a task without write retries
 │   ├── status <sessionId>                                        # Discover an existing PPT task or compare a specific generation ID
 │   └── get <sessionId>                                           # Read an existing deck or verify delivery using both generation and mainline IDs
+├── agent                                                         # Create managed-agent configuration and read it back without running or deploying it
+│   ├── create <sessionId>                                        # Submit the official creation entry, then inspect its wizard with chat state
+│   └── get <sessionId> <agentId>                                 # Verify an existing agent in the specified project without creating a runtime session
 ├── free-quota [sessionId]                                        # Query signed-in user and optional project free quotas
 ├── chat                                                          # Conversational creation
 │   ├── create                                                    # Create a project and send a request
@@ -231,6 +234,25 @@ superun-ai ppt get <sessionId> --generation-id <generationId> --source-message-i
 `ppt status/get` can discover existing tasks without a generation ID and return `hasSlidesIntent` (null when unknown). Before editing an existing project, confirm that it is true and then check its creation state. A read query's `state=COMPLETED`, a ready deck, or a generation acknowledgment alone does not prove delivery of this operation. Final get verification requires both receipt IDs, an unchanged mainline, a matching ready project-level deck with playable slides, and a `type=ppt/checkOnly=true` freshness probe followed by another read. Only `deliveryVerified=true` with `operation=VERIFIED_DELIVERY` confirms delivery. Missing anchors produce READ_ONLY results and do not trigger generation.
 
 Changed attachments, replaced tasks, failures, or local wait timeouts must not automatically trigger another generation. If a write has an unknown outcome, inspect the original project rather than recreating it. Use the actual demo or preview URL returned by the same creation workflow; never append `__project__` to a URL. Delivery consists of a web presentation and its playback deck, not a native PPTX or PDF export. Fees follow the existing creation bills and are not promised to be free or fixed.
+
+## Create a managed-agent configuration only
+
+```bash
+superun-ai agent create <sessionId> --message "Agent name: Research Assistant. Organize project references and answer related questions."
+superun-ai chat state <sessionId>
+superun-ai chat interaction reply <sessionId> <interactionId> --agent-create-only --input <answers.json> --no-wait
+superun-ai agent get <sessionId> <uxagentId>
+```
+
+`agent create` uses one explicit main-project resource scope, with an idle project and a current owner or editor. The actual Agent tool profile requires a selected mainline style for versions below 4, a viewed demo and current-mainline development marker for versions 4–5, and architecture approval for versions 6 and above. Older versions are not forced through a nonexistent demo step. Unknown versions or unmet stages stop the operation; it does not enter development or approve plans automatically. A synthetic optional feature-recommendation menu does not block a new explicit request, while real pending tools and other interactions still do. It never develops recommended features automatically. Supply up to 4,000 characters through `--message` or a JSON `--input` containing only content or message. The command preserves this work description and routes through the official `skill.superun_managed_agent_v2` enable/create entry, not a generic chat request or direct resource creation bypass. It submits the entry; use `chat state` and the existing wizard to answer real questions.
+
+The dedicated mode is persisted before submission, then bound to the acknowledged source message and actual wizard. Its first projection checks current mainline ownership, matching view/round/payload session IDs, and editor permission. `--agent-create-only` is an explicit safeguard; omitting it cannot disable an already recorded mode. Replaced source messages, cross-session tools, or unknown acknowledgments stop the flow rather than guessing mappings or resubmitting. Every resource write and final tool reply reloads the current binding and role. Completion or confirmed cancellation closes only that entry, without permanently changing unrelated wizards.
+
+The wizard retains its description, memory, existing-skill, and confirmation steps. Quick creation uses the current description without optional files, memories, or skills. This mode returns `adminPanelRequested=false` and does not create a management console, runtime session, test chat, or external deployment. New memories do not copy the entire role description into a shorter description field. Knowledge-file/custom-skill uploads and MCP configuration remain separate web operations; skipped options are not silently added.
+
+Successful replies include `managedAgentCreation` with resourceSessionId, agentId, actual optional memoryStoreId/skillIds, checkpoint, and adminPanelRequested. Successful create-only replies return receipts even if `--no-wait` was omitted, without generic automatic waiting. If later state reading fails, error details retain the successful structured IDs. Unknown creation outcomes preserve checkpoints, and an existing agentId must never cause a second creation POST.
+
+`agent get` only accepts public `uxagent_...` IDs. It reads through the same X-Session-Id mapping and checks the returned ID, rejecting native provider IDs. Only safe metadata such as name, description, model, and version is exposed; system prompts, MCP configuration, and credentials are omitted. Verification requires a real agentId and successful same-project readback. Plugin readiness or conversation completion alone is insufficient. A 402, authorization, or network error during GET does not mean creation failed: retain the ID and report incomplete readback rather than recreate it. Existing configuration does not imply execution or channel integration.
 
 ## Restore the project for this conversation
 
