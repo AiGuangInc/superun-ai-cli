@@ -73,6 +73,7 @@ superun-ai
 ├── session                                                       # Query projects and conversation binding
 │   ├── list                                                      # List projects
 │   ├── get <sessionId>                                           # Get project details
+│   ├── history <sessionId>                                       # Query mainline version summaries, excluding separate demos and source code
 │   ├── current                                                   # Read the saved project for this host conversation
 │   ├── use <sessionId>                                           # Select a project for this conversation
 │   └── clear                                                     # Clear the local binding and keep the remote project
@@ -114,6 +115,16 @@ superun-ai
 ```
 
 Run `npm run docs:sync` after changing command registration to update both command trees. `npm run docs:check` validates their completeness; `prepack` also checks them before packaging.
+
+## Query project history
+
+```bash
+superun-ai session history <sessionId> --page 1 --limit 20
+```
+
+The command first verifies that the current account can read the specified project, then queries version summaries from its development mainline (`previewVersionId=0`). The default page size is 20, with a maximum of 100. Results include version and message IDs, summaries, timestamps, current-version flags, and preview URLs returned by the API. It does not read source code, restore versions, or change the current project binding. Separate demo versions are excluded, so an empty mainline history does not mean that no demo versions exist.
+
+`total` reports the total when the API makes it available. If the gateway returns only a list, `total` is `null`; a full page also has `hasMore=null`, and `nextPage` only identifies the next page that can be checked. A page shorter than the requested size has `hasMore=false`. Query failures or invalid responses produce errors instead of successful empty lists.
 
 ## Restore the project for this conversation
 

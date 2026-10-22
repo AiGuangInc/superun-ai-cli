@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import type { CommandContext } from '../shared.js';
 import { registerList } from './list.js';
 import { registerGet } from './get.js';
+import { registerHistory } from './history.js';
 import { runtime, sessionBinding } from '../shared.js';
 import { CliError } from '../../output/exit-codes.js';
 
@@ -10,6 +11,7 @@ export function registerSession(program: Command, context: CommandContext): void
   const session = program.command('session').description('查询项目与当前会话绑定');
   registerList(session, context);
   registerGet(session, context);
+  registerHistory(session, context);
   session
     .command('current')
     .description('读取当前宿主会话保存的项目绑定')

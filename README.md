@@ -75,6 +75,7 @@ superun-ai
 ├── session                                                       # 查询项目与当前会话绑定
 │   ├── list                                                      # 查询项目列表
 │   ├── get <sessionId>                                           # 查询项目详情
+│   ├── history <sessionId>                                       # 查询作品主线历史版本摘要，不含独立演示版本或源码
 │   ├── current                                                   # 读取当前宿主会话保存的项目绑定
 │   ├── use <sessionId>                                           # 选择当前会话继续使用的项目
 │   └── clear                                                     # 清除当前会话的项目绑定，保留远端项目
@@ -116,6 +117,16 @@ superun-ai
 ```
 
 命令树以源码注册为准。新增或调整命令后执行 `npm run docs:sync` 同步中英文命令树；`npm run docs:check` 校验完整性。发包前的 `prepack` 同样执行校验，发现遗漏或过期参数时停止发包准备。
+
+## 查询作品历史
+
+```bash
+superun-ai session history <sessionId> --page 1 --limit 20
+```
+
+本命令先验证当前账号能读取指定作品，再查询研发主线（`previewVersionId=0`）的历史版本摘要。每页默认 20 条，最多 100 条；输出版本 ID、消息 ID、摘要、时间、当前版本标记和接口返回的预览地址，不读取源码、不恢复版本，也不改变当前项目绑定。独立演示版本不在本命令范围内，主线历史为空不代表没有演示版本。
+
+`total` 为接口可提供的历史总数。如果网关只返回列表，则 `total` 为 `null`；满页时 `hasMore` 也为 `null`，`nextPage` 只表示可继续核对的页码。少于请求页大小时 `hasMore=false`。查询失败或响应格式异常会报错，不返回空列表冒充成功。
 
 ## 恢复当前会话的项目
 
