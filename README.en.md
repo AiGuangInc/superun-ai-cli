@@ -77,6 +77,8 @@ superun-ai
 │   ├── current                                                   # Read the saved project for this host conversation
 │   ├── use <sessionId>                                           # Select a project for this conversation
 │   └── clear                                                     # Clear the local binding and keep the remote project
+├── order                                                         # Query your superun product and service purchase orders
+│   └── list                                                      # List purchase orders, items, order amounts, and existing invoices
 ├── free-quota [sessionId]                                        # Query signed-in user and optional project free quotas
 ├── chat                                                          # Conversational creation
 │   ├── create                                                    # Create a project and send a request
@@ -125,6 +127,19 @@ superun-ai session history <sessionId> --page 1 --limit 20
 The command first verifies that the current account can read the specified project, then queries version summaries from its development mainline (`previewVersionId=0`). The default page size is 20, with a maximum of 100. Results include version and message IDs, summaries, timestamps, current-version flags, and preview URLs returned by the API. It does not read source code, restore versions, or change the current project binding. Separate demo versions are excluded, so an empty mainline history does not mean that no demo versions exist.
 
 `total` reports the total when the API makes it available. If the gateway returns only a list, `total` is `null`; a full page also has `hasMore=null`, and `nextPage` only identifies the next page that can be checked. A page shorter than the requested size has `hasMore=false`. Query failures or invalid responses produce errors instead of successful empty lists.
+
+## Query purchase orders
+
+```bash
+superun-ai order list --page 1 --limit 20
+superun-ai order list --status 20 --page 1 --limit 20
+```
+
+Query superun product or service purchases made by the signed-in user; no project selection is required. Optional status codes are 0 initialized, 10 awaiting payment, 20 paid, 50 completed, 60 closed, and 70 cancelled. By default all statuses are included, with 20 orders per page and a maximum page size of 100. The command only calls the buyer-scoped `pageOrder` endpoint. It does not call the detail endpoint that can retry fulfillment, create or pay for orders, cancel orders, or request invoices.
+
+Results retain the `items[].orderInfo` and `items[].orderItems` structure and add `statusName` / `invoiceStatusName`. `amountUnit=minor` means monetary values use the smallest currency unit: cents for CNY and USD. Preserve the original currency and do not sum different currencies. `orderInfo.total` is the order amount, not the actual payment amount; a paid status does not prove that resources were delivered. Invoice output is limited to existing status, application time, effective invoice number/date/currency, the invoice-record amount attributed to this order, and PDF/OFD URLs. The total face amount of a merged invoice is not provided by this command.
+
+The top-level `total` counts orders matching the current status filter; use `hasMore` / `nextPage` to continue. The API has no order-number, keyword, or date filter, so these conditions can only be matched against returned records. Do not declare an order absent before checking all relevant pages. Missing fields remain null or absent, and query failures produce errors rather than fabricated empty lists.
 
 ## Restore the project for this conversation
 
