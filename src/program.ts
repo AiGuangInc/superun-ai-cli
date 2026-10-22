@@ -8,6 +8,7 @@ import { registerSession } from './commands/session/index.js';
 import { registerOrder } from './commands/order/index.js';
 import { registerBill } from './commands/bill/index.js';
 import { registerSite } from './commands/site/index.js';
+import { registerMarket } from './commands/market/index.js';
 import { registerFreeQuota } from './commands/free-quota.js';
 import { registerChat } from './commands/chat/index.js';
 import { registerUpdate } from './commands/system/update.js';
@@ -52,6 +53,7 @@ export function createProgram(
   registerOrder(program, context);
   registerBill(program, context);
   registerSite(program, context);
+  registerMarket(program, context);
   registerFreeQuota(program, context);
   registerChat(program, context);
   registerUpdate(program, context.output, hooks.update);
