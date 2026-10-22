@@ -143,12 +143,15 @@ export async function sendMessage(
             sessionExtra: {
               // 新建项目直接进入 Stage 1（构想阶段）。
               agentRuntime: 'glow',
-              hasSlidesIntent: '0',
+              hasSlidesIntent: options.slides === true ? '1' : '0',
               hasClarifiedPrd: '0',
               generatedByBranch: '1',
               version: '6',
               source: requestChannel,
             },
+            ...(options.slides === true
+              ? { businessParams: { business_type: 'stage1_action', action: 'slides' } }
+              : {}),
             roundExtra: {
               ROUND_LANGUAGE: create.language,
             },

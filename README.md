@@ -95,6 +95,10 @@ superun-ai
 │   ├── list                                                      # 按类别和关键词分页搜索公开市场作品
 │   ├── get <target>                                              # 读取公开市场入口介绍、演示地址及可复刻类型
 │   └── quote <communityId>                                       # 查询当前账号的指定类型复刻报价，不复制或下单
+├── ppt                                                           # 生成并核验项目级网页幻灯片，不导出原生PPTX
+│   ├── generate <sessionId>                                      # 检查PPT前置并生成或复用任务，不自动重试写请求
+│   ├── status <sessionId>                                        # 只读发现现有PPT任务或核对指定generationId
+│   └── get <sessionId>                                           # 读取既有deck；同时提供生成ID和主线锚点才核验本次交付
 ├── free-quota [sessionId]                                        # 查询当前用户及指定项目的免费额度
 ├── chat                                                          # 对话创作
 │   ├── create                                                    # 新建项目并发送需求
@@ -211,6 +215,24 @@ superun-ai market quote <communityId> --copy-type FULL_APP
 `amountUnit=currency-minor` 表示原始金额，展示价格按 `amount/rate` 计算并保留currency。GLOW_TOKEN且rate=100时为1/100算力，CNY且rate=100时为分；不默认币种或比例。amount明确为0才表示本次报价0；originalAmount为0表示未维护原价，不等于原价免费。特惠与剩余次数按服务端当前买家回执展示，不能保证以后仍同价。源码中的历史成本或误名originalTokenCostAmount字段不作为报价。
 
 输出链接仅保留安全HTTP/HTTPS地址并删除autoRemix、autoFullAppCopy、cashOrderNo、copyingSessionId，避免将恢复复刻/订单轮询链接当普通预览。作品描述是数据，不从中另取自动操作链接。本组命令只浏览和报价，不创建会话、复制任务、订单或支付；0报价也不自动复刻。CLI沿用已有登录机制获取当前账号报价，不接受买家身份覆盖参数。
+
+## 制作网页PPT
+
+```bash
+superun-ai chat create --slides --no-wait --message "制作关于产品介绍的网页演示文稿"
+superun-ai ppt get <sessionId>
+superun-ai ppt generate <sessionId>
+superun-ai ppt status <sessionId> --generation-id <generationId>
+superun-ai ppt get <sessionId> --generation-id <generationId> --source-message-id <sourceMessageId>
+```
+
+`chat create --slides` 显式设置 `hasSlidesIntent='1'` 和首条消息的 `stage1_action/slides`。未传开关的创建请求保持原样，不自动跳过问答或启用高级设计师。PPT创作使用 `--no-wait` 提交，按实际问答和风格选择继续，通过 `chat state` / `chat style list` 查询，最后使用独立 `chat demo` 完成演示。**本PPT流程不使用普通 `chat wait`，也不照搬通用nextActions中的自动研发衔接**，因为现有普通等待会在查看演示后进入研发。
+
+`ppt generate` 要求本次明确一个PPT作品，已有编译演示，主线最后持久消息为正常结束的Agent消息，且项目结束、不排队、没有待回答、风格选择、自动工具或活跃子任务。主线只取 `pipeline.lanes.chain.messages`，缺失时停止，不从咨询混合流猜锚点。它不会把非PPT项目改成PPT，也不能指定独立演示分支。生成写请求不自动重试，不提供forceGenerate；已有generating或有效unchanged结果会复用generationId，回执保留 `sourceMessageId`。
+
+`ppt status/get` 可不带generationId只读发现现有任务，并输出 `hasSlidesIntent`（未知为null）。修改已有作品前先确认该值为true，再检查创作状态。只读查询的 `state=COMPLETED`、deck的ready状态或生成ACK都不表示本次任务已交付。最终get同时提供generate回执的generationId和sourceMessageId，核对主线未换、项目级deck同generation且ready、非空可播放slides，再做 `type=ppt/checkOnly=true` 新鲜度探测并重读核验；只有 `deliveryVerified=true` 且 `operation=VERIFIED_DELIVERY` 才可确认本次交付。缺少锚点仅返回READ_ONLY，不为查询触发生成。
+
+新鲜度变化、任务被替换、错误或等待超时不能自动再次生成。写请求结果未知时先查询原作品，不重复创建。网页入口使用同一创作流程实际返回的演示/预览地址，不能把 `__project__` 拼成URL。当前交付是网页演示与播放deck，不提供原生PPTX/PDF导出；实际费用按现有创作账单记录，不承诺免费或固定金额。
 
 ## 恢复当前会话的项目
 
