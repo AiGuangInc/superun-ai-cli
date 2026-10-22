@@ -79,6 +79,11 @@ superun-ai
 │   └── clear                                                     # Clear the local binding and keep the remote project
 ├── order                                                         # Query your superun product and service purchase orders
 │   └── list                                                      # List purchase orders, items, order amounts, and existing invoices
+├── bill                                                          # Query credit bills and deduction statistics
+│   ├── list                                                      # List credit bills with server pagination, without date or page-size options
+│   ├── stats                                                     # Summarize deductions including negative reversals, excluding recharge-type usage rebates
+│   ├── projects                                                  # List bill-filter project candidates, not current editing permissions
+│   └── types                                                     # List supported credit recharge and consumption business types
 ├── free-quota [sessionId]                                        # Query signed-in user and optional project free quotas
 ├── chat                                                          # Conversational creation
 │   ├── create                                                    # Create a project and send a request
@@ -140,6 +145,24 @@ Query superun product or service purchases made by the signed-in user; no projec
 Results retain the `items[].orderInfo` and `items[].orderItems` structure and add `statusName` / `invoiceStatusName`. `amountUnit=minor` means monetary values use the smallest currency unit: cents for CNY and USD. Preserve the original currency and do not sum different currencies. `orderInfo.total` is the order amount, not the actual payment amount; a paid status does not prove that resources were delivered. Invoice output is limited to existing status, application time, effective invoice number/date/currency, the invoice-record amount attributed to this order, and PDF/OFD URLs. The total face amount of a merged invoice is not provided by this command.
 
 The top-level `total` counts orders matching the current status filter; use `hasMore` / `nextPage` to continue. The API has no order-number, keyword, or date filter, so these conditions can only be matched against returned records. Do not declare an order absent before checking all relevant pages. Missing fields remain null or absent, and query failures produce errors rather than fabricated empty lists.
+
+## Query credit bills
+
+```bash
+superun-ai bill list
+superun-ai bill list --cursor <scrollId> --session-id <sessionId>
+superun-ai bill stats --from 2026-10-01 --to 2026-10-22 --granularity DAY
+superun-ai bill projects
+superun-ai bill types
+```
+
+All four commands only read `GLOW_TOKEN`. Without `--workspace-id`, they query the personal account. An explicit positive workspace ID queries the workspace bills visible to the current account; ordinary and former members are limited to their own historical consumption. `--session-id` filters within the selected billing account without changing it or requiring current project editing permission. A team project can be personally funded, so its workspace does not determine the billing account. `bill projects` only lists filter candidates; an absent candidate does not prove that historical charges are absent.
+
+`bill list` returns `items/hasNext/scrollId`, without a total, date filter, or adjustable page size. The server fetches 100 raw bill rows and then aggregates and filters them, so empty `items` may still have `hasNext=true`. Continue using the returned `scrollId`; do not infer completion from displayed row counts or construct a cursor. Subsequent cursors must move strictly toward earlier records. Reset the cursor when changing accounts or filters. `amountUnit=hundredth-credit` means that `amount` is in hundredths of a credit. Glow displays `amount/100` for type=1 and the negated value for other types. Details include recharges, rebates, and deductions, so summing every raw amount does not measure consumption. An item with `aiMessageRunning=true` has a provisional amount.
+
+`bill stats` includes both dates, uses `Asia/Shanghai`, and accepts at most 60 days with DAY/WEEK/MONTH granularity. `amountUnit=credit` means `totalAmount` and `items[].amount` are decimal strings already measured in credits; **do not divide them by 100 again**. Statistics only sum deduction bills (type=2), including negative reversals and excluding recharge-type usage rebates. Preserve signed amounts; these are neither cash amounts nor complete net consumption. The server also excludes statistics associated with projects it can no longer find, so a displayed detail page is not a substitute for these statistics.
+
+Both list and stats accept `--related-types <codes>` as comma-separated business-type codes. Resolve them through `bill types`; do not substitute first-level category codes. Results retain the selected account, project, and type filters. Invalid responses produce errors rather than zero totals. Detail output only includes the related project's ID and title, excluding message content, memos, user IDs, and arbitrary related objects.
 
 ## Restore the project for this conversation
 

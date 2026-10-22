@@ -81,6 +81,11 @@ superun-ai
 │   └── clear                                                     # 清除当前会话的项目绑定，保留远端项目
 ├── order                                                         # 查询本人购买的 superun 产品和服务订单
 │   └── list                                                      # 分页查询购买订单、商品、订单金额和已有发票信息
+├── bill                                                          # 查询算力账单和扣减类统计
+│   ├── list                                                      # 查询算力账单明细，按服务端游标翻页，无日期或条数选项
+│   ├── stats                                                     # 按日期汇总扣减类账单，含负数冲正，不含充值类用量返还
+│   ├── projects                                                  # 查询账单作品筛选候选，不代表当前编辑权限
+│   └── types                                                     # 查询算力账单支持的充值和消费业务类型
 ├── free-quota [sessionId]                                        # 查询当前用户及指定项目的免费额度
 ├── chat                                                          # 对话创作
 │   ├── create                                                    # 新建项目并发送需求
@@ -142,6 +147,24 @@ superun-ai order list --status 20 --page 1 --limit 20
 输出保留 `items[].orderInfo` 和 `items[].orderItems` 层级，增加 `statusName` / `invoiceStatusName`。`amountUnit=minor` 表示金额为最小货币单位：CNY 为分，USD 为美分；按原币种显示，不跨币种合计。`orderInfo.total` 是订单总额，不能当作实际支付金额；已支付状态不证明资源已到账。发票只输出现有状态、申请时间、有效票号/日期/币种、本订单对应发票记录金额与 PDF/OFD 地址；本项未提供整张合并发票票面总额。
 
 最外层 `total` 是当前筛选条件下的订单总数，`hasMore` / `nextPage` 用于继续查询。接口不支持订单号、关键词或日期过滤；这些条件只能在已返回的记录中匹配。未查完所有相关分页时，不要宣称某笔订单不存在。缺失字段保留为空或缺失，查询失败会报错，不伪造空订单列表。
+
+## 查询算力账单
+
+```bash
+superun-ai bill list
+superun-ai bill list --cursor <scrollId> --session-id <sessionId>
+superun-ai bill stats --from 2026-10-01 --to 2026-10-22 --granularity DAY
+superun-ai bill projects
+superun-ai bill types
+```
+
+四条命令只读 `GLOW_TOKEN`。省略 `--workspace-id` 查询个人账户；明确传入正整数工作空间 ID 后，查询该工作空间中当前账号有权查看的范围，普通成员及离开成员只看自己的历史消费。作品筛选 `--session-id` 不改变付费账户，也不要求当前项目可编辑；团队作品可能由个人付费，不能从项目归属推断账户。目录 `bill projects` 只是账单筛选候选，不是完整授权清单；候选缺失不证明没有历史消费。
+
+`bill list` 返回 `items/hasNext/scrollId`，没有总数、日期过滤或可调条数。服务端每次取 100 条原始账单再聚合和过滤，空 `items` 仍可能 `hasNext=true`；只使用返回的 `scrollId` 继续，不能按展示条数判断结束或自行构造游标。后续游标必须严格向更早记录推进；切换账户或筛选时清空旧游标。`amountUnit=hundredth-credit` 表示 `amount` 为 1/100 算力；按 Glow 规则，type=1 显示 `amount/100`，其他类型显示其相反数。明细含充值、返还与扣减，不能把所有原始 amount 相加当消费。`aiMessageRunning=true` 时金额是进行中的暂时值。
+
+`bill stats` 的起止日期均包含在范围内，按 `Asia/Shanghai` 计算，最多 60 天；粒度为 DAY/WEEK/MONTH。`amountUnit=credit` 表示 `totalAmount` 和 `items[].amount` 已经是算力的十进制字符串，**不得再除以 100**。统计仅汇总扣减类账单（type=2），包含负数冲正，不包含充值类用量返还；保留正负值，不解释为现金，也不称完整净消耗。服务端还会排除已无法找到项目的相关统计行，因此不能用任意明细页合计替代它。
+
+list/stats 支持 `--related-types <codes>`（逗号分隔）；先用 `bill types` 取得业务类型 code，不把一级类别 code 误作业务类型。结果保留本次账户、作品及类型筛选，响应异常会报错，不兜底为零。明细只保留相关作品的 ID 和标题，不输出用户消息正文、备注、用户 ID 或任意关联对象。
 
 ## 恢复当前会话的项目
 
