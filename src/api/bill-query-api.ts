@@ -3,7 +3,6 @@ import { z } from 'zod';
 import type { ApiClient } from '../transport/api-client.js';
 import { parseWire } from '../contracts/node-wire.js';
 import { CliError } from '../output/exit-codes.js';
-import { billDisplayNames, billTypeName } from './bill-display.js';
 
 const PREFIX = '/api/uxa-center/ecommerce/TokenBalance';
 const optionalText = z.string().nullish();
@@ -96,11 +95,7 @@ export class BillQueryApi {
     if (cursor && result.scrollId && BigInt(result.scrollId) >= BigInt(cursor))
       throw new CliError('PROTOCOL_ERROR', '账单游标未向更早记录推进，请勿重复翻页');
     // 服务端聚合和过滤运行中记录后可能返回空展示页，结束与否只认 hasNext。
-    return {
-      ...result,
-      scrollId: result.scrollId ?? null,
-      items: result.items.map((item) => ({ ...item, ...billDisplayNames(item) })),
-    };
+    return { ...result, scrollId: result.scrollId ?? null };
   }
 
   async statistics(query: BillStatisticsQuery) {
@@ -126,10 +121,6 @@ export class BillQueryApi {
   }
 
   async types() {
-    const items = parseWire(
-      billTypesSchema,
-      await this.client.call(`${PREFIX}/listGlowTokenRelatedTypes`, {}),
-    );
-    return items.map((item) => ({ ...item, displayName: billTypeName(item.desc) }));
+    return parseWire(billTypesSchema, await this.client.call(`${PREFIX}/listGlowTokenRelatedTypes`, {}));
   }
 }
