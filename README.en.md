@@ -574,3 +574,7 @@ Results include added, updated and removed files with line counts. `--include-di
 ### Code review preflight
 
 `chat review` and `chat send --review-followup` verify the explicit project, server-side edit permission, canonical mainline and phase, normal idle state, and pending questions/background work before writing. New requests use mode 6 and previewVersionId 0; a previous message mode does not invalidate a legitimate new operation. Existing demo code can be reviewed; unapproved v6 development planning blocks the operation. Unknown stages, consult/plan contexts, newer user messages or a replaced mainline never advance automatically. This protocol fixes findings and has no enforced read-only mode. Wait for the actual audit and repair report; a completed message is not a passing review.
+
+### Automated test preflight
+
+`chat test` and `chat send --test-followup` apply the same edit-permission, canonical-mainline, phase and pending-work checks as code review, and revalidate the source before submitting. Verify one explicit flow per run. Confirmed defects may be repaired; infrastructure failures and untestable cases are not product defects or passes. Interpret COMPLETED with the current autoTest report. Temporary identities and authentication changes need explicit setup authorization. Demo results do not establish production behavior.

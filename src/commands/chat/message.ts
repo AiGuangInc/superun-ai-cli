@@ -95,7 +95,7 @@ export async function sendMessage(
   const previous =
     sessionId && (options.wait !== false || checkKind) ? await service.load(sessionId) : undefined;
   const checkPreflight =
-    checkKind === 'review' && previous && sessionId
+    checkKind && previous && sessionId
       ? await projectCheckPreflight(service, previous, sessionId, label)
       : undefined;
   let operation: 'test' | 'review' | 'repair' | undefined;
