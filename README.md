@@ -185,6 +185,8 @@ superun-ai bill types
 
 list/stats 支持 `--related-types <codes>`（逗号分隔）；先用 `bill types` 取得业务类型 code，不把一级类别 code 误作业务类型。结果保留本次账户、作品及类型筛选，响应异常会报错，不兜底为零。明细只保留相关作品的 ID 和标题，不输出用户消息正文、备注、用户 ID 或任意关联对象。
 
+类型展示沿用 Glow 的简体中文映射。明细保留原始类型码和文案，另返回 `relatedTypeName/relatedTypeL1Name/relatedTypeDisplay`；面向用户使用组合后的 `relatedTypeDisplay`，例如一级原文“算力消耗费”与子类型 `Chat` 显示为“算力值消耗-聊天并生成”。一级与子类型同名时只显示一次，未知名称保留接口原文。`bill types` 在原始 `code/desc` 之外返回 `displayName`，类型筛选和统计行按该目录的 code 对应展示名，不把展示文案作为接口参数。
+
 ## 查询网站分析结果
 
 ```bash
