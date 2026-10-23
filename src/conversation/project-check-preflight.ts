@@ -30,13 +30,15 @@ export async function projectCheckPreflight(
   if (!/^[A-Za-z0-9_-]+$/.test(sessionId) || view.session.sessionId !== sessionId)
     throw new CliError('PROTOCOL_ERROR', '检查目标与本次单个作品不一致');
   // 复用有服务端编辑权限检查的只读方法；不以菜单可见或分享可访问代替权限。
-  parseWire(
+  const editing = parseWire(
     z.object({ hasStaging: z.boolean(), files: z.array(z.unknown()) }),
     await service.client.call('/api/uxa-center/agent/AgentQuery/queryAgentAttachmentGit', {
       sessionId,
       withContent: false,
     }),
   );
+  if (editing.hasStaging !== editing.files.length > 0)
+    throw new CliError('PROTOCOL_ERROR', '源码暂存状态不完整，未继续操作');
   const chain = chainSchema.safeParse(object(object(view.pipeline.lanes).chain).messages);
   if (!chain.success || chain.data.some((row) => row.sessionId !== sessionId))
     throw new CliError('PROTOCOL_ERROR', '无法核对当前物理主线，未发起检查');
@@ -98,5 +100,5 @@ export async function projectCheckPreflight(
     throw new CliError('INVALID_ARGUMENT', `当前仍有后台任务或必答问题，请先处理后再执行${label}`, {
       sessionId,
     });
-  return { sourceMessageId: head.messageId, stage };
+  return { sourceMessageId: head.messageId, stage, hasStaging: editing.hasStaging };
 }

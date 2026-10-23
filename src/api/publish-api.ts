@@ -4,6 +4,9 @@ import { object } from '../contracts/value.js';
 import type { JsonObject } from '../contracts/value.js';
 export class PublishApi {
   constructor(private readonly client: ApiClient) {}
+  async preflightCost(sessionId: string): Promise<unknown> {
+    return this.client.call('/api/uxa-center/agent/AgentCommand/prePublish', { sessionId });
+  }
   async status(sessionId: string): Promise<JsonObject> {
     return object(
       await this.client.call('/api/uxa-center/agent/AgentQuery/queryPublishLogInfo', { sessionId }),

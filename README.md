@@ -134,7 +134,9 @@ superun-ai
 │   │   └── disable <sessionId> <pluginId>                        # 禁用插件
 │   └── publish                                                   # 发布应用和管理站点状态
 │       ├── status <sessionId>                                    # 查询发布版本与部署进度
-│       ├── start <sessionId> <encryptedId>                       # 发布指定版本
+│       ├── start <sessionId> <encryptedId>                       # 通过指定发布记录发布当前主线，不支持选择历史源码
+│       ├── prepare <sessionId>                                   # 核对当前主线待发布记录与费用估算；状态查询可能更新活动和超时记录
+│       ├── deploy <sessionId> <encryptedId>                      # 按本次准备回执发布当前研发主线，写前复核目标和费用
 │       └── visibility <sessionId> <visibility>                   # 设置站点上线或下线状态
 ├── update                                                        # 检查并将本机 CLI 更新到最新版本
 └── version                                                       # 显示本地版本与输出协议版本
@@ -646,7 +648,7 @@ superun-ai chat publish visibility <sessionId> private
 
 查看演示、保留演示版本、进入研发及规划确认都由 CLI 静默完成，调用参数与 Glow 对齐；用户只看到最终研发功能清单及必要的业务问题。`cliPlanAfterStyle` 是 CLI 写入的本次风格选择标记，不是服务端特性开关。网页先推进演示或研发时，后续消息可能不带此标记，CLI 会沿真实 `preMessageId` 追溯本次选择并接续剩余步骤，不重复查看演示、保留版本或进入研发；已确认规划及后续独立流程构成追溯边界。
 
-用户明确回复“上线运营”后，使用 `chat publish status <sessionId> --for-launch` 获取 Glow 发布面板的最新待发布版本，原样展示该版本的 `changeLog`，再按返回的命令直接发布，无需二次确认。发布中的版本只跟踪进度；部署后尚未公开的站点继续执行上线动作，完成后返回正式链接。`status` 始终只读，普通状态查询不会自动获得发布授权。
+用户明确回复“上线运营”后，使用 `chat publish status <sessionId> --for-launch` 获取 Glow 发布面板的最新待发布版本，原样展示该版本的 `changeLog`，再按返回的命令直接发布，无需二次确认。发布中的版本只跟踪进度；部署后尚未公开的站点继续执行上线动作，完成后返回正式链接。`status` 可能记录云活动并将超时发布更新为失败，不能称为零副作用只读；普通状态查询不会自动获得发布授权。
 
 `chat publish start --indexing allow|deny` 控制搜索引擎索引，不限制用户访问；站点上下线使用 `chat publish visibility`。若服务端要求确认云服务费用，了解费用后可显式传入 `--acknowledge-cloud-fee`。
 
@@ -749,3 +751,17 @@ superun-ai auth logout && npm uninstall -g superun-ai-cli
 ### 独立自动测试的前置条件
 
 `chat test`及`chat send --test-followup`与代码审查使用同一编辑权限、物理主线、真实阶段和任务门禁，并在提交前复核来源。一次验证一个明确流程；测试会跟进确认缺陷的修复，基础设施错误和不可测项不能冒充产品问题或通过。COMPLETED必须结合当前autoTest报告解释。没有明确身份准备授权时不创建临时账号或修改认证；演示结果不等于生产业务通过。
+
+### 独立应用发布：准备与当前主线部署
+
+```bash
+superun-ai chat publish prepare <sessionId>
+superun-ai chat publish deploy <sessionId> <encryptedId> --source-message-id <sourceMessageId> --quote-id <quoteId> --acknowledge-cloud-fee --no-wait
+superun-ai chat publish status <sessionId> --version-id <encryptedId>
+```
+
+`prepare`先核对唯一作品的服务端编辑权限、物理主线、研发阶段、架构批准及空闲条件，再读取当前待发布记录与费用；返回的READY表示已准备回执，不表示用户已授权或发布完成。`deploy`只接受本次待发布记录，两项锚点必填；写前重查，主线/记录/费用变化均停止。当前后端始终构建最近完成主线，历史日志ID不提供历史源码发布；新Skill禁止用兼容start入口代替严格deploy。部署固定准备回执的当前区域，不静默切换机房。
+
+费用单位为GLOW_TOKEN分，100分=1代币。保留服务端汇总及各项明细，额外给出明细合计与30天估算，一致性不符明确标注，不能称免费或静默覆盖。存在非零估算时，用户明确确认当前目标和估算后才传费用确认旗标；同一次估算已有明确授权不重复询问。源码检查、准备回执、提交、部署成功、站点公开及HTTP可访问分别验收。
+
+公开站点前重核当前主线/权限/任务，支持`visibility --source-message-id`固定本次来源，写后读回实际publicStatus；下线保留服务端权限检查，不要求先完成研发。搜索索引不等于访问权限，公开会按平台现行行为启用主页巡检。仅有部署意图不自动公开或开启AI接入。

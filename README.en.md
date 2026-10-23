@@ -133,6 +133,8 @@ superun-ai
 │   └── publish                                                   # Publish applications and manage visibility
 │       ├── status <sessionId>                                    # Query versions and deployment progress
 │       ├── start <sessionId> <encryptedId>                       # Publish a specific version
+│       ├── prepare <sessionId>                                   # 核对当前主线待发布记录与费用估算；状态查询可能更新活动和超时记录
+│       ├── deploy <sessionId> <encryptedId>                      # 按本次准备回执发布当前研发主线，写前复核目标和费用
 │       └── visibility <sessionId> <visibility>                   # Make the site public or private
 ├── update                                                        # Check and update to the latest CLI version
 └── version                                                       # Show local and output-schema versions
@@ -461,7 +463,7 @@ After development completes, the preview link is returned in `development.previe
 
 After the user selects a style, `chat style select` waits for its demo, completes the demo transition and preserves the version internally, then generates the development plan. Show only that the selected style is being used to prepare the plan, without demo-stage prompts or additional questions. The CLI silently generates and confirms the initial plan, then displays the actual feature list for the user to choose what to develop. Real business questions still require user input. After `--no-wait` or a local timeout, follow `CONTINUE_STYLE_PLANNING` with `chat wait` to check the current state and resume the transition. `chat state` remains read-only, and existing projects can still use `chat demo` and `chat develop`.
 
-After the user explicitly asks to launch the site, use `chat publish status <sessionId> --for-launch` to get the latest pending version from the publishing panel. Show its `changeLog` unchanged, then follow the returned publishing command without a second confirmation. For a deployment already in progress, only track progress. If deployment is complete but the site is not public, finish the visibility step and return the public URL. `status` is always read-only; an ordinary status query does not grant publishing authorization.
+After the user explicitly asks to launch the site, use `chat publish status <sessionId> --for-launch` to get the latest pending version from the publishing panel. Show its `changeLog` unchanged, then follow the returned publishing command without a second confirmation. For a deployment already in progress, only track progress. If deployment is complete but the site is not public, finish the visibility step and return the public URL. `status` may record cloud activity and persist timeout failures; a status query does not grant publishing authorization.
 
 `chat publish start --indexing allow|deny` controls search-engine indexing, not visitor access. Change site visibility with `chat publish visibility`. If the service requires acknowledgment of cloud costs, review them before explicitly passing `--acknowledge-cloud-fee`.
 
@@ -578,3 +580,9 @@ Results include added, updated and removed files with line counts. `--include-di
 ### Automated test preflight
 
 `chat test` and `chat send --test-followup` apply the same edit-permission, canonical-mainline, phase and pending-work checks as code review, and revalidate the source before submitting. Verify one explicit flow per run. Confirmed defects may be repaired; infrastructure failures and untestable cases are not product defects or passes. Interpret COMPLETED with the current autoTest report. Temporary identities and authentication changes need explicit setup authorization. Demo results do not establish production behavior.
+
+### Prepared mainline deployment
+
+Use `chat publish prepare <sessionId>`, then `chat publish deploy <sessionId> <encryptedId> --source-message-id <sourceMessageId> --quote-id <quoteId> [--acknowledge-cloud-fee] --no-wait`. Prepare checks server-side edit access, canonical development phase, approved architecture and idle state before returning the current pending record and cost estimate. READY is preparation, not consent or deployment. Deploy requires both anchors and rechecks source, record, region and estimate before writing. The backend builds the latest completed mainline; an old publication record does not select old source code. The independent Skill uses deploy rather than the compatible start entry.
+
+Cost fields use GLOW_TOKEN cents, 100 units per token. Preserve server totals and itemized estimates, also show their computed daily/30-day sums and any discrepancy. Nonzero estimates need explicit consent to the current target and quote. Public visibility rechecks mainline state and permission, optionally binds source-message-id, and reads back publicStatus. Taking a site offline remains possible without requiring a completed development round. Indexing is separate from access; public visibility may enable homepage monitoring. Deployment does not automatically authorize visibility or AI integration.
