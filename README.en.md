@@ -74,6 +74,7 @@ superun-ai
 │   ├── list                                                      # List projects
 │   ├── get <sessionId>                                           # Get project details
 │   ├── history <sessionId>                                       # Query mainline version summaries, excluding separate demos and source code
+│   ├── diff <sessionId> <oldReplyMessageId> <newReplyMessageId>  # 对比本作品两个主线版本的文件变化，包含新侧当前账号暂存
 │   ├── current                                                   # Read the saved project for this host conversation
 │   ├── use <sessionId>                                           # Select a project for this conversation
 │   └── clear                                                     # Clear the local binding and keep the remote project
@@ -561,3 +562,11 @@ superun-ai auth logout && npm uninstall -g superun-ai-cli
 `npm uninstall` does not run `logout` automatically. If you configured `SUPERUN_PAT`, also run `unset SUPERUN_PAT` in the current shell and remove it from the shell configuration or environment that sets it. Logging out does not sign you out of the browser or revoke the server-side PAT.
 
 <!-- @author xiuyu.yi -->
+
+## Mainline version changes
+
+`superun-ai session diff <sessionId> <oldReplyMessageId> <newReplyMessageId> [--include-diff]`
+
+Select one project and two messageId values from its `session history` (not encryptedId). The CLI verifies project identity and server-side edit permission before reading differences. Both versions must belong to that project's mainline, with the old timestamp preceding the new one. This command reads history without advancing development or restoring a version.
+
+Results include added, updated and removed files with line counts. `--include-diff` adds up to 12000 characters per file, for at most 200 files, with explicit truncation indicators. The new side may include the current user's uncommitted staging: `basis=SNAPSHOT_WITH_CURRENT_USER_STAGING` does not represent two frozen snapshots. Changes to version or staging metadata during the read invalidate delivery. Missing underlying source content may be treated as empty files by the backend; `sourceCompleteness=UNVERIFIED` means that zero returned differences cannot prove source equality. Full source files and internal attachments are excluded.

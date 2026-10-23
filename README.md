@@ -76,6 +76,7 @@ superun-ai
 │   ├── list                                                      # 查询项目列表
 │   ├── get <sessionId>                                           # 查询项目详情
 │   ├── history <sessionId>                                       # 查询作品主线历史版本摘要，不含独立演示版本或源码
+│   ├── diff <sessionId> <oldReplyMessageId> <newReplyMessageId>  # 对比本作品两个主线版本的文件变化，包含新侧当前账号暂存
 │   ├── current                                                   # 读取当前宿主会话保存的项目绑定
 │   ├── use <sessionId>                                           # 选择当前会话继续使用的项目
 │   └── clear                                                     # 清除当前会话的项目绑定，保留远端项目
@@ -732,3 +733,11 @@ superun-ai auth logout && npm uninstall -g superun-ai-cli
 ```
 
 `npm uninstall` 不会自动执行 `logout`。如果设置过 `SUPERUN_PAT`，还需在当前终端执行 `unset SUPERUN_PAT`，并从设置它的 Shell 配置或运行环境中移除。`logout` 不会注销浏览器登录，也不会撤销服务端 PAT。
+
+## 主线版本变更分析
+
+`superun-ai session diff <sessionId> <oldReplyMessageId> <newReplyMessageId> [--include-diff]`
+
+每次选择一个明确作品，再从其 `session history` 选旧、新两个messageId（不是encryptedId）。CLI先确认项目与服务端编辑权限，两端必须在同作品主线历史且旧端时间早于新端。只读查询，不恢复或写入版本；无需为了历史查询推进研发。
+
+返回文件新增/修改/删除与增删行统计；按需加 `--include-diff` 获取每文件最多12000字符的差异，最多200个文件，截断明确标记。新侧会叠加当前用户同轮未提交暂存，`basis=SNAPSHOT_WITH_CURRENT_USER_STAGING`；并非纯冻结快照。查询前后版本或暂存元数据变化将拒绝交付。底层缺失内容可能按空文件处理，`sourceCompleteness=UNVERIFIED`，不能从零差异保证源文件完全相同。不输出完整源文件、内部附件或认证信息。
