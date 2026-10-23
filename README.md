@@ -282,10 +282,11 @@ superun-ai session clear
 ```bash
 superun-ai auth login
 superun-ai auth status
+superun-ai auth status --online
 superun-ai auth logout
 ```
 
-已有 PAT 时，`auth login` 直接复用；没有时自动打开系统默认浏览器，完成 superun 登录后领取 PAT 并保存到本地，无需手动复制。业务命令缺少 PAT 时也会自动进入同一登录流程，包括 Agent 的非 TTY Shell；登录完成后继续执行原命令，无需另行执行 `auth login`。`auth status` 仍只检查已有配置，不打开浏览器。
+`auth login` 会先在线验证已有 PAT，有效时直接复用；未配置凭据，或默认主站的本地 PAT 明确失效时，打开系统默认浏览器，完成 superun 登录后领取 PAT 并保存。登录失败或取消会保留旧凭据。业务命令缺少 PAT 时也会进入同一浏览器流程，包括 Agent 的非 TTY Shell，登录后继续原命令。业务入口已有 PAT 时不额外探测；服务端明确拒绝会返回恢复命令，执行 `auth login` 后先核对原请求结果与项目阶段，再决定是否继续，不能自动重发结果不确定的写请求。
 
 CLI 自动读取宿主注入的环境标识，目前支持 WorkBuddy、Codex、Claude Code、Gemini CLI、Qwen Code、Cursor 和 QoderWork 桌面端。无法识别或标识冲突时统一使用 `superun-ai-cli`；豆包工作、Qoder CLI 和千问办公暂未启用识别规则。开关标识必须为 `1`，WorkBuddy 还需同时具备产品标识和 CodeBuddy 调用上下文；QoderWork 需同时满足 `QODER_PRODUCT_ID=qoder` 和 `QODER_SESSION_TYPE=app`，渠道值为 `qoder`。
 
@@ -296,7 +297,7 @@ superun-ai auth login
 superun-ai --name my-token auth login
 ```
 
-显式登录和业务命令自动登录都会在申请 PAT 时传入 `name`，注册渠道标签由服务端在创建 PAT 时处理。已有 PAT 或手动导入时不重新申请，也不修改已有令牌名称；后续请求渠道始终取当前 CLI 进程的识别结果。名称不写入浏览器登录 URL，新申请 PAT 沿用 365 天有效期。
+显式登录和业务命令自动登录都会在申请 PAT 时传入 `name`，注册渠道标签由服务端在创建 PAT 时处理。已有有效 PAT 或手动导入时不重新申请，也不修改已有令牌名称；后续请求渠道始终取当前 CLI 进程的识别结果。名称不写入浏览器登录 URL，新申请 PAT 沿用 365 天有效期。
 
 网页登录最多等待 5 分钟，按 Ctrl+C 可取消。浏览器未自动打开时，可以手动打开终端提示的地址。网页登录 Token 只用于申请 PAT，不会保存到本地。
 
@@ -308,7 +309,7 @@ superun-ai auth login --pat
 
 `--pat` 会在终端隐藏读取输入，即使已设置 `SUPERUN_PAT` 也会要求重新输入。它是输入方式开关，后面不能直接跟 PAT 明文，并且不能与 `--stdin` 同时使用。
 
-自动化脚本中缺少 PAT 时会报错，不会自动打开浏览器。可以设置 `SUPERUN_PAT`，也可以通过标准输入登录：
+无需交互的自动化脚本应预先设置 `SUPERUN_PAT`，也可以通过标准输入导入：
 
 ```bash
 printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
@@ -316,7 +317,9 @@ printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
 
 凭据优先级为 `SUPERUN_PAT` 环境变量，其次是 `~/.config/superun-ai-cli/credentials.json`。文件权限为 `0600`；退出登录只清除本地保存的凭据，不撤销服务端 PAT。请勿将 PAT 写进命令行参数、仓库或日志。
 
-`auth status` 只查看本地凭据配置，不会打开浏览器或申请 PAT。返回 `CONFIGURED` 表示本地已配置凭据；已有 PAT 是否有效、是否有权访问项目，会在实际业务请求时校验。PAT 过期、禁用或本地文件损坏时会报错，不会自动重新登录或覆盖凭据。
+`auth status` 默认只查看本地配置，`CONFIGURED` 不代表凭据仍有效。加 `--online` 会只读验证现有 PAT，成功时返回 `authenticated=true`、`checkedOnline=true`，不会打开浏览器、申请 PAT、输出作品列表或选择项目。在线登录有效也不代表有权操作任意作品，具体操作仍需实时检查权限与阶段。
+
+`SUPERUN_PAT` 被拒绝时需要更新或移除环境变量；CLI 不覆盖环境变量。自定义 endpoint 拒绝当前 PAT 时需要核对目标环境，不自动切回主站登录。HTTP 403 权限不足、网络或协议异常、本地凭据文件损坏均不会触发失效恢复或清空旧凭据。
 
 `auth logout` 会删除本地保存的 PAT，下次使用时重新登录。若设置了 `SUPERUN_PAT`，环境变量仍然有效，需要在终端手动清除：
 

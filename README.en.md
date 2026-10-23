@@ -278,10 +278,11 @@ Bindings survive reopening the same host conversation and are isolated by conver
 ```bash
 superun-ai auth login
 superun-ai auth status
+superun-ai auth status --online
 superun-ai auth logout
 ```
 
-`auth login` reuses an existing PAT. If none is configured, it opens the system default browser for superun login and saves the resulting PAT locally. Business commands without a PAT use the same login flow, including commands run from an agent's non-TTY shell, then resume the original operation without requiring a separate `auth login` command. `auth status` only checks existing configuration and does not open a browser.
+`auth login` verifies an existing PAT online and reuses it when valid. If no credential exists, or the default site explicitly rejects a local file credential, it opens the system default browser and saves the new PAT only after successful login. Failed or cancelled login preserves the old credential. Business commands without a PAT use the same browser flow, including non-TTY agent shells. Existing credentials do not add a preflight request to each business command. If rejected, use the returned login command, then check the original result and project stage before continuing. Never automatically resend a write whose result is unknown.
 
 The CLI detects its host from injected environment markers, currently supporting WorkBuddy, Codex, Claude Code, Gemini CLI, Qwen Code, Cursor, and the QoderWork desktop app. Missing or conflicting markers fall back to `superun-ai-cli`; detection for Doubao Work, Qoder CLI, and Qianwen Work is not enabled yet. Flag markers must equal `1`, and WorkBuddy requires both its product marker and CodeBuddy invocation context. QoderWork requires both `QODER_PRODUCT_ID=qoder` and `QODER_SESSION_TYPE=app`, producing the channel `qoder`.
 
@@ -292,7 +293,7 @@ superun-ai auth login
 superun-ai --name my-token auth login
 ```
 
-Explicit and automatic login send `name` when requesting a PAT; the server handles registration-channel tags during PAT creation. Reusing or manually importing a PAT does not request another PAT or rename an existing token. Subsequent requests use the channel detected for the current CLI process. The browser login URL does not include the name, and new PATs retain the existing 365-day validity period.
+Explicit and automatic login send `name` when requesting a PAT; the server handles registration-channel tags during PAT creation. Reusing a valid PAT or manually importing a PAT does not request another PAT or rename an existing token. Subsequent requests use the channel detected for the current CLI process. The browser login URL does not include the name, and new PATs retain the existing 365-day validity period.
 
 Browser login waits for up to five minutes. Press Ctrl+C to cancel. If the browser does not open automatically, use the URL printed in the terminal. The website login token is only used to obtain a PAT and is not stored locally.
 
@@ -304,7 +305,7 @@ superun-ai auth login --pat
 
 `--pat` reads hidden input from the terminal, even if `SUPERUN_PAT` is already set. It is an input-mode switch: do not put the PAT after it, and do not combine it with `--stdin`.
 
-Automated business commands without a PAT fail instead of opening a browser. Set `SUPERUN_PAT` or log in using standard input:
+For unattended automation, configure `SUPERUN_PAT` ahead of time or import a PAT using standard input:
 
 ```bash
 printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
@@ -312,7 +313,9 @@ printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
 
 The CLI prefers `SUPERUN_PAT`, then `~/.config/superun-ai-cli/credentials.json`. The file uses `0600` permissions. Logging out removes the local credential without revoking the server-side PAT. Never put a PAT in command-line arguments, source control, or logs.
 
-`auth status` only checks local credential configuration. It does not open a browser or request a PAT. `CONFIGURED` means a credential is configured locally; its validity and project permissions are checked by actual business requests. An expired or disabled PAT, or a damaged credential file, results in an error rather than an automatic login or overwrite.
+`auth status` checks local configuration by default; `CONFIGURED` does not prove that the credential is valid. Add `--online` for read-only verification, returning `authenticated=true` and `checkedOnline=true` on success without opening a browser, requesting a PAT, displaying projects, or selecting a project. Project permission and stage checks still apply to each operation.
+
+A rejected `SUPERUN_PAT` must be updated or removed by its owner. A rejected credential on a custom endpoint requires checking that environment. HTTP 403, network or protocol errors, and damaged local files do not trigger automatic login or remove the existing credential.
 
 `auth logout` deletes the saved PAT. If `SUPERUN_PAT` is set, it remains effective until you remove it from your shell:
 

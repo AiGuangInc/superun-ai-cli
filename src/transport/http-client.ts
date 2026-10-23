@@ -60,7 +60,15 @@ export class HttpClient {
     const etag = response.headers.get('etag') ?? undefined;
     if (response.status === 304) return { status: 304, etag, data: undefined };
     if (response.status === 401 || response.status === 403) {
-      throw new CliError('AUTH_REQUIRED', 'PAT 无效或当前用户没有接口访问权限');
+      throw new CliError(
+        'AUTH_REQUIRED',
+        response.status === 401 ? 'PAT 已被拒绝，请执行 superun-ai auth login' : '当前用户没有接口访问权限',
+        {
+          httpStatus: response.status,
+          authFailure: response.status === 401 ? 'CREDENTIAL_REJECTED' : 'ACCESS_DENIED',
+          ...(response.status === 401 ? { loginCommand: ['superun-ai', 'auth', 'login'] } : {}),
+        },
+      );
     }
     if (!response.ok)
       throw new CliError(
@@ -83,7 +91,12 @@ export class HttpClient {
         throw new CliError(
           String(envelope.code) === '1000011' ? 'AUTH_REQUIRED' : 'BUSINESS_ERROR',
           text(envelope.msg) ?? text(envelope.message) ?? '接口返回业务错误',
-          { businessCode: envelope.code },
+          {
+            businessCode: envelope.code,
+            ...(String(envelope.code) === '1000011'
+              ? { authFailure: 'CREDENTIAL_REJECTED', loginCommand: ['superun-ai', 'auth', 'login'] }
+              : {}),
+          },
         );
       }
       body = envelope.data;
@@ -92,7 +105,12 @@ export class HttpClient {
         throw new CliError(
           String(envelope.errorCode) === '1000011' ? 'AUTH_REQUIRED' : 'BUSINESS_ERROR',
           text(envelope.errorMessage) ?? '接口返回业务错误',
-          { businessCode: envelope.errorCode },
+          {
+            businessCode: envelope.errorCode,
+            ...(String(envelope.errorCode) === '1000011'
+              ? { authFailure: 'CREDENTIAL_REJECTED', loginCommand: ['superun-ai', 'auth', 'login'] }
+              : {}),
+          },
         );
       body = envelope.data;
     }
