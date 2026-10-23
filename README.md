@@ -773,12 +773,4 @@ superun-ai chat publish status <sessionId> --version-id <encryptedId>
 
 `chat security <sessionId> --list-checks`只查询目录，`--status [--review-id <id>]`只查询当前/指定扫描快照，不会启动扫描。新启动需本次明确项目、编辑权限、当前研发主线/已批准架构、正常空闲及无未合并暂存；写前复核来源。仅available和selectable都明确true的项可选，未知不默认可用；未指定范围使用当前明确可用项。已有活动记录复用同ID，指定范围冲突不另开或取消。重试报告仅用户明确要求并满足同ID报告失败条件，不重新扫描/修复。最终须真实成功报告，任务/检查结束不代表无风险，取消/失效/缺报告保留实际状态。
 
-`version` JSON 的 `capabilities` 是客户端实现契约声明。独立审查/测试/发布/安全/AI接入包在准备脚本返回 READY 前核对所需声明；同名命令存在或版本号更高都不能替代。声明仅表示客户端实现相应门禁，具体作品每次仍须实时校验权限、主线和阶段。
-
-### 独立AI应用接入
-
-`chat agent-friendly <sessionId> --status [--method skill|connector] --no-wait`只查询已有能力/所选原文；每次明确单个作品并核对编辑权限、站点已公开、成功正式部署和正式地址。结果connection只提供不含Key的项目/生产环境身份，用于与已有SDK配置比对，不依赖默认app。同名但URL/manifest/环境不一致时停止，不初始化覆盖。
-
-新生成需当前研发主线、已批准规划、正常闲置、无真实问题/后台任务/未合并暂存和正式部署在途，写前复查。提交取得Agent messageId后，用`--status --message-id`跟踪同一官方生成轮；缺失或被后续任务替换时不降级任意指南，不以旧ENABLED提前报完成。普通chat状态语义不变。
-
-用户选择方式与宿主执行意图后，才按完整指南配置；业务SDK `superun` 与平台 `superun-ai` 的身份分开。每次固定`--app`和`--env production`，浏览器登录、读取项目Skill与函数契约，再完成一次真实只读查询。指南、宿主安装/配置、真实查询分别验收；SDK已有配置查询成功不等于新增MCP服务已安装。
+`version` JSON 的 `capabilities` 是客户端实现契约声明。独立审查/测试/发布/安全包在准备脚本返回 READY 前核对所需声明；同名命令存在或版本号更高都不能替代。声明仅表示客户端实现相应门禁，具体作品每次仍须实时校验权限、主线和阶段。

@@ -14,19 +14,10 @@ import { object, text } from '../contracts/value.js';
 import { COMMAND_NAME } from '../config/constants.js';
 import { agentFriendlyPrompt, type AgentFriendlyMethod } from './agent-friendly-prompts.js';
 import { USER_CHOICE_INSTRUCTION } from './user-choice-guidance.js';
-import {
-  agentFriendlyAccess,
-  agentFriendlyPublication,
-  agentFriendlyAnchor,
-} from './agent-friendly-preflight.js';
-import { projectMainlineHead } from './project-check-preflight.js';
-import { roundContainingMessage } from './round-selector.js';
-import { hasPendingCreationWork } from './state-resolver.js';
 
 export type AgentFriendlyResult = CreationResult & {
   agentFriendly: {
     stage: 'GENERATING' | 'NOT_READY' | 'READY' | 'INSTRUCTIONS';
-    connection?: { appName: string; environment: 'production'; supabaseUrl: string; manifestUrl: string };
     method?: AgentFriendlyMethod;
     prompt?: string;
     methods?: Array<{ value: AgentFriendlyMethod; label: string; description: string }>;
@@ -60,7 +51,7 @@ export function agentFriendlyGuidance(
     // 沿用真实服务端提问和回复命令；回答后回到只读接入查询，不再发生成消息。
     actions = service.withGuidance(result).nextActions.map((action) => ({
       ...action,
-      instruction: `${action.instruction} 当前仍在准备 Agent 友好接入能力。回答并处理当前问题后，执行 ${[...command, '--status', ...(result.messageId ? ['--message-id', result.messageId] : []), '--', result.sessionId].join(' ')} 继续本次流程，不重新生成。`,
+      instruction: `${action.instruction} 当前仍在准备 Agent 友好接入能力。回答并处理当前问题后，执行 ${[...command, '--status', '--', result.sessionId].join(' ')} 继续本次流程，不重新生成。`,
     }));
   } else if (stage === 'READY') {
     actions = (result.agentFriendly.methods ?? []).map((option) => ({
@@ -132,21 +123,7 @@ export async function readyAgentFriendly(
   method?: AgentFriendlyMethod,
 ): Promise<AgentFriendlyResult> {
   const sessionId = view.session.sessionId;
-  await agentFriendlyAccess(service, view, sessionId);
-  const publication = await agentFriendlyPublication(service, view);
-  if (!publication.ready)
-    return agentFriendlyGuidance(service, agentFriendlyNotReady(sessionId, publication.reason));
-  const connection = await api.connection(
-    sessionId,
-    text(view.session.sessionKey) ?? '',
-    publication.supabaseUrl,
-  );
-  const identity = {
-    appName: connection.appName,
-    environment: 'production' as const,
-    supabaseUrl: connection.supabaseUrl,
-    manifestUrl: connection.manifestUrl,
-  };
+  const connection = await api.connection(sessionId, text(view.session.sessionKey) ?? '');
   const base = { sessionId, topic: view.session.topic, interactions: [], progress: [] };
   if (!method)
     return agentFriendlyGuidance(service, {
@@ -161,7 +138,6 @@ export async function readyAgentFriendly(
       ],
       agentFriendly: {
         stage: 'READY',
-        connection: identity,
         methods: [
           { value: 'skill', label: '通过技能接入', description: '适合支持安装 Skill 的 AI 应用。' },
           { value: 'connector', label: '通过连接器接入', description: '适合支持本地 MCP 的 AI 应用。' },
@@ -179,7 +155,7 @@ export async function readyAgentFriendly(
         text: `复制下面整段内容，发送到你要接入的 AI 应用。\n\n\`\`\`text\n${prompt}\n\`\`\``,
       },
     ],
-    agentFriendly: { stage: 'INSTRUCTIONS', method, prompt, connection: identity },
+    agentFriendly: { stage: 'INSTRUCTIONS', method, prompt },
   });
 }
 
@@ -188,40 +164,11 @@ export async function projectAgentFriendlyGeneration(
   service: CreationRuntime,
   api: AgentFriendlyApi,
   view: SessionView,
-  anchorMessageId?: string,
 ): Promise<AgentFriendlyResult> {
-  if (anchorMessageId && agentFriendlyAnchor(view, anchorMessageId) === 'MISSING')
-    return agentFriendlyGuidance(service, {
-      ...agentFriendlyNotReady(
-        view.session.sessionId,
-        '指定生成消息尚未确认归属当前主线，请核对回执或稍后继续查询同一消息；不会返回其它指南。',
-      ),
-      messageId: anchorMessageId,
-    });
   const activeSubagentWork = await service.taskProgress.hasPendingSubagentWork(view.session.sessionId);
-  const head = projectMainlineHead(view),
-    headRound = head ? roundContainingMessage(view, head.messageId) : undefined;
-  const checked = { ...view, activeSubagentWork };
-  const blocking = collectInteractions(checked).filter(
-    ({ interaction }) =>
-      !(
-        interaction.kind === 'SELECT_FEATURES' &&
-        interaction.source.variant === 'select_features' &&
-        !interaction.source.toolId
-      ),
-  );
-  const settled =
-    view.session.status === 3 &&
-    view.session.waiting === false &&
-    !view.session.errorType &&
-    !view.session.pendingBranch &&
-    head?.role === 2 &&
-    head.status === 1 &&
-    headRound?.status === 'completed' &&
-    !hasPendingCreationWork(checked) &&
-    !blocking.length;
-  // 旧ENABLED不能替代本次生成完成、真实问题及后台任务的收尾。
-  if (settled && (await api.enabled(view.session.sessionId))) return readyAgentFriendly(service, api, view);
+  // 主会话和子任务都已结束且技能已开启时，直接交付；末尾回执无需再回溯审查/测试来源。
+  if (view.session.status === 3 && !activeSubagentWork && (await api.enabled(view.session.sessionId)))
+    return readyAgentFriendly(service, api, view);
   const round = currentRound(view);
   const businessType = roundMessage(view, round)?.roundExtra?.business_type;
   const isReceipt =
@@ -237,40 +184,20 @@ export async function projectAgentFriendlyGeneration(
   const featureSelection =
     result.state === 'NEEDS_INPUT' &&
     result.interactions.length > 0 &&
-    result.interactions.every(
-      (item) =>
-        item.kind === 'SELECT_FEATURES' && item.source.variant === 'select_features' && !item.source.toolId,
-    ) &&
+    result.interactions.every((item) => item.kind === 'SELECT_FEATURES') &&
     result.taskProgress?.activeCount === 0;
   if (result.state === 'COMPLETED' || featureSelection) {
-    if (!settled) {
-      if (!hasPendingCreationWork(checked) && ![0, 1, 2, 4, 10].includes(view.session.status))
-        return agentFriendlyGuidance(service, {
-          ...agentFriendlyNotReady(
-            view.session.sessionId,
-            '本次生成的主线或待答状态尚未核实完成，请核对当前会话并查询同一任务；不会交付旧指南或重新生成。',
-          ),
-          ...(anchorMessageId ? { messageId: anchorMessageId } : {}),
-        });
-      return agentFriendlyGuidance(service, {
-        ...result,
-        ...(anchorMessageId ? { messageId: anchorMessageId } : {}),
-        state: 'RUNNING',
-        agentFriendly: { stage: 'GENERATING' },
-      });
-    }
     if (await api.enabled(view.session.sessionId)) return readyAgentFriendly(service, api, view);
-    return agentFriendlyGuidance(service, {
-      ...agentFriendlyNotReady(
+    return agentFriendlyGuidance(
+      service,
+      agentFriendlyNotReady(
         view.session.sessionId,
         '本轮执行已结束，但尚未确认 Agent 友好技能已开启，请查询状态或查看本轮执行结果。',
       ),
-      ...(anchorMessageId ? { messageId: anchorMessageId } : {}),
-    });
+    );
   }
   return agentFriendlyGuidance(service, {
     ...result,
-    ...(anchorMessageId ? { messageId: anchorMessageId } : {}),
     messages:
       result.interactions.length || !['RUNNING', 'QUEUED'].includes(result.state) ? result.messages : [],
     agentFriendly: {
