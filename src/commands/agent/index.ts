@@ -8,6 +8,7 @@ import { object } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
 import { startAgentCreation } from '../../conversation/managed-agent-create-only.js';
 import { ManagedAgentResourceApi, validateManagedAgentId } from '../../api/managed-agent-resource-api.js';
+import { registerIndependentCreation } from '../independent-creation.js';
 
 function sessionValue(value: string): string {
   if (!value || /[\s,\/\\?#]/.test(value))
@@ -17,6 +18,11 @@ function sessionValue(value: string): string {
 
 export function registerAgent(program: Command, context: CommandContext): void {
   const agent = program.command('agent').description('搭建托管智能体配置并读回资源，不运行或部署');
+  registerIndependentCreation(
+    agent.command('app').description('从需求独立搭建智能体应用'),
+    context,
+    'agent-app',
+  );
   agent
     .command('create')
     .argument('<sessionId>', '本次明确的主项目资源域', sessionValue)

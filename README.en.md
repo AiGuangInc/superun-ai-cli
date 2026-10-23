@@ -95,10 +95,15 @@ superun-ai
 │   ├── get <target>                                              # Read a public entry's description, preview links, and available copy types
 │   └── quote <communityId>                                       # Query the current account's copy price without copying or ordering
 ├── ppt                                                           # Generate and verify project-level web slides without native PPTX export
+│   ├── create                                                    # Submit requirements independently, then inspect the returned questionnaire
+│   ├── refine <sessionId> <interactionId>                        # Save answers and continue clarification without generating designs
 │   ├── generate <sessionId>                                      # Check PPT prerequisites and submit or reuse a task without write retries
 │   ├── status <sessionId>                                        # Discover an existing PPT task or compare a specific generation ID
 │   └── get <sessionId>                                           # Read an existing deck or verify delivery using both generation and mainline IDs
 ├── agent                                                         # Create managed-agent configuration and read it back without running or deploying it
+│   ├── app                                                       # Build an agent application through the independent entry
+│   │   ├── create                                                # Submit requirements independently, then inspect the returned questionnaire
+│   │   └── refine <sessionId> <interactionId>                    # Save answers and continue clarification without generating designs
 │   ├── create <sessionId>                                        # Submit the official creation entry, then inspect its wizard with chat state
 │   └── get <sessionId> <agentId>                                 # Verify an existing agent in the specified project without creating a runtime session
 ├── free-quota [sessionId]                                        # Query signed-in user and optional project free quotas
@@ -237,6 +242,12 @@ superun-ai ppt get <sessionId> --generation-id <generationId> --source-message-i
 `ppt status/get` can discover existing tasks without a generation ID and return `hasSlidesIntent` (null when unknown). Before editing an existing project, confirm that it is true and then check its creation state. A read query's `state=COMPLETED`, a ready deck, or a generation acknowledgment alone does not prove delivery of this operation. Final get verification requires both receipt IDs, an unchanged mainline, a matching ready project-level deck with playable slides, and a `type=ppt/checkOnly=true` freshness probe followed by another read. Only `deliveryVerified=true` with `operation=VERIFIED_DELIVERY` confirms delivery. Missing anchors produce READ_ONLY results and do not trigger generation.
 
 Changed attachments, replaced tasks, failures, or local wait timeouts must not automatically trigger another generation. If a write has an unknown outcome, inspect the original project rather than recreating it. Use the actual demo or preview URL returned by the same creation workflow; never append `__project__` to a URL. Delivery consists of a web presentation and its playback deck, not a native PPTX or PDF export. Fees follow the existing creation bills and are not promised to be free or fixed.
+
+## Independent PPT and agent application flows
+
+Use `ppt create` / `ppt refine` or `agent app create` / `agent app refine` for the two dedicated experts. Creation submits the matching Glow homepage direction and returns the new session and message IDs. Refinement accepts answers and optional content, saves the current questionnaire and continues clarification without generating a style. Start generation through the existing interaction reply only when requirements are confirmed.
+
+These entries leave ordinary chat create, shared questionnaire parsing, generation, waiting and the original superun-creation packages unchanged. The PPT expert follows its separate demo and verified deck delivery; the agent application expert follows the actual questions, design selection, development and configuration wizard. The independent-creation-flow-v1 capability declares these dedicated commands. Application completion, resource verification and deployment remain separate checks.
 
 ## Create a managed-agent configuration only
 

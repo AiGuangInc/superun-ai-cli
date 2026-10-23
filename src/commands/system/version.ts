@@ -13,6 +13,7 @@ export function registerVersion(program: Command, output: OutputWriter): void {
         schemaVersion: SCHEMA_VERSION,
         // 只声明客户端实现契约，具体项目仍须每次实时预检。
         capabilities: [
+          'independent-creation-flow-v1',
           'project-mainline-check-preflight-v1',
           'current-mainline-publish-v1',
           'current-mainline-publish-v2',

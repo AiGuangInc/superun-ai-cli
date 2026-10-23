@@ -6,6 +6,7 @@ import type { CommandContext } from '../shared.js';
 import { runtime } from '../shared.js';
 import { CliError } from '../../output/exit-codes.js';
 import { pptHead, pptPreflight, slidesIntent } from '../../conversation/ppt-preflight.js';
+import { registerIndependentCreation } from '../independent-creation.js';
 
 function singleId(value: string): string {
   if (!value || /[\s,\/\\?#]/.test(value))
@@ -30,6 +31,7 @@ async function readContext(context: CommandContext, command: Command, sessionId:
 
 export function registerPpt(program: Command, context: CommandContext): void {
   const ppt = program.command('ppt').description('生成并核验项目级网页幻灯片，不导出原生PPTX');
+  registerIndependentCreation(ppt, context, 'ppt');
   ppt
     .command('generate')
     .argument('<sessionId>', '本次明确的单个PPT作品ID', singleId)

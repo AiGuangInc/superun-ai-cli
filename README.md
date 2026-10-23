@@ -97,10 +97,15 @@ superun-ai
 │   ├── get <target>                                              # 读取公开市场入口介绍、演示地址及可复刻类型
 │   └── quote <communityId>                                       # 查询当前账号的指定类型复刻报价，不复制或下单
 ├── ppt                                                           # 生成并核验项目级网页幻灯片，不导出原生PPTX
+│   ├── create                                                    # 独立新建并提交需求，后续沿回执查询问卷
+│   ├── refine <sessionId> <interactionId>                        # 独立保存当前问卷并继续澄清，不触发方案生成
 │   ├── generate <sessionId>                                      # 检查PPT前置并生成或复用任务，不自动重试写请求
 │   ├── status <sessionId>                                        # 只读发现现有PPT任务或核对指定generationId
 │   └── get <sessionId>                                           # 读取既有deck；同时提供生成ID和主线锚点才核验本次交付
 ├── agent                                                         # 搭建托管智能体配置并读回资源，不运行或部署
+│   ├── app                                                       # 从需求独立搭建智能体应用
+│   │   ├── create                                                # 独立新建并提交需求，后续沿回执查询问卷
+│   │   └── refine <sessionId> <interactionId>                    # 独立保存当前问卷并继续澄清，不触发方案生成
 │   ├── create <sessionId>                                        # 提交官方智能体创建入口，只创建资源；后续用chat state查看向导
 │   └── get <sessionId> <agentId>                                 # 在指定项目资源域只读核验已创建智能体，不创建测试运行会话
 ├── free-quota [sessionId]                                        # 查询当前用户及指定项目的免费额度
@@ -239,6 +244,21 @@ superun-ai ppt get <sessionId> --generation-id <generationId> --source-message-i
 `ppt status/get` 可不带generationId只读发现现有任务，并输出 `hasSlidesIntent`（未知为null）。修改已有作品前先确认该值为true，再检查创作状态。只读查询的 `state=COMPLETED`、deck的ready状态或生成ACK都不表示本次任务已交付。最终get同时提供generate回执的generationId和sourceMessageId，核对主线未换、项目级deck同generation且ready、非空可播放slides，再做 `type=ppt/checkOnly=true` 新鲜度探测并重读核验；只有 `deliveryVerified=true` 且 `operation=VERIFIED_DELIVERY` 才可确认本次交付。缺少锚点仅返回READ_ONLY，不为查询触发生成。
 
 新鲜度变化、任务被替换、错误或等待超时不能自动再次生成。写请求结果未知时先查询原作品，不重复创建。网页入口使用同一创作流程实际返回的演示/预览地址，不能把 `__project__` 拼成URL。当前交付是网页演示与播放deck，不提供原生PPTX/PDF导出；实际费用按现有创作账单记录，不承诺免费或固定金额。
+
+## 独立 PPT 与智能体应用创作
+
+```bash
+superun-ai ppt create --input <需求.json> --no-wait
+superun-ai ppt refine <sessionId> <interactionId> --input <澄清.json> --no-wait
+superun-ai agent app create --input <需求.json> --no-wait
+superun-ai agent app refine <sessionId> <interactionId> --input <澄清.json> --no-wait
+```
+
+这些专用入口独立于原 `superun-creation` 的通用创建和问卷逻辑。新建按 Glow 首页传入 `stage1_action`，PPT 使用 `action=slides` 及 `hasSlidesIntent='1'`，智能体应用使用 `action=manageApp`；保留用户原文和上传资料，仅提交并返回新项目与消息锚点，不跳过需求澄清、不自动委托高级设计师。
+
+继续澄清使用本节的专用 refine 命令，输入只含 answers 与可选 content 补充原文；按当前 questionId 保留每题与已答选项，未知项可空。命令核对当前问卷和在途状态，保存答案后通过 `expand_questionnaire` 继续同一项目，不生成方案或标记需求已确认。确认开始生成时沿用原 `chat interaction reply` 与当前 answerSchema；原通用问卷仍只接受原字段，默认生成行为不变。
+
+两个独立专家负责后续衔接：PPT 通过 state/style list、独立 demo 和双锚点幻灯片核验交付，不调用普通 chat wait；智能体应用通过标准等待继续方案、研发与实际配置向导。普通 `chat create`、共享问卷、生成、等待及原专家团不因此改动。`version` 中 `independent-creation-flow-v1` 仅声明这组独立命令能力；真实应用完成、资源读回和部署仍分别验收。
 
 ## 只搭建托管智能体
 
