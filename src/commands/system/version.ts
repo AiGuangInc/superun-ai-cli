@@ -15,7 +15,9 @@ export function registerVersion(program: Command, output: OutputWriter): void {
         capabilities: [
           'project-mainline-check-preflight-v1',
           'current-mainline-publish-v1',
+          'current-mainline-publish-v2',
           'security-scan-entry-v1',
+          'ai-integration-entry-v1',
         ],
       }),
     );

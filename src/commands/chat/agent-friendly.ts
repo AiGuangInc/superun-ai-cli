@@ -14,6 +14,12 @@ import {
 } from '../../conversation/agent-friendly.js';
 import { SessionWaiter } from '../../conversation/session-waiter.js';
 import { CliError } from '../../output/exit-codes.js';
+import {
+  agentFriendlyAccess,
+  agentFriendlyPublication,
+  agentFriendlyAnchor,
+  agentFriendlyWritePreflight,
+} from '../../conversation/agent-friendly-preflight.js';
 
 export function registerAgentFriendly(chat: Command, context: CommandContext): void {
   withWait(
@@ -32,17 +38,52 @@ export function registerAgentFriendly(chat: Command, context: CommandContext): v
       const options = object(command.opts());
       const method = options.method as AgentFriendlyMethod | undefined;
       let messageId = text(options.messageId);
+      if (
+        !/^[A-Za-z0-9_-]+$/.test(sessionId) ||
+        (messageId !== undefined && !/^[A-Za-z0-9_-]+$/.test(messageId))
+      )
+        throw new CliError('INVALID_ARGUMENT', '请明确一个作品和有效的本次生成消息ID');
       if (messageId && !options.status)
         throw new CliError('INVALID_ARGUMENT', '指定消息时须使用 --status，避免重新发起生成');
       const api = new AgentFriendlyApi(service.client);
       const view = await service.load(sessionId);
+      await agentFriendlyAccess(service, view, sessionId);
+      const publication = await agentFriendlyPublication(service, view);
+      if (!publication.ready) {
+        context.output.write(
+          agentFriendlyGuidance(service, {
+            ...agentFriendlyNotReady(sessionId, publication.reason),
+            ...(messageId ? { messageId } : {}),
+          }),
+        );
+        return;
+      }
+      if (messageId && agentFriendlyAnchor(view, messageId) === 'MISSING') {
+        context.output.write(
+          agentFriendlyGuidance(service, {
+            ...agentFriendlyNotReady(
+              sessionId,
+              '指定生成消息尚未确认归属当前主线，请核对回执或稍后查询同一消息，不会返回其它指南。',
+            ),
+            messageId,
+          }),
+        );
+        return;
+      }
       const enabled = await api.enabled(sessionId);
       const busy =
         [0, 1, 2, 4, 10].includes(view.session.status) ||
         (await service.taskProgress.hasPendingSubagentWork(sessionId));
       const ownsTask = isAgentFriendlyRound(view);
-      if (!busy && enabled) {
-        context.output.write(await readyAgentFriendly(service, api, view, method));
+      if (enabled && !messageId && (!ownsTask || !busy)) {
+        const result = ownsTask
+          ? await projectAgentFriendlyGeneration(service, api, view)
+          : await readyAgentFriendly(service, api, view, method);
+        context.output.write(
+          result.agentFriendly.stage === 'READY' && method
+            ? await readyAgentFriendly(service, api, view, method)
+            : result,
+        );
         return;
       }
       if (busy && !ownsTask && !messageId) {
@@ -69,27 +110,45 @@ export function registerAgentFriendly(chat: Command, context: CommandContext): v
         );
         return;
       }
-      if (!busy && !options.status && !method && !messageId) {
-        if (view.session.publicStatus !== 1)
-          throw new CliError('INVALID_ARGUMENT', '请先完成上线运营，再准备 Agent 友好接入能力', {
-            sessionId,
-          });
-        if (view.session.status !== 3)
-          throw new CliError('INVALID_ARGUMENT', '请先处理当前任务或异常，再准备 Agent 友好接入能力', {
-            sessionId,
-          });
+      if (!enabled && !busy && !options.status && !method && !messageId) {
+        const preflight = await agentFriendlyWritePreflight(service, sessionId);
         const response = object(
-          await businessWrite(context, service, sessionId, () =>
-            service.command.chat(agentFriendlyChat(sessionId)),
-          ),
+          await businessWrite(context, service, sessionId, async () => {
+            const fresh = await agentFriendlyWritePreflight(
+              service,
+              sessionId,
+              preflight.gate.sourceMessageId,
+            );
+            if (
+              fresh.publication.publishUrl !== preflight.publication.publishUrl ||
+              fresh.publication.supabaseUrl !== preflight.publication.supabaseUrl ||
+              (await api.enabled(sessionId))
+            )
+              throw new CliError('STALE_INTERACTION', '接入状态或正式目标已变化，请重新查询，未重复生成');
+            return service.command.chat(agentFriendlyChat(sessionId));
+          }),
         );
-        messageId = text(response.messageId) ?? text(response.replyMessageId);
-        if (!messageId)
+        if (response.sessionId !== undefined && response.sessionId !== sessionId)
+          throw new CliError('OUTCOME_UNKNOWN', '接入生成回执项目不一致，请核对原项目，勿重发', {
+            sessionId,
+            retryable: false,
+          });
+        messageId = text(response.messageId);
+        if (!messageId || !/^[A-Za-z0-9_-]+$/.test(messageId) || messageId === preflight.gate.sourceMessageId)
           throw new CliError(
             'OUTCOME_UNKNOWN',
             '接入生成已提交但未取得消息标识，请查询当前会话，勿重复生成',
             { sessionId, retryable: false },
           );
+      }
+      if (options.wait === false && ownsTask && (options.status || method || enabled)) {
+        const result = await projectAgentFriendlyGeneration(service, api, view, messageId);
+        context.output.write(
+          result.agentFriendly.stage === 'READY' && method
+            ? await readyAgentFriendly(service, api, view, method)
+            : result,
+        );
+        return;
       }
       if (options.wait === false && (busy || messageId)) {
         context.output.write(
@@ -115,15 +174,15 @@ export function registerAgentFriendly(chat: Command, context: CommandContext): v
         conversation: service.conversation,
         command: service.command,
         load: (id) => service.load(id),
-        inspect: (value) => projectAgentFriendlyGeneration(service, api, value),
+        inspect: (value) => projectAgentFriendlyGeneration(service, api, value, messageId),
         onProgress: (result) => context.output.progress(result),
         signal: context.signal,
       });
       const result = await waiter.wait(sessionId, {
         ...waitOptions(command),
         messageId,
-        // 恢复查询时起始消息可能已被折叠；只对新提交的生成请求等待消息入流。
-        requiredMessageId: options.status ? undefined : messageId,
+        // 已提交的生成始终固定消息锚点；无法确认来源时不降级为任意当前指南。
+        requiredMessageId: messageId,
       });
       // 等待器会保留起始回合消息；就绪后只交付方式选择，避免展开生成时两种方式的长说明。
       if (object(object(result).agentFriendly).stage === 'READY') {

@@ -82,6 +82,13 @@ export async function preparePublish(service: CreationRuntime, sessionId: string
     confirmationRequired:
       itemizedDailyTotal > 0 || rawFee.estimatedDailyTotal > 0 || rawFee.estimatedMonthlyTotal > 0,
   };
+  // 当前发布成功回调会公开站点，接口没有原子保持未公开的参数。
+  const visibilityEffect = {
+    afterSuccessfulDeployment: 1,
+    changesCurrentStatus: view.session.publicStatus === 0,
+    privateDeploymentSupported: false,
+    confirmationRequired: view.session.publicStatus === 0,
+  };
   const quoteId = createHash('sha256')
     .update(
       JSON.stringify({
@@ -93,6 +100,7 @@ export async function preparePublish(service: CreationRuntime, sessionId: string
         deploymentNode: status.deploymentNode,
         publishUrl: status.publishUrl,
         publicStatus: view.session.publicStatus,
+        visibilityEffect,
       }),
     )
     .digest('hex');
@@ -108,11 +116,15 @@ export async function preparePublish(service: CreationRuntime, sessionId: string
     deploymentNode: status.deploymentNode,
     candidate,
     fee,
+    visibilityEffect,
     quoteId,
     sourcePolicy: 'CURRENT_MAINLINE_ONLY',
-    warning: fee.totalsConsistent
-      ? undefined
-      : '服务端汇总与费用明细不一致，请展示两者及差额，不称免费；实际计费须核实。',
+    warning: [
+      '部署成功会将站点公开，当前接口不支持全程保持未公开；先部署再下线仍会产生公开窗口。',
+      ...(!fee.totalsConsistent
+        ? ['服务端汇总与费用明细不一致，请展示两者及差额，不称免费；实际计费须核实。']
+        : []),
+    ].join(' '),
   };
 }
 
@@ -122,6 +134,7 @@ export function assertPublishConfirmation(
   sourceMessageId: unknown,
   quoteId: unknown,
   acknowledged: boolean,
+  sitePublicationAcknowledged = false,
 ) {
   if (
     prepared.candidate.encryptedId !== encryptedId ||
@@ -135,6 +148,12 @@ export function assertPublishConfirmation(
     throw new CliError(
       'INVALID_ARGUMENT',
       '本次发布存在云服务费用估算，请取得用户对当前目标和费用的明确确认后继续',
+      { preparation: prepared },
+    );
+  if (prepared.visibilityEffect.confirmationRequired && !sitePublicationAcknowledged)
+    throw new CliError(
+      'INVALID_ARGUMENT',
+      '本次部署会公开当前未公开的站点。仅在用户明确允许公开后传 --acknowledge-site-publication；要求保持未公开时停止，不能先部署再下线冒充全程未公开',
       { preparation: prepared },
     );
 }

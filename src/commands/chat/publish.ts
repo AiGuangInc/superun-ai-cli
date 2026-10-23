@@ -215,6 +215,7 @@ export function registerPublish(chat: Command, context: CommandContext): void {
         options.sourceMessageId,
         options.quoteId,
         options.acknowledgeCloudFee === true,
+        options.acknowledgeSitePublication === true,
       );
     const before =
       prepared?.candidate ??
@@ -230,6 +231,7 @@ export function registerPublish(chat: Command, context: CommandContext): void {
           options.sourceMessageId,
           options.quoteId,
           options.acknowledgeCloudFee === true,
+          options.acknowledgeSitePublication === true,
         );
       }
       const response = await service.publish.start({
@@ -338,10 +340,11 @@ export function registerPublish(chat: Command, context: CommandContext): void {
   withWait(
     publish
       .command('deploy <sessionId> <encryptedId>')
-      .description('按本次准备回执发布当前研发主线，写前复核目标和费用')
+      .description('按准备回执发布当前研发主线；成功会公开站点，写前复核目标与费用')
       .requiredOption('--source-message-id <messageId>', '本次prepare返回的主线消息')
       .requiredOption('--quote-id <quoteId>', '本次prepare返回的准备和费用指纹')
       .option('--acknowledge-cloud-fee', '用户已明确确认本次目标及当前费用估算')
+      .option('--acknowledge-site-publication', '用户已明确允许部署成功后公开当前未公开站点')
       .option('--for-launch', '用户已明确授权上线运营，部署后给出公开引导')
       .addOption(new Option('--region <region>', '部署区域').choices(['CN', 'INTL']))
       .addOption(

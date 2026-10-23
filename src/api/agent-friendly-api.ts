@@ -62,7 +62,7 @@ export class AgentFriendlyApi {
     );
   }
 
-  async connection(sessionId: string, appName: string) {
+  async connection(sessionId: string, appName: string, expectedSupabaseUrl?: string) {
     if (!/^[a-zA-Z0-9-]+$/.test(sessionId) || !appName.trim())
       throw new CliError('PROTOCOL_ERROR', '项目缺少有效的会话标识或 sessionKey，无法生成接入指令');
     const content = await this.client.call(`${PREFIX}/queryAttachment`, { sessionId, name: '.env' });
@@ -73,6 +73,12 @@ export class AgentFriendlyApi {
       throw new CliError(
         'PROTOCOL_ERROR',
         '项目缺少有效的 Supabase 地址或公开访问 Key，无法交付可执行的接入指令',
+        { sessionId },
+      );
+    if (expectedSupabaseUrl && expectedSupabaseUrl.replace(/\/$/, '') !== supabaseUrl.replace(/\/$/, ''))
+      throw new CliError(
+        'PROTOCOL_ERROR',
+        '接入配置与正式运行地址不一致，请先核对目标环境；不会静默选用调试环境或覆盖本地项目',
         { sessionId },
       );
     const manifestUrl = `https://id--${sessionId}.superun.yun/superun/openapi.json`;

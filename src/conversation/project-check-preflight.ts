@@ -21,15 +21,9 @@ const chainSchema = z.array(
 );
 const one = (value: unknown) => value === '1' || value === 1;
 
-export async function projectCheckPreflight(
-  service: CreationRuntime,
-  view: SessionView,
-  sessionId: string,
-  label: string,
-) {
-  if (!/^[A-Za-z0-9_-]+$/.test(sessionId) || view.session.sessionId !== sessionId)
-    throw new CliError('PROTOCOL_ERROR', '检查目标与本次单个作品不一致');
-  // 复用有服务端编辑权限检查的只读方法；不以菜单可见或分享可访问代替权限。
+/** 只验证编辑权限与暂存契约，不强加写入阶段门禁。 */
+export async function projectEditingState(service: CreationRuntime, sessionId: string) {
+  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) throw new CliError('INVALID_ARGUMENT', '请明确本次单个作品ID');
   const editing = parseWire(
     z.object({ hasStaging: z.boolean(), files: z.array(z.unknown()) }),
     await service.client.call('/api/uxa-center/agent/AgentQuery/queryAgentAttachmentGit', {
@@ -39,8 +33,13 @@ export async function projectCheckPreflight(
   );
   if (editing.hasStaging !== editing.files.length > 0)
     throw new CliError('PROTOCOL_ERROR', '源码暂存状态不完整，未继续操作');
+  return editing;
+}
+
+/** 物理主线选取保持统一；不回退到混合展示末轮。 */
+export function projectMainlineHead(view: SessionView) {
   const chain = chainSchema.safeParse(object(object(view.pipeline.lanes).chain).messages);
-  if (!chain.success || chain.data.some((row) => row.sessionId !== sessionId))
+  if (!chain.success || chain.data.some((row) => row.sessionId !== view.session.sessionId))
     throw new CliError('PROTOCOL_ERROR', '无法核对当前物理主线，未发起检查');
   const head = chain.data
     .filter(
@@ -49,6 +48,20 @@ export async function projectCheckPreflight(
         !/^select-branch-message-.+-batch-\d+$/.test(row.messageId),
     )
     .at(-1);
+  return head;
+}
+
+export async function projectCheckPreflight(
+  service: CreationRuntime,
+  view: SessionView,
+  sessionId: string,
+  label: string,
+) {
+  if (!/^[A-Za-z0-9_-]+$/.test(sessionId) || view.session.sessionId !== sessionId)
+    throw new CliError('PROTOCOL_ERROR', '检查目标与本次单个作品不一致');
+  // 复用有服务端编辑权限检查的只读方法；不以菜单可见或分享可访问代替权限。
+  const editing = await projectEditingState(service, sessionId);
+  const head = projectMainlineHead(view);
   const round = head ? roundContainingMessage(view, head.messageId) : undefined;
   if (
     !head ||
