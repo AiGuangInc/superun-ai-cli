@@ -14,6 +14,7 @@ import {
   AUTO_TEST_SOURCE_KEY,
 } from '../../conversation/auto-test.js';
 import { hasCompletedCreationResult } from '../../conversation/next-actions.js';
+import { projectCheckPreflight } from '../../conversation/project-check-preflight.js';
 import {
   CODE_REVIEW_DEFAULT_MESSAGE,
   CODE_REVIEW_OPERATION_KEY,
@@ -93,6 +94,10 @@ export async function sendMessage(
   const preparedFiles = await prepareUploadFiles(service, files);
   const previous =
     sessionId && (options.wait !== false || checkKind) ? await service.load(sessionId) : undefined;
+  const checkPreflight =
+    checkKind === 'review' && previous && sessionId
+      ? await projectCheckPreflight(service, previous, sessionId, label)
+      : undefined;
   let operation: 'test' | 'review' | 'repair' | undefined;
   if (checkKind && previous) {
     if (previous.extra.agentRuntime === 'shire')
@@ -119,8 +124,13 @@ export async function sendMessage(
   for (const file of preparedFiles) attachments.push(await uploadAttachment(service, file));
   const previousMessageId = previous ? roundMessage(previous, currentRound(previous))?.messageId : undefined;
   const create = sessionId ? undefined : await service.config.creation(content);
-  const response = await businessWrite(context, service, sessionId, () =>
-    service.command.chat({
+  const response = await businessWrite(context, service, sessionId, async () => {
+    if (checkPreflight && sessionId) {
+      const fresh = await projectCheckPreflight(service, await service.load(sessionId), sessionId, label);
+      if (fresh.sourceMessageId !== checkPreflight.sourceMessageId)
+        throw new CliError('STALE_INTERACTION', '检查提交前主线已变化，请重新确认目标和范围');
+    }
+    return service.command.chat({
       sessionId,
       content,
       ...(attachments.length ? { attachments } : {}),
@@ -157,9 +167,19 @@ export async function sendMessage(
             },
           }
         : {}),
-    }),
-  );
+    });
+  });
   const created = object(response);
+  if (
+    checkPreflight &&
+    ((created.sessionId !== undefined && created.sessionId !== sessionId) ||
+      !text(created.messageId)?.trim() ||
+      created.messageId === checkPreflight.sourceMessageId)
+  )
+    throw new CliError('OUTCOME_UNKNOWN', '检查已提交但回执来源无法确认，请查询本次作品，勿重复提交', {
+      sessionId,
+      retryable: false,
+    });
   let submitted = created;
   if (skipQuestion) {
     const createdSessionId = text(created.sessionId);

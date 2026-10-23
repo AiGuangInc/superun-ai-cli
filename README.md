@@ -741,3 +741,7 @@ superun-ai auth logout && npm uninstall -g superun-ai-cli
 每次选择一个明确作品，再从其 `session history` 选旧、新两个messageId（不是encryptedId）。CLI先确认项目与服务端编辑权限，两端必须在同作品主线历史且旧端时间早于新端。只读查询，不恢复或写入版本；无需为了历史查询推进研发。
 
 返回文件新增/修改/删除与增删行统计；按需加 `--include-diff` 获取每文件最多12000字符的差异，最多200个文件，截断明确标记。新侧会叠加当前用户同轮未提交暂存，`basis=SNAPSHOT_WITH_CURRENT_USER_STAGING`；并非纯冻结快照。查询前后版本或暂存元数据变化将拒绝交付。底层缺失内容可能按空文件处理，`sourceCompleteness=UNVERIFIED`，不能从零差异保证源文件完全相同。不输出完整源文件、内部附件或认证信息。
+
+### 独立代码审查的前置条件
+
+`chat review` 及 `chat send --review-followup` 在写前核对同一作品、服务端编辑权限、物理主线与本轮阶段、正常闲置及无真实必答/后台任务。提交固定使用mode=6、previewVersionId=0的常规主线，不用上一条消息的mode拒绝合法新操作；演示阶段可审已有代码，v6研发规划未批准时停止。未知阶段、咨询/规划、较新用户消息或主线被替换时不提交，不自动推进研发。该协议发现问题后会修复，不提供强制只读模式；必须等实际审查/修复报告，消息结束并不表示审查通过。
