@@ -12,6 +12,8 @@ import type { NextAction } from '../../contracts/cli-output.js';
 import { AGENT_FRIENDLY_DESCRIPTION } from '../../conversation/agent-friendly-prompts.js';
 import { USER_CHOICE_INSTRUCTION } from '../../conversation/user-choice-guidance.js';
 import { ADVANCED_DESIGNER_PROMPT } from './design.js';
+import { preparePublish, assertPublishConfirmation } from '../../conversation/publish-preflight.js';
+import { projectCheckPreflight } from '../../conversation/project-check-preflight.js';
 import {
   missingPublishedRouting,
   readProjectRouting,
@@ -184,7 +186,7 @@ export function registerPublish(chat: Command, context: CommandContext): void {
     .command('status <sessionId>')
     .description('查询发布版本与部署进度')
     .option('--version-id <encryptedId>', '只查询指定版本')
-    .option('--for-launch', '用户已明确要求上线运营，返回直接发布的后续动作；本命令仍只读')
+    .option('--for-launch', '用户已明确要求上线运营，返回后续动作；查询可能更新活动及超时记录')
     .action(async (sessionId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command),
         value = await service.publish.status(sessionId),
@@ -200,35 +202,54 @@ export function registerPublish(chat: Command, context: CommandContext): void {
         ),
       );
     });
-  withWait(
-    publish
-      .command('start <sessionId> <encryptedId>')
-      .description('发布指定版本')
-      .option('--for-launch', '继续已授权的上线运营流程，部署后引导公开站点')
-      .addOption(new Option('--region <region>', '部署区域').choices(['CN', 'INTL']))
-      .addOption(
-        new Option('--indexing <policy>', '搜索引擎索引策略；不代表访问权限').choices(['allow', 'deny']),
-      )
-      .option('--acknowledge-cloud-fee', '确认服务端提示的云服务费用'),
-  ).action(async (sessionId: string, encryptedId: string, _options: unknown, command: Command) => {
+  const runPublish = async (sessionId: string, encryptedId: string, command: Command, strict = false) => {
     const service = await runtime(context, command),
       options = object(command.opts());
-    const before = versions(await service.publish.status(sessionId)).find(
-      (item) => item.encryptedId === encryptedId,
-    );
+    const prepared = strict ? await preparePublish(service, sessionId) : undefined;
+    if (prepared && options.region && options.region !== prepared.targetRegion)
+      throw new CliError('INVALID_ARGUMENT', '部署区域与准备回执不一致，请先核对当前发布区域并重新准备');
+    if (prepared)
+      assertPublishConfirmation(
+        prepared,
+        encryptedId,
+        options.sourceMessageId,
+        options.quoteId,
+        options.acknowledgeCloudFee === true,
+        options.acknowledgeSitePublication === true,
+      );
+    const before =
+      prepared?.candidate ??
+      versions(await service.publish.status(sessionId)).find((item) => item.encryptedId === encryptedId);
     if (!before) throw new CliError('INVALID_ARGUMENT', '该版本不在当前项目的可发布记录中');
     if (before.deployStatus === 2) throw new CliError('INVALID_ARGUMENT', '该版本正在发布，请查询进度');
     await businessWrite(context, service, sessionId, async () => {
+      if (prepared) {
+        const fresh = await preparePublish(service, sessionId);
+        assertPublishConfirmation(
+          fresh,
+          encryptedId,
+          options.sourceMessageId,
+          options.quoteId,
+          options.acknowledgeCloudFee === true,
+          options.acknowledgeSitePublication === true,
+        );
+      }
       const response = await service.publish.start({
         sessionId,
         encryptedId,
         changeLog: text(before.changeLog),
         changeLogSummary: text(before.changeLogSummary),
         websiteIntroduction: text(before.websiteIntroduction),
-        targetRegion: text(options.region),
+        targetRegion: text(options.region) ?? prepared?.targetRegion ?? undefined,
         ...(options.indexing ? { noIndex: options.indexing === 'deny' } : {}),
         ...(options.acknowledgeCloudFee ? { acknowledgedCloudServiceFee: true } : {}),
       });
+      if (strict && response !== true)
+        throw new CliError('OUTCOME_UNKNOWN', '发布提交回执无法确认，请查询同一发布记录，勿重复提交', {
+          sessionId,
+          encryptedId,
+          retryable: false,
+        });
       try {
         await service.command.sessionExtra(sessionId, { hasViewedLaunch: '1' });
       } catch {
@@ -296,22 +317,88 @@ export function registerPublish(chat: Command, context: CommandContext): void {
         options.forLaunch === true,
       ),
     );
-  });
+  };
+  withWait(
+    publish
+      .command('start <sessionId> <encryptedId>')
+      .description('通过指定发布记录发布当前主线，不支持选择历史源码')
+      .option('--for-launch', '继续已授权的上线运营流程，部署后引导公开站点')
+      .addOption(new Option('--region <region>', '部署区域').choices(['CN', 'INTL']))
+      .addOption(
+        new Option('--indexing <policy>', '搜索引擎索引策略；不代表访问权限').choices(['allow', 'deny']),
+      )
+      .option('--acknowledge-cloud-fee', '确认服务端提示的云服务费用'),
+  ).action(async (sessionId: string, encryptedId: string, _options: unknown, command: Command) =>
+    runPublish(sessionId, encryptedId, command),
+  );
+  publish
+    .command('prepare <sessionId>')
+    .description('核对当前主线待发布记录与费用估算；状态查询可能更新活动和超时记录')
+    .action(async (sessionId: string, _options: unknown, command: Command) => {
+      context.output.write(await preparePublish(await runtime(context, command), sessionId));
+    });
+  withWait(
+    publish
+      .command('deploy <sessionId> <encryptedId>')
+      .description('按准备回执发布当前研发主线；成功会公开站点，写前复核目标与费用')
+      .requiredOption('--source-message-id <messageId>', '本次prepare返回的主线消息')
+      .requiredOption('--quote-id <quoteId>', '本次prepare返回的准备和费用指纹')
+      .option('--acknowledge-cloud-fee', '用户已明确确认本次目标及当前费用估算')
+      .option('--acknowledge-site-publication', '用户已明确允许部署成功后公开当前未公开站点')
+      .option('--for-launch', '用户已明确授权上线运营，部署后给出公开引导')
+      .addOption(new Option('--region <region>', '部署区域').choices(['CN', 'INTL']))
+      .addOption(
+        new Option('--indexing <policy>', '搜索收录策略，不改变访问权限').choices(['allow', 'deny']),
+      ),
+  ).action(async (sessionId: string, encryptedId: string, _options: unknown, command: Command) =>
+    runPublish(sessionId, encryptedId, command, true),
+  );
   publish
     .command('visibility <sessionId> <visibility>')
     .description('设置站点上线或下线状态')
+    .option('--source-message-id <messageId>', '公开前核对本次主线来源')
     .action(async (sessionId: string, visibility: string, _options: unknown, command: Command) => {
       if (!['public', 'private'].includes(visibility))
         throw new CliError('INVALID_ARGUMENT', 'visibility 必须为 public 或 private');
       const service = await runtime(context, command);
+      const source = text(object(command.opts()).sourceMessageId);
+      const initial =
+        visibility === 'public'
+          ? await projectCheckPreflight(service, await service.load(sessionId), sessionId, '公开站点')
+          : undefined;
+      if (visibility === 'public' && source && initial?.sourceMessageId !== source)
+        throw new CliError('STALE_INTERACTION', '公开目标主线已经变化，请重新确认');
       if (
         visibility === 'public' &&
         !versions(await service.publish.status(sessionId)).some((item) => item.deployStatus === 1)
       )
         throw new CliError('INVALID_ARGUMENT', '请先成功部署一个版本再上线');
-      await businessWrite(context, service, sessionId, () =>
-        service.publish.visibility(sessionId, visibility === 'public'),
-      );
+      await businessWrite(context, service, sessionId, async () => {
+        if (initial) {
+          const fresh = await projectCheckPreflight(
+            service,
+            await service.load(sessionId),
+            sessionId,
+            '公开站点',
+          );
+          if (fresh.sourceMessageId !== initial.sourceMessageId)
+            throw new CliError('STALE_INTERACTION', '公开提交前主线已经变化');
+        }
+        await service.publish.visibility(sessionId, visibility === 'public');
+      });
+      try {
+        const observed = await service.conversation.recently(sessionId);
+        if (
+          observed.session.sessionId !== sessionId ||
+          observed.session.publicStatus !== (visibility === 'public' ? 1 : 0)
+        )
+          throw new Error('状态未匹配');
+      } catch {
+        throw new CliError('OUTCOME_UNKNOWN', '站点设置已提交但读回未确认，请核对本作品状态，勿自动重试', {
+          sessionId,
+          retryable: false,
+        });
+      }
       context.output.write({
         ...(await publishResult(service, sessionId, await service.publish.status(sessionId))),
         visibility,

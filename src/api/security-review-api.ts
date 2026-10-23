@@ -91,7 +91,24 @@ export class SecurityReviewApi {
     await this.client.call(`${PREFIX}/cancelSecurityReview`, { sessionId, reviewId }, true);
   }
 
-  async retryReport(sessionId: string, reviewId: string): Promise<void> {
-    await this.client.call(`${PREFIX}/retrySecurityAuditReport`, { sessionId, reviewId }, true);
+  async retryReport(sessionId: string, reviewId: string): Promise<SecurityReviewView> {
+    const response = await this.client.call(
+      `${PREFIX}/retrySecurityAuditReport`,
+      { sessionId, reviewId },
+      true,
+    );
+    try {
+      const review = parseWire(securityReviewSchema, response);
+      if (!review.found || review.reviewId !== reviewId || review.stage === undefined)
+        throw new Error('回执未匹配');
+      this.startReceipt = { sessionId, review };
+      return review;
+    } catch {
+      throw new CliError('OUTCOME_UNKNOWN', '报告重试回执未确认，请查询同一记录，勿重复提交', {
+        sessionId,
+        reviewId,
+        retryable: false,
+      });
+    }
   }
 }

@@ -1,4 +1,4 @@
-/** 复用已有 PAT，缺失时通过网页登录领取；支持手动导入。@author xiuyu.yi */
+/** 校验并复用已有 PAT，缺失或失效时通过网页登录领取；支持手动导入。@author xiuyu.yi */
 import { Option } from 'commander';
 import type { Command } from 'commander';
 import { readPatFromStdin } from '../../auth/pat-store.js';
@@ -13,8 +13,13 @@ export function registerLogin(auth: Command, context: CommandContext): void {
     .option('--stdin', '从标准输入读取 PAT')
     .action(async (options: { pat?: boolean; stdin?: boolean }, command: Command) => {
       if (!options.pat && !options.stdin) {
-        const { credentialSource } = await requireCredentials(context, command, true);
-        context.output.write({ state: 'CONFIGURED', credentialSource });
+        const { credentialSource } = await requireCredentials(context, command, true, true);
+        context.output.write({
+          state: 'CONFIGURED',
+          credentialSource,
+          authenticated: true,
+          checkedOnline: true,
+        });
         return;
       }
       const pat = await readPatFromStdin(!options.stdin);

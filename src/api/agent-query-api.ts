@@ -38,6 +38,28 @@ const userFreeQuotaSchema = z
   .passthrough();
 export type UserFreeQuotaItem = z.infer<typeof userFreeQuotaSchema>['items'][number];
 
+const snapshotHistoryItemsSchema = z.array(
+  z.object({
+    encryptedId: z.string().min(1),
+    messageId: z.string().min(1),
+    createdAt: z.number().finite(),
+    summary: z.string().nullish(),
+    isCurrentVersion: z.boolean(),
+    visitUrl: z.string().nullish(),
+    type: z.number().int(),
+    bookmarkStatus: z.number().int().nullish(),
+    deployStatus: z.number().int().nullish(),
+  }),
+);
+const snapshotHistoryPageSchema = z.union([
+  z.object({
+    data: snapshotHistoryItemsSchema,
+    totalCount: z.number().int().nonnegative().safe(),
+  }),
+  // 部分网关只返回已拆包的列表；不能把本页数量冒充历史总数。
+  snapshotHistoryItemsSchema,
+]);
+
 const PREFIX = '/api/uxa-center/agent/AgentQuery';
 export class AgentQueryApi {
   constructor(private readonly client: ApiClient) {}
@@ -127,6 +149,21 @@ export class AgentQueryApi {
       page,
       pageSize: 50,
     });
+  }
+  async snapshotHistory(sessionId: string, page: number, pageSize: number) {
+    const response = parseWire(
+      snapshotHistoryPageSchema,
+      await this.client.call('/api/uxa-center/agent/SessionSnapshot/pageQuerySessionSnapshotHistoryV2', {
+        sessionId,
+        previewVersionId: 0,
+        page,
+        pageSize,
+      }),
+    );
+    // Zod 对象只保留白名单字段，剔除 messageExtra 和其他未声明的内部数据。
+    return Array.isArray(response)
+      ? { items: response, total: null }
+      : { items: response.data, total: response.totalCount };
   }
   async parallel(
     sessionId: string,

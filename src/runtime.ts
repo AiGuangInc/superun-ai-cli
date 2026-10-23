@@ -935,7 +935,12 @@ export class CreationRuntime {
     }
     return response;
   }
-  async reply(sessionId: string, interactionId: string, input: JsonObject): Promise<JsonObject> {
+  async reply(
+    sessionId: string,
+    interactionId: string,
+    input: JsonObject,
+    agentCreateOnly = false,
+  ): Promise<JsonObject> {
     const view = await this.load(sessionId);
     const available = collectInteractions(view);
     let binding = available.find((item) => item.interaction.interactionId === interactionId);
@@ -994,7 +999,7 @@ export class CreationRuntime {
     if (binding.interaction.kind === 'MANAGED_AGENT_WIZARD') {
       if (!wizardInput) throw new CliError('STALE_INTERACTION', '请查询并使用当前向导问题的交互 ID');
       if (wizardInput.action === 'QUERY_STATE') return { sessionId, localInteraction: true };
-      return this.managedWizard.reply(binding, wizardInput, validate);
+      return this.managedWizard.reply(binding, wizardInput, validate, agentCreateOnly);
     }
     if (binding.item.variant === 'tool_plugin' && input.action !== 'SKIP') {
       const plugin = integrationKey(text(toolData(binding.item).pluginName) ?? '');

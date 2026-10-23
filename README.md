@@ -75,9 +75,39 @@ superun-ai
 ├── session                                                       # 查询项目与当前会话绑定
 │   ├── list                                                      # 查询项目列表
 │   ├── get <sessionId>                                           # 查询项目详情
+│   ├── history <sessionId>                                       # 查询作品主线历史版本摘要，不含独立演示版本或源码
+│   ├── diff <sessionId> <oldReplyMessageId> <newReplyMessageId>  # 对比本作品两个主线版本的文件变化，包含新侧当前账号暂存
 │   ├── current                                                   # 读取当前宿主会话保存的项目绑定
 │   ├── use <sessionId>                                           # 选择当前会话继续使用的项目
 │   └── clear                                                     # 清除当前会话的项目绑定，保留远端项目
+├── order                                                         # 查询本人购买的 superun 产品和服务订单
+│   └── list                                                      # 分页查询购买订单、商品、订单金额和已有发票信息
+├── bill                                                          # 查询算力账单和扣减类统计
+│   ├── list                                                      # 查询算力账单明细，按服务端游标翻页，无日期或条数选项
+│   ├── stats                                                     # 按日期汇总扣减类账单，含负数冲正，不含充值类用量返还
+│   ├── projects                                                  # 查询账单作品筛选候选，不代表当前编辑权限
+│   └── types                                                     # 查询算力账单支持的充值和消费业务类型
+├── site                                                          # 分析作品流量、已有性能报告和运行巡检
+│   ├── traffic <sessionId>                                       # 查看已公开作品的有效访问序列和榜单，歧义零值保留未知
+│   ├── performance <sessionId>                                   # 读取已有性能与 SEO 原始报告，不发起新检测
+│   ├── runtime <sessionId>                                       # 读取已有运行巡检状态和结果，不创建或启用计划
+│   └── reports <sessionId>                                       # 查询已有巡检周报，不生成新报告
+├── market                                                        # 浏览公开应用市场并查询当前复刻价格
+│   ├── list                                                      # 按类别和关键词分页搜索公开市场作品
+│   ├── get <target>                                              # 读取公开市场入口介绍、演示地址及可复刻类型
+│   └── quote <communityId>                                       # 查询当前账号的指定类型复刻报价，不复制或下单
+├── ppt                                                           # 生成并核验项目级网页幻灯片，不导出原生PPTX
+│   ├── create                                                    # 独立新建并提交需求，后续沿回执查询问卷
+│   ├── refine <sessionId> <interactionId>                        # 独立保存当前问卷并继续澄清，不触发方案生成
+│   ├── generate <sessionId>                                      # 检查PPT前置并生成或复用任务，不自动重试写请求
+│   ├── status <sessionId>                                        # 只读发现现有PPT任务或核对指定generationId
+│   └── get <sessionId>                                           # 读取既有deck；同时提供生成ID和主线锚点才核验本次交付
+├── agent                                                         # 搭建托管智能体配置并读回资源，不运行或部署
+│   ├── app                                                       # 从需求独立搭建智能体应用
+│   │   ├── create                                                # 独立新建并提交需求，后续沿回执查询问卷
+│   │   └── refine <sessionId> <interactionId>                    # 独立保存当前问卷并继续澄清，不触发方案生成
+│   ├── create <sessionId>                                        # 提交官方智能体创建入口，只创建资源；后续用chat state查看向导
+│   └── get <sessionId> <agentId>                                 # 在指定项目资源域只读核验已创建智能体，不创建测试运行会话
 ├── free-quota [sessionId]                                        # 查询当前用户及指定项目的免费额度
 ├── chat                                                          # 对话创作
 │   ├── create                                                    # 新建项目并发送需求
@@ -109,13 +139,145 @@ superun-ai
 │   │   └── disable <sessionId> <pluginId>                        # 禁用插件
 │   └── publish                                                   # 发布应用和管理站点状态
 │       ├── status <sessionId>                                    # 查询发布版本与部署进度
-│       ├── start <sessionId> <encryptedId>                       # 发布指定版本
+│       ├── start <sessionId> <encryptedId>                       # 通过指定发布记录发布当前主线，不支持选择历史源码
+│       ├── prepare <sessionId>                                   # 核对当前主线待发布记录与费用估算；状态查询可能更新活动和超时记录
+│       ├── deploy <sessionId> <encryptedId>                      # 按准备回执发布当前研发主线；成功会公开站点，写前复核目标与费用
 │       └── visibility <sessionId> <visibility>                   # 设置站点上线或下线状态
 ├── update                                                        # 检查并将本机 CLI 更新到最新版本
-└── version                                                       # 显示本地版本与输出协议版本
+└── version                                                       # 显示本地版本、输出协议及能力声明
 ```
 
 命令树以源码注册为准。新增或调整命令后执行 `npm run docs:sync` 同步中英文命令树；`npm run docs:check` 校验完整性。发包前的 `prepack` 同样执行校验，发现遗漏或过期参数时停止发包准备。
+
+## 查询作品历史
+
+```bash
+superun-ai session history <sessionId> --page 1 --limit 20
+```
+
+本命令先验证当前账号能读取指定作品，再查询研发主线（`previewVersionId=0`）的历史版本摘要。每页默认 20 条，最多 100 条；输出版本 ID、消息 ID、摘要、时间、当前版本标记和接口返回的预览地址，不读取源码、不恢复版本，也不改变当前项目绑定。独立演示版本不在本命令范围内，主线历史为空不代表没有演示版本。
+
+`total` 为接口可提供的历史总数。如果网关只返回列表，则 `total` 为 `null`；满页时 `hasMore` 也为 `null`，`nextPage` 只表示可继续核对的页码。少于请求页大小时 `hasMore=false`。查询失败或响应格式异常会报错，不返回空列表冒充成功。
+
+## 查询购买订单
+
+```bash
+superun-ai order list --page 1 --limit 20
+superun-ai order list --status 20 --page 1 --limit 20
+```
+
+查询当前登录用户购买 superun 产品或服务的订单，无需选择项目。`--status` 可选：0 初始化、10 待支付、20 已支付、50 已完成、60 已关闭、70 已取消；默认查询全部状态，每页 20 条，最多 100 条。命令仅调用当前买家范围的 `pageOrder`，不调用可能补偿履约的订单详情接口，也不创建、支付、取消订单或申请发票。
+
+输出保留 `items[].orderInfo` 和 `items[].orderItems` 层级，增加 `statusName` / `invoiceStatusName`。`amountUnit=minor` 表示金额为最小货币单位：CNY 为分，USD 为美分；按原币种显示，不跨币种合计。`orderInfo.total` 是订单总额，不能当作实际支付金额；已支付状态不证明资源已到账。发票只输出现有状态、申请时间、有效票号/日期/币种、本订单对应发票记录金额与 PDF/OFD 地址；本项未提供整张合并发票票面总额。
+
+最外层 `total` 是当前筛选条件下的订单总数，`hasMore` / `nextPage` 用于继续查询。接口不支持订单号、关键词或日期过滤；这些条件只能在已返回的记录中匹配。未查完所有相关分页时，不要宣称某笔订单不存在。缺失字段保留为空或缺失，查询失败会报错，不伪造空订单列表。
+
+## 查询算力账单
+
+```bash
+superun-ai bill list
+superun-ai bill list --cursor <scrollId> --session-id <sessionId>
+superun-ai bill stats --from 2026-10-01 --to 2026-10-22 --granularity DAY
+superun-ai bill projects
+superun-ai bill types
+```
+
+四条命令只读 `GLOW_TOKEN`。省略 `--workspace-id` 查询个人账户；明确传入正整数工作空间 ID 后，查询该工作空间中当前账号有权查看的范围，普通成员及离开成员只看自己的历史消费。作品筛选 `--session-id` 不改变付费账户，也不要求当前项目可编辑；团队作品可能由个人付费，不能从项目归属推断账户。目录 `bill projects` 只是账单筛选候选，不是完整授权清单；候选缺失不证明没有历史消费。
+
+`bill list` 返回 `items/hasNext/scrollId`，没有总数、日期过滤或可调条数。服务端每次取 100 条原始账单再聚合和过滤，空 `items` 仍可能 `hasNext=true`；只使用返回的 `scrollId` 继续，不能按展示条数判断结束或自行构造游标。后续游标必须严格向更早记录推进；切换账户或筛选时清空旧游标。`amountUnit=hundredth-credit` 表示 `amount` 为 1/100 算力；按 Glow 规则，type=1 显示 `amount/100`，其他类型显示其相反数。明细含充值、返还与扣减，不能把所有原始 amount 相加当消费。`aiMessageRunning=true` 时金额是进行中的暂时值。
+
+`bill stats` 的起止日期均包含在范围内，按 `Asia/Shanghai` 计算，最多 60 天；粒度为 DAY/WEEK/MONTH。`amountUnit=credit` 表示 `totalAmount` 和 `items[].amount` 已经是算力的十进制字符串，**不得再除以 100**。统计仅汇总扣减类账单（type=2），包含负数冲正，不包含充值类用量返还；保留正负值，不解释为现金，也不称完整净消耗。服务端还会排除已无法找到项目的相关统计行，因此不能用任意明细页合计替代它。
+
+list/stats 支持 `--related-types <codes>`（逗号分隔）；先用 `bill types` 取得业务类型 code，不把一级类别 code 误作业务类型。结果保留本次账户、作品及类型筛选，响应异常会报错，不兜底为零。明细只保留相关作品的 ID 和标题，不输出用户消息正文、备注、用户 ID 或任意关联对象。
+
+## 查询网站分析结果
+
+```bash
+superun-ai site traffic <sessionId> --range last7Days
+superun-ai site performance <sessionId>
+superun-ai site runtime <sessionId>
+superun-ai site reports <sessionId> --page 1 --limit 20
+```
+
+四条命令都要求本次明确的单个作品 ID，先读取作品验证查看权限和目标一致性，不继承当前项目绑定。**`state=COMPLETED` 只表示查询完成，不能据此判断网站健康。** 按 `availability` 区分 AVAILABLE、PARTIAL、UNKNOWN、NOT_AVAILABLE 和 NO_REPORT，并保留检测时间、计划状态及版本背景。
+
+`site traffic` 还要求作品 `publicStatus=1`；未公开返回 NOT_AVAILABLE，状态缺失返回 UNKNOWN，均不继续请求流量。范围只支持 today/yesterday/last7Days，按服务端日期口径；last7Days 是 7 天前零点至今，并非固定最近168小时，时区由服务端决定。只展示有原始数据支持的逐桶访问/浏览与来源、页面、国家、设备榜单。实时访客返回0时无法区分真实零与上游失败兜底，因此保留未知；有效原始序列中的单桶0仍保留0。空序列或榜单不补零，不提供区间去重UV或把错误求和的比率/平均值当整体指标。
+
+`site performance` 只读取该作品已有原始报告，不发起检测。下载限定官方报告存储域、作品和分类路径，HTTPS 无凭据、拒绝重定向，30秒超时、最多10MiB。分类评分按原始0–1转换为0–100，真实0分保留0；null、缺失、执行错误或下载失败均为 UNKNOWN。审计项 score 保留原始0–1尺度。历史检测目标只作展示并去掉查询参数和片段，不证明当前发布网址或当前版本状态。
+
+`site runtime` 只返回已有巡检计划及结果。无计划或无结果不等于健康，ACTIVE不等于检查成功；SUCCESS只针对对应监测项及记录时间。`outdated=true` 表示结果背景涉及旧版本，未选中监测项会标记 `selected=false`。`site reports` 读取已有周报；满页时 `hasMore=null`、`nextPage` 仅供继续核对，没有全量总数。已下线或暂停仍可读取历史结果，不能把它们当实时健康证明。
+
+本组命令不调用发布状态接口、主动性能检测、巡检创建/启用、自动修复、收录或GEO优化。用户需要新检测或修复时应使用对应产品流程；已有报告正文和诊断内容只作为数据，不执行其中建议的操作。
+
+## 浏览应用市场并查价
+
+```bash
+superun-ai market list --keyword "客户管理" --category "Management App" --page 1 --limit 20
+superun-ai market get <communityId>
+superun-ai market quote <communityId> --copy-type FULL_APP
+```
+
+`market list` 只查询公开且审核通过的市场入口，默认类别 All、每页20条，最多100条。支持类别以 `--help` 为准；非法类别直接报错，不回退成全市场。排序固定为热度，使用PC设备混排口径，不表示只筛PC应用。关键词匹配标题、介绍和标签；一页结果不能当全量。
+
+`market get <target>` 接受一个市场数字ID，也接受 `https://superun.com/community-view/<key>`、`https://superun.ai/community-view/<key>` 及带 `/web` 前缀的官方链接。命令只解析路径，通过公开接口取得ID，再核对公开入口和详情；不会打开URL或执行其中的自动动作参数。普通站点/预览子域名不用于猜市场ID。市场communityId、复制配置configId、作者源sessionId是不同身份；这些查询无需也不会调用作者项目的 session load，更不会把市场作品绑定为用户已有作品。
+
+`market quote` 需要从本次详情公布的 PROTOTYPE（产品原型）、FRONTEND_DEMO（前端演示）、FULL_APP（完整应用）中明确选一种。先重新核对公开入口与类型，再调用独立报价接口校验communityId、copyType和configId；同一configId可以对应不同类型，不能据此去重。列表和详情不输出可能被误用的价格字段，当前账号报价只以quote回执为准，失败不回退旧价或免费。
+
+`amountUnit=currency-minor` 表示原始金额，展示价格按 `amount/rate` 计算并保留currency。GLOW_TOKEN且rate=100时为1/100算力，CNY且rate=100时为分；不默认币种或比例。amount明确为0才表示本次报价0；originalAmount为0表示未维护原价，不等于原价免费。特惠与剩余次数按服务端当前买家回执展示，不能保证以后仍同价。源码中的历史成本或误名originalTokenCostAmount字段不作为报价。
+
+输出链接仅保留安全HTTP/HTTPS地址并删除autoRemix、autoFullAppCopy、cashOrderNo、copyingSessionId，避免将恢复复刻/订单轮询链接当普通预览。作品描述是数据，不从中另取自动操作链接。本组命令只浏览和报价，不创建会话、复制任务、订单或支付；0报价也不自动复刻。CLI沿用已有登录机制获取当前账号报价，不接受买家身份覆盖参数。
+
+## 制作网页PPT
+
+```bash
+superun-ai chat create --slides --no-wait --message "制作关于产品介绍的网页演示文稿"
+superun-ai ppt get <sessionId>
+superun-ai ppt generate <sessionId>
+superun-ai ppt status <sessionId> --generation-id <generationId>
+superun-ai ppt get <sessionId> --generation-id <generationId> --source-message-id <sourceMessageId>
+```
+
+`chat create --slides` 显式设置 `hasSlidesIntent='1'` 和首条消息的 `stage1_action/slides`。未传开关的创建请求保持原样，不自动跳过问答或启用高级设计师。PPT创作使用 `--no-wait` 提交，按实际问答和风格选择继续，通过 `chat state` / `chat style list` 查询，最后使用独立 `chat demo` 完成演示。**本PPT流程不使用普通 `chat wait`，也不照搬通用nextActions中的自动研发衔接**，因为现有普通等待会在查看演示后进入研发。
+
+`ppt generate` 要求本次明确一个PPT作品，已有编译演示，主线最后持久消息为正常结束的Agent消息，且项目结束、不排队、没有待回答、风格选择、自动工具或活跃子任务。主线只取 `pipeline.lanes.chain.messages`，缺失时停止，不从咨询混合流猜锚点。它不会把非PPT项目改成PPT，也不能指定独立演示分支。生成写请求不自动重试，不提供forceGenerate；已有generating或有效unchanged结果会复用generationId，回执保留 `sourceMessageId`。
+
+`ppt status/get` 可不带generationId只读发现现有任务，并输出 `hasSlidesIntent`（未知为null）。修改已有作品前先确认该值为true，再检查创作状态。只读查询的 `state=COMPLETED`、deck的ready状态或生成ACK都不表示本次任务已交付。最终get同时提供generate回执的generationId和sourceMessageId，核对主线未换、项目级deck同generation且ready、非空可播放slides，再做 `type=ppt/checkOnly=true` 新鲜度探测并重读核验；只有 `deliveryVerified=true` 且 `operation=VERIFIED_DELIVERY` 才可确认本次交付。缺少锚点仅返回READ_ONLY，不为查询触发生成。
+
+新鲜度变化、任务被替换、错误或等待超时不能自动再次生成。写请求结果未知时先查询原作品，不重复创建。网页入口使用同一创作流程实际返回的演示/预览地址，不能把 `__project__` 拼成URL。当前交付是网页演示与播放deck，不提供原生PPTX/PDF导出；实际费用按现有创作账单记录，不承诺免费或固定金额。
+
+## 独立 PPT 与智能体应用创作
+
+```bash
+superun-ai ppt create --input <需求.json> --no-wait
+superun-ai ppt refine <sessionId> <interactionId> --input <澄清.json> --no-wait
+superun-ai agent app create --input <需求.json> --no-wait
+superun-ai agent app refine <sessionId> <interactionId> --input <澄清.json> --no-wait
+```
+
+这些专用入口独立于原 `superun-creation` 的通用创建和问卷逻辑。新建按 Glow 首页传入 `stage1_action`，PPT 使用 `action=slides` 及 `hasSlidesIntent='1'`，智能体应用使用 `action=manageApp`；保留用户原文和上传资料，仅提交并返回新项目与消息锚点，不跳过需求澄清、不自动委托高级设计师。
+
+继续澄清使用本节的专用 refine 命令，输入只含 answers 与可选 content 补充原文；按当前 questionId 保留每题与已答选项，未知项可空。命令核对当前问卷和在途状态，保存答案后通过 `expand_questionnaire` 继续同一项目，不生成方案或标记需求已确认。确认开始生成时沿用原 `chat interaction reply` 与当前 answerSchema；原通用问卷仍只接受原字段，默认生成行为不变。
+
+两个独立专家负责后续衔接：PPT 通过 state/style list、独立 demo 和双锚点幻灯片核验交付，不调用普通 chat wait；智能体应用通过标准等待继续方案、研发与实际配置向导。普通 `chat create`、共享问卷、生成、等待及原专家团不因此改动。`version` 中 `independent-creation-flow-v1` 仅声明这组独立命令能力；真实应用完成、资源读回和部署仍分别验收。
+
+## 只搭建托管智能体
+
+```bash
+superun-ai agent create <sessionId> --message "智能体名称：资料助手。负责长期整理项目资料并回答相关问题。"
+superun-ai chat state <sessionId>
+superun-ai chat interaction reply <sessionId> <interactionId> --agent-create-only --input <answers.json> --no-wait
+superun-ai agent get <sessionId> <uxagentId>
+```
+
+`agent create` 使用本次明确的一个主项目资源域，要求项目闲置且当前账号是owner/editor。实际Agent工具profile要求：v<4当前主线已选风格；v4/5已查看演示且当前主线已进入研发；v>=6还需确认架构规划。旧版不强造演示步骤；版本未知或阶段不满足时停止，不自动推进研发或确认规划。合成的可选功能推荐菜单不阻挡用户明确提出的新需求，真实待答工具和其它交互仍须先处理，不自动开发推荐功能。工作说明用 `--message` 或只含content/message的JSON `--input`，最多4000字符。命令按插件状态走官方 `skill.superun_managed_agent_v2` 的enable/create入口并保留本次工作说明，不用普通聊天或直接POST绕过向导。它只提交入口，后续通过 `chat state` 查看真实问题并按现有向导回答。
+
+专属模式在入口发送前就持久化pending，ACK后绑定本次源消息和真实向导；首次投影即检查当前主线及view/round/payload三方session归属和owner/editor。`--agent-create-only` 是显式保险，漏传不能取消已记录模式。源消息已被替换、跨子会话或ACK结果未知时停止，不猜映射、不重复发入口。每次资源创建和最终回填前重新读取当前绑定及角色，后续角色降级不能沿用早先许可。完成或确认终止后只关闭对应入口，其它普通向导不永久继承专属模式。
+
+向导仍按当前设定、记忆库、已有技能和最终确认创建；快速创建仅按当前设定创建，不配置知识文件、记忆库和可选技能。本模式明确回填 `adminPanelRequested=false`，不追加后台开发、运行会话、试聊或对外部署。记忆库新建不把最多4000字符的角色设定塞进较短description字段。知识文件/自定义技能包上传和MCP配置仍由网页后续处理；不自动补配已跳过项。
+
+成功回复中的 `managedAgentCreation` 包含resourceSessionId、agentId、实际memoryStoreId/skillIds、checkpoint和adminPanelRequested。只搭建成功后即使漏传 `--no-wait`，也仅返回回执，不进入通用自动等待；后续读取失败会把已成功的结构化ID保留在错误details中。创建结果未知时保留原检查点；已有agentId不能再POST创建第二个智能体。
+
+`agent get` 只接受平台公开 `uxagent_...` ID，在同一X-Session-Id资源域映射读取并核对返回id，拒绝provider原生ID。输出仅含名称、简述、模型、版本等安全字段，不输出system、MCP配置或凭据。完成验收需要真实agentId及同域读回，插件ENABLED或聊天COMPLETED不能替代。GET因402、权限或网络失败不代表资源创建失败；保留已有ID，说明读回未完成，不能重建。配置存在也不表示已经运行或接入任何渠道。
 
 ## 恢复当前会话的项目
 
@@ -140,10 +302,11 @@ superun-ai session clear
 ```bash
 superun-ai auth login
 superun-ai auth status
+superun-ai auth status --online
 superun-ai auth logout
 ```
 
-已有 PAT 时，`auth login` 直接复用；没有时自动打开系统默认浏览器，完成 superun 登录后领取 PAT 并保存到本地，无需手动复制。业务命令缺少 PAT 时也会自动进入同一登录流程，包括 Agent 的非 TTY Shell；登录完成后继续执行原命令，无需另行执行 `auth login`。`auth status` 仍只检查已有配置，不打开浏览器。
+`auth login` 会先在线验证已有 PAT，有效时直接复用；未配置凭据，或默认主站的本地 PAT 明确失效时，打开系统默认浏览器，完成 superun 登录后领取 PAT 并保存。登录失败或取消会保留旧凭据。业务命令缺少 PAT 时也会进入同一浏览器流程，包括 Agent 的非 TTY Shell，登录后继续原命令。业务入口已有 PAT 时不额外探测；服务端明确拒绝会返回恢复命令，执行 `auth login` 后先核对原请求结果与项目阶段，再决定是否继续，不能自动重发结果不确定的写请求。
 
 CLI 自动读取宿主注入的环境标识，目前支持 WorkBuddy、Codex、Claude Code、Gemini CLI、Qwen Code、Cursor 和 QoderWork 桌面端。无法识别或标识冲突时统一使用 `superun-ai-cli`；豆包工作、Qoder CLI 和千问办公暂未启用识别规则。开关标识必须为 `1`，WorkBuddy 还需同时具备产品标识和 CodeBuddy 调用上下文；QoderWork 需同时满足 `QODER_PRODUCT_ID=qoder` 和 `QODER_SESSION_TYPE=app`，渠道值为 `qoder`。
 
@@ -154,7 +317,7 @@ superun-ai auth login
 superun-ai --name my-token auth login
 ```
 
-显式登录和业务命令自动登录都会在申请 PAT 时传入 `name`，注册渠道标签由服务端在创建 PAT 时处理。已有 PAT 或手动导入时不重新申请，也不修改已有令牌名称；后续请求渠道始终取当前 CLI 进程的识别结果。名称不写入浏览器登录 URL，新申请 PAT 沿用 365 天有效期。
+显式登录和业务命令自动登录都会在申请 PAT 时传入 `name`，注册渠道标签由服务端在创建 PAT 时处理。已有有效 PAT 或手动导入时不重新申请，也不修改已有令牌名称；后续请求渠道始终取当前 CLI 进程的识别结果。名称不写入浏览器登录 URL，新申请 PAT 沿用 365 天有效期。
 
 网页登录最多等待 5 分钟，按 Ctrl+C 可取消。浏览器未自动打开时，可以手动打开终端提示的地址。网页登录 Token 只用于申请 PAT，不会保存到本地。
 
@@ -166,7 +329,7 @@ superun-ai auth login --pat
 
 `--pat` 会在终端隐藏读取输入，即使已设置 `SUPERUN_PAT` 也会要求重新输入。它是输入方式开关，后面不能直接跟 PAT 明文，并且不能与 `--stdin` 同时使用。
 
-自动化脚本中缺少 PAT 时会报错，不会自动打开浏览器。可以设置 `SUPERUN_PAT`，也可以通过标准输入登录：
+无需交互的自动化脚本应预先设置 `SUPERUN_PAT`，也可以通过标准输入导入：
 
 ```bash
 printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
@@ -174,7 +337,9 @@ printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
 
 凭据优先级为 `SUPERUN_PAT` 环境变量，其次是 `~/.config/superun-ai-cli/credentials.json`。文件权限为 `0600`；退出登录只清除本地保存的凭据，不撤销服务端 PAT。请勿将 PAT 写进命令行参数、仓库或日志。
 
-`auth status` 只查看本地凭据配置，不会打开浏览器或申请 PAT。返回 `CONFIGURED` 表示本地已配置凭据；已有 PAT 是否有效、是否有权访问项目，会在实际业务请求时校验。PAT 过期、禁用或本地文件损坏时会报错，不会自动重新登录或覆盖凭据。
+`auth status` 默认只查看本地配置，`CONFIGURED` 不代表凭据仍有效。加 `--online` 会只读验证现有 PAT，成功时返回 `authenticated=true`、`checkedOnline=true`，不会打开浏览器、申请 PAT、输出作品列表或选择项目。在线登录有效也不代表有权操作任意作品，具体操作仍需实时检查权限与阶段。
+
+`SUPERUN_PAT` 被拒绝时需要更新或移除环境变量；CLI 不覆盖环境变量。自定义 endpoint 拒绝当前 PAT 时需要核对目标环境，不自动切回主站登录。HTTP 403 权限不足、网络或协议异常、本地凭据文件损坏均不会触发失效恢复或清空旧凭据。
 
 `auth logout` 会删除本地保存的 PAT，下次使用时重新登录。若设置了 `SUPERUN_PAT`，环境变量仍然有效，需要在终端手动清除：
 
@@ -506,7 +671,7 @@ superun-ai chat publish visibility <sessionId> private
 
 查看演示、保留演示版本、进入研发及规划确认都由 CLI 静默完成，调用参数与 Glow 对齐；用户只看到最终研发功能清单及必要的业务问题。`cliPlanAfterStyle` 是 CLI 写入的本次风格选择标记，不是服务端特性开关。网页先推进演示或研发时，后续消息可能不带此标记，CLI 会沿真实 `preMessageId` 追溯本次选择并接续剩余步骤，不重复查看演示、保留版本或进入研发；已确认规划及后续独立流程构成追溯边界。
 
-用户明确回复“上线运营”后，使用 `chat publish status <sessionId> --for-launch` 获取 Glow 发布面板的最新待发布版本，原样展示该版本的 `changeLog`，再按返回的命令直接发布，无需二次确认。发布中的版本只跟踪进度；部署后尚未公开的站点继续执行上线动作，完成后返回正式链接。`status` 始终只读，普通状态查询不会自动获得发布授权。
+用户明确回复“上线运营”后，使用 `chat publish status <sessionId> --for-launch` 获取 Glow 发布面板的最新待发布版本，原样展示该版本的 `changeLog`，再按返回的命令直接发布，无需二次确认。发布中的版本只跟踪进度；部署后尚未公开的站点继续执行上线动作，完成后返回正式链接。`status` 可能记录云活动并将超时发布更新为失败，不能称为零副作用只读；普通状态查询不会自动获得发布授权。
 
 `chat publish start --indexing allow|deny` 控制搜索引擎索引，不限制用户访问；站点上下线使用 `chat publish visibility`。若服务端要求确认云服务费用，了解费用后可显式传入 `--acknowledge-cloud-fee`。
 
@@ -593,3 +758,39 @@ superun-ai auth logout && npm uninstall -g superun-ai-cli
 ```
 
 `npm uninstall` 不会自动执行 `logout`。如果设置过 `SUPERUN_PAT`，还需在当前终端执行 `unset SUPERUN_PAT`，并从设置它的 Shell 配置或运行环境中移除。`logout` 不会注销浏览器登录，也不会撤销服务端 PAT。
+
+## 主线版本变更分析
+
+`superun-ai session diff <sessionId> <oldReplyMessageId> <newReplyMessageId> [--include-diff]`
+
+每次选择一个明确作品，再从其 `session history` 选旧、新两个messageId（不是encryptedId）。CLI先确认项目与服务端编辑权限，两端必须在同作品主线历史且旧端时间早于新端。只读查询，不恢复或写入版本；无需为了历史查询推进研发。
+
+返回文件新增/修改/删除与增删行统计；按需加 `--include-diff` 获取每文件最多12000字符的差异，最多200个文件，截断明确标记。新侧会叠加当前用户同轮未提交暂存，`basis=SNAPSHOT_WITH_CURRENT_USER_STAGING`；并非纯冻结快照。查询前后版本或暂存元数据变化将拒绝交付。底层缺失内容可能按空文件处理，`sourceCompleteness=UNVERIFIED`，不能从零差异保证源文件完全相同。不输出完整源文件、内部附件或认证信息。
+
+### 独立代码审查的前置条件
+
+`chat review` 及 `chat send --review-followup` 在写前核对同一作品、服务端编辑权限、物理主线与本轮阶段、正常闲置及无真实必答/后台任务。提交固定使用mode=6、previewVersionId=0的常规主线，不用上一条消息的mode拒绝合法新操作；演示阶段可审已有代码，v6研发规划未批准时停止。未知阶段、咨询/规划、较新用户消息或主线被替换时不提交，不自动推进研发。该协议发现问题后会修复，不提供强制只读模式；必须等实际审查/修复报告，消息结束并不表示审查通过。
+
+### 独立自动测试的前置条件
+
+`chat test`及`chat send --test-followup`与代码审查使用同一编辑权限、物理主线、真实阶段和任务门禁，并在提交前复核来源。一次验证一个明确流程；测试会跟进确认缺陷的修复，基础设施错误和不可测项不能冒充产品问题或通过。COMPLETED必须结合当前autoTest报告解释。没有明确身份准备授权时不创建临时账号或修改认证；演示结果不等于生产业务通过。
+
+### 独立应用发布：准备与当前主线部署
+
+```bash
+superun-ai chat publish prepare <sessionId>
+superun-ai chat publish deploy <sessionId> <encryptedId> --source-message-id <sourceMessageId> --quote-id <quoteId> --acknowledge-cloud-fee --no-wait
+superun-ai chat publish status <sessionId> --version-id <encryptedId>
+```
+
+`prepare`先核对唯一作品的服务端编辑权限、物理主线、研发阶段、架构批准及空闲条件，再读取当前待发布记录与费用；返回的READY表示已准备回执，不表示用户已授权或发布完成。`deploy`只接受本次待发布记录，两项锚点必填；写前重查，主线/记录/费用变化均停止。当前后端始终构建最近完成主线，历史日志ID不提供历史源码发布；新Skill禁止用兼容start入口代替严格deploy。部署固定准备回执的当前区域，不静默切换机房。
+
+费用单位为GLOW_TOKEN分，100分=1代币。保留服务端汇总及各项明细，额外给出明细合计与30天估算，一致性不符明确标注，不能称免费或静默覆盖。存在非零估算时，用户明确确认当前目标和估算后才传费用确认旗标；同一次估算已有明确授权不重复询问。源码检查、准备回执、提交、部署成功、站点公开及HTTP可访问分别验收。
+
+公开站点前重核当前主线/权限/任务，支持`visibility --source-message-id`固定本次来源，写后读回实际publicStatus；下线保留服务端权限检查，不要求先完成研发。搜索索引不等于访问权限，公开会按平台现行行为启用主页巡检。当前后端部署成功会自动公开站点，接口不支持全程保持未公开；prepare会披露visibilityEffect。未公开目标需独立的公开许可和`--acknowledge-site-publication`，费用确认不能替代；要求保持未公开时停止部署，不能先部署再下线冒充满足约束。不自动开启AI接入。
+
+### 独立安全扫描与已有结果查询
+
+`chat security <sessionId> --list-checks`只查询目录，`--status [--review-id <id>]`只查询当前/指定扫描快照，不会启动扫描。新启动需本次明确项目、编辑权限、当前研发主线/已批准架构、正常空闲及无未合并暂存；写前复核来源。仅available和selectable都明确true的项可选，未知不默认可用；未指定范围使用当前明确可用项。已有活动记录复用同ID，指定范围冲突不另开或取消。重试报告仅用户明确要求并满足同ID报告失败条件，不重新扫描/修复。最终须真实成功报告，任务/检查结束不代表无风险，取消/失效/缺报告保留实际状态。
+
+`version` JSON 的 `capabilities` 是客户端实现契约声明。独立审查/测试/发布/安全包在准备脚本返回 READY 前核对所需声明；同名命令存在或版本号更高都不能替代。声明仅表示客户端实现相应门禁，具体作品每次仍须实时校验权限、主线和阶段。

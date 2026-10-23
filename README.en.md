@@ -73,9 +73,39 @@ superun-ai
 ├── session                                                       # Query projects and conversation binding
 │   ├── list                                                      # List projects
 │   ├── get <sessionId>                                           # Get project details
+│   ├── history <sessionId>                                       # Query mainline version summaries, excluding separate demos and source code
+│   ├── diff <sessionId> <oldReplyMessageId> <newReplyMessageId>  # 对比本作品两个主线版本的文件变化，包含新侧当前账号暂存
 │   ├── current                                                   # Read the saved project for this host conversation
 │   ├── use <sessionId>                                           # Select a project for this conversation
 │   └── clear                                                     # Clear the local binding and keep the remote project
+├── order                                                         # Query your superun product and service purchase orders
+│   └── list                                                      # List purchase orders, items, order amounts, and existing invoices
+├── bill                                                          # Query credit bills and deduction statistics
+│   ├── list                                                      # List credit bills with server pagination, without date or page-size options
+│   ├── stats                                                     # Summarize deductions including negative reversals, excluding recharge-type usage rebates
+│   ├── projects                                                  # List bill-filter project candidates, not current editing permissions
+│   └── types                                                     # List supported credit recharge and consumption business types
+├── site                                                          # Read project traffic, existing performance reports, and runtime monitoring
+│   ├── traffic <sessionId>                                       # Read public-project traffic, preserving ambiguous zero values as unknown
+│   ├── performance <sessionId>                                   # Read existing raw performance and SEO reports without starting a check
+│   ├── runtime <sessionId>                                       # Read existing runtime monitoring without creating or activating plans
+│   └── reports <sessionId>                                       # Read existing monitoring reports without generating new ones
+├── market                                                        # Browse public market entries and query current copy prices
+│   ├── list                                                      # Search public market entries by category and keyword
+│   ├── get <target>                                              # Read a public entry's description, preview links, and available copy types
+│   └── quote <communityId>                                       # Query the current account's copy price without copying or ordering
+├── ppt                                                           # Generate and verify project-level web slides without native PPTX export
+│   ├── create                                                    # Submit requirements independently, then inspect the returned questionnaire
+│   ├── refine <sessionId> <interactionId>                        # Save answers and continue clarification without generating designs
+│   ├── generate <sessionId>                                      # Check PPT prerequisites and submit or reuse a task without write retries
+│   ├── status <sessionId>                                        # Discover an existing PPT task or compare a specific generation ID
+│   └── get <sessionId>                                           # Read an existing deck or verify delivery using both generation and mainline IDs
+├── agent                                                         # Create managed-agent configuration and read it back without running or deploying it
+│   ├── app                                                       # Build an agent application through the independent entry
+│   │   ├── create                                                # Submit requirements independently, then inspect the returned questionnaire
+│   │   └── refine <sessionId> <interactionId>                    # Save answers and continue clarification without generating designs
+│   ├── create <sessionId>                                        # Submit the official creation entry, then inspect its wizard with chat state
+│   └── get <sessionId> <agentId>                                 # Verify an existing agent in the specified project without creating a runtime session
 ├── free-quota [sessionId]                                        # Query signed-in user and optional project free quotas
 ├── chat                                                          # Conversational creation
 │   ├── create                                                    # Create a project and send a request
@@ -108,12 +138,135 @@ superun-ai
 │   └── publish                                                   # Publish applications and manage visibility
 │       ├── status <sessionId>                                    # Query versions and deployment progress
 │       ├── start <sessionId> <encryptedId>                       # Publish a specific version
+│       ├── prepare <sessionId>                                   # 核对当前主线待发布记录与费用估算；状态查询可能更新活动和超时记录
+│       ├── deploy <sessionId> <encryptedId>                      # 按本次准备回执发布当前研发主线，写前复核目标和费用
 │       └── visibility <sessionId> <visibility>                   # Make the site public or private
 ├── update                                                        # Check and update to the latest CLI version
 └── version                                                       # Show local and output-schema versions
 ```
 
 Run `npm run docs:sync` after changing command registration to update both command trees. `npm run docs:check` validates their completeness; `prepack` also checks them before packaging.
+
+## Query project history
+
+```bash
+superun-ai session history <sessionId> --page 1 --limit 20
+```
+
+The command first verifies that the current account can read the specified project, then queries version summaries from its development mainline (`previewVersionId=0`). The default page size is 20, with a maximum of 100. Results include version and message IDs, summaries, timestamps, current-version flags, and preview URLs returned by the API. It does not read source code, restore versions, or change the current project binding. Separate demo versions are excluded, so an empty mainline history does not mean that no demo versions exist.
+
+`total` reports the total when the API makes it available. If the gateway returns only a list, `total` is `null`; a full page also has `hasMore=null`, and `nextPage` only identifies the next page that can be checked. A page shorter than the requested size has `hasMore=false`. Query failures or invalid responses produce errors instead of successful empty lists.
+
+## Query purchase orders
+
+```bash
+superun-ai order list --page 1 --limit 20
+superun-ai order list --status 20 --page 1 --limit 20
+```
+
+Query superun product or service purchases made by the signed-in user; no project selection is required. Optional status codes are 0 initialized, 10 awaiting payment, 20 paid, 50 completed, 60 closed, and 70 cancelled. By default all statuses are included, with 20 orders per page and a maximum page size of 100. The command only calls the buyer-scoped `pageOrder` endpoint. It does not call the detail endpoint that can retry fulfillment, create or pay for orders, cancel orders, or request invoices.
+
+Results retain the `items[].orderInfo` and `items[].orderItems` structure and add `statusName` / `invoiceStatusName`. `amountUnit=minor` means monetary values use the smallest currency unit: cents for CNY and USD. Preserve the original currency and do not sum different currencies. `orderInfo.total` is the order amount, not the actual payment amount; a paid status does not prove that resources were delivered. Invoice output is limited to existing status, application time, effective invoice number/date/currency, the invoice-record amount attributed to this order, and PDF/OFD URLs. The total face amount of a merged invoice is not provided by this command.
+
+The top-level `total` counts orders matching the current status filter; use `hasMore` / `nextPage` to continue. The API has no order-number, keyword, or date filter, so these conditions can only be matched against returned records. Do not declare an order absent before checking all relevant pages. Missing fields remain null or absent, and query failures produce errors rather than fabricated empty lists.
+
+## Query credit bills
+
+```bash
+superun-ai bill list
+superun-ai bill list --cursor <scrollId> --session-id <sessionId>
+superun-ai bill stats --from 2026-10-01 --to 2026-10-22 --granularity DAY
+superun-ai bill projects
+superun-ai bill types
+```
+
+All four commands only read `GLOW_TOKEN`. Without `--workspace-id`, they query the personal account. An explicit positive workspace ID queries the workspace bills visible to the current account; ordinary and former members are limited to their own historical consumption. `--session-id` filters within the selected billing account without changing it or requiring current project editing permission. A team project can be personally funded, so its workspace does not determine the billing account. `bill projects` only lists filter candidates; an absent candidate does not prove that historical charges are absent.
+
+`bill list` returns `items/hasNext/scrollId`, without a total, date filter, or adjustable page size. The server fetches 100 raw bill rows and then aggregates and filters them, so empty `items` may still have `hasNext=true`. Continue using the returned `scrollId`; do not infer completion from displayed row counts or construct a cursor. Subsequent cursors must move strictly toward earlier records. Reset the cursor when changing accounts or filters. `amountUnit=hundredth-credit` means that `amount` is in hundredths of a credit. Glow displays `amount/100` for type=1 and the negated value for other types. Details include recharges, rebates, and deductions, so summing every raw amount does not measure consumption. An item with `aiMessageRunning=true` has a provisional amount.
+
+`bill stats` includes both dates, uses `Asia/Shanghai`, and accepts at most 60 days with DAY/WEEK/MONTH granularity. `amountUnit=credit` means `totalAmount` and `items[].amount` are decimal strings already measured in credits; **do not divide them by 100 again**. Statistics only sum deduction bills (type=2), including negative reversals and excluding recharge-type usage rebates. Preserve signed amounts; these are neither cash amounts nor complete net consumption. The server also excludes statistics associated with projects it can no longer find, so a displayed detail page is not a substitute for these statistics.
+
+Both list and stats accept `--related-types <codes>` as comma-separated business-type codes. Resolve them through `bill types`; do not substitute first-level category codes. Results retain the selected account, project, and type filters. Invalid responses produce errors rather than zero totals. Detail output only includes the related project's ID and title, excluding message content, memos, user IDs, and arbitrary related objects.
+
+## Query website analysis
+
+```bash
+superun-ai site traffic <sessionId> --range last7Days
+superun-ai site performance <sessionId>
+superun-ai site runtime <sessionId>
+superun-ai site reports <sessionId> --page 1 --limit 20
+```
+
+Each command requires one explicit project ID for the current operation. It first loads the project to verify view access and identity, without inheriting the current project binding. **`state=COMPLETED` only means the query completed, not that the website is healthy.** Use `availability` to distinguish AVAILABLE, PARTIAL, UNKNOWN, NOT_AVAILABLE, and NO_REPORT, and retain the check time, plan status, and version context.
+
+`site traffic` additionally requires `publicStatus=1`. An unpublished project returns NOT_AVAILABLE; a missing publication flag returns UNKNOWN. Neither branch queries traffic. Supported ranges are today/yesterday/last7Days using server calendar boundaries. last7Days begins at midnight seven days ago, not exactly 168 hours ago, and the server determines the timezone. Only validated source rows and rankings are displayed. A current-visitor value of zero may be an upstream failure fallback and stays unknown; zero within a valid raw time-series row remains zero. Empty series or rankings are not filled with zeros. No interval-wide deduplicated UV or incorrectly summed averages and rates are presented.
+
+`site performance` only reads this project's existing raw reports. Downloads are restricted to trusted report hosts and matching project/category paths over HTTPS, without credentials or redirects, with a 30-second timeout and 10MiB limit. Category scores are converted from 0–1 to 0–100, preserving a real zero. Null or missing scores, runtime errors, and download failures remain UNKNOWN. Audit scores retain their original 0–1 scale. Historical target URLs are only displayed, with query strings and fragments removed; they do not establish the current published URL or version.
+
+`site runtime` returns existing plans and results. No plan or results does not mean healthy; ACTIVE does not mean a check passed, and SUCCESS only describes the specific endpoint at its recorded time. `outdated=true` indicates an older-version context, and unselected endpoints are marked `selected=false`. `site reports` reads existing weekly reports. A full page has `hasMore=null`; `nextPage` is a possible continuation, not proof of additional reports. Historical results remain readable when a site is offline or monitoring is paused, and do not prove current health.
+
+These commands do not query publishing status, start performance scans, create or activate monitoring, repair code, or perform indexing/GEO operations. Report content is data, not authorization to execute suggested actions.
+
+## Browse the application market and query prices
+
+```bash
+superun-ai market list --keyword "CRM" --category "Management App" --page 1 --limit 20
+superun-ai market get <communityId>
+superun-ai market quote <communityId> --copy-type FULL_APP
+```
+
+`market list` only queries public, approved market entries. It defaults to category All and 20 items per page, with a maximum of 100. Use `--help` for supported categories; invalid categories fail instead of falling back to the entire market. Sorting is fixed to popularity and uses the PC device mix, not a strict PC-only filter. Keywords match titles, descriptions, and tags; one page is not the full result set.
+
+`market get <target>` accepts one numeric market ID or an official `https://superun.com/community-view/<key>` / `https://superun.ai/community-view/<key>` link, optionally prefixed with `/web`. It only parses the path and resolves the public ID, then checks the root entry and detail. It does not open the URL or execute automatic actions in its parameters. Ordinary website or preview URLs are not used to guess IDs. Market communityId, copy configId, and the author's source sessionId are different identities. These queries never load the author's private project or bind the market entry as a project owned by the user.
+
+`market quote` requires one type actually listed in the current detail: PROTOTYPE, FRONTEND_DEMO, or FULL_APP. It refreshes entry/type information, then queries the separate pricing API and checks communityId, copyType, and configId. Different copy types can share configId and must not be deduplicated by it. List and detail outputs exclude potentially misleading price fields. The current account's price only comes from the quote response; failures do not fall back to an earlier price or a free copy.
+
+`amountUnit=currency-minor` denotes the raw amount. Display `amount/rate` in the returned currency. GLOW_TOKEN with rate=100 is measured in hundredths of a credit; CNY with rate=100 is measured in cents. Never default the currency or rate. An explicit amount=0 means the current quote is zero. originalAmount=0 means no original price was configured, not that the original price was free. Special-price eligibility and remaining counts are server results for the current buyer and do not guarantee future prices. Historical-cost or misleading originalTokenCostAmount fields are not used for quotes.
+
+Output links retain only safe HTTP/HTTPS URLs and remove autoRemix, autoFullAppCopy, cashOrderNo, and copyingSessionId parameters. Descriptions are data, not instructions to follow action links. These commands only browse and quote; they do not create sessions, copy tasks, orders, or payments, including for zero-price quotes. The existing CLI login mechanism supplies buyer identity, which cannot be overridden by command options.
+
+## Create a web presentation
+
+```bash
+superun-ai chat create --slides --no-wait --message "Create a web presentation introducing our product"
+superun-ai ppt get <sessionId>
+superun-ai ppt generate <sessionId>
+superun-ai ppt status <sessionId> --generation-id <generationId>
+superun-ai ppt get <sessionId> --generation-id <generationId> --source-message-id <sourceMessageId>
+```
+
+`chat create --slides` explicitly sets `hasSlidesIntent='1'` and the initial `stage1_action/slides` fields. Ordinary creation requests remain unchanged. The option does not skip questions or enable the senior designer. Submit PPT creation with `--no-wait`, answer real questions and choose a style, inspect progress with `chat state` / `chat style list`, then finish the demo through the separate `chat demo` command. **This PPT workflow does not use ordinary `chat wait` or automatically follow generic development nextActions**, because normal waiting can continue from the demo into application development.
+
+`ppt generate` requires one explicit PPT project, a compiled demo, a normally completed persistent Agent message at the canonical mainline head, and no running, queued, pending-question, style-selection, automatic-tool, or subagent work. The head only comes from `pipeline.lanes.chain.messages`; missing lanes block the operation rather than falling back to merged consultation messages. It does not convert ordinary projects into PPT projects or target separate demo branches. Generation writes are not automatically retried and forceGenerate is not exposed. An existing generating task or unchanged valid result can reuse generationId; the receipt also returns sourceMessageId.
+
+`ppt status/get` can discover existing tasks without a generation ID and return `hasSlidesIntent` (null when unknown). Before editing an existing project, confirm that it is true and then check its creation state. A read query's `state=COMPLETED`, a ready deck, or a generation acknowledgment alone does not prove delivery of this operation. Final get verification requires both receipt IDs, an unchanged mainline, a matching ready project-level deck with playable slides, and a `type=ppt/checkOnly=true` freshness probe followed by another read. Only `deliveryVerified=true` with `operation=VERIFIED_DELIVERY` confirms delivery. Missing anchors produce READ_ONLY results and do not trigger generation.
+
+Changed attachments, replaced tasks, failures, or local wait timeouts must not automatically trigger another generation. If a write has an unknown outcome, inspect the original project rather than recreating it. Use the actual demo or preview URL returned by the same creation workflow; never append `__project__` to a URL. Delivery consists of a web presentation and its playback deck, not a native PPTX or PDF export. Fees follow the existing creation bills and are not promised to be free or fixed.
+
+## Independent PPT and agent application flows
+
+Use `ppt create` / `ppt refine` or `agent app create` / `agent app refine` for the two dedicated experts. Creation submits the matching Glow homepage direction and returns the new session and message IDs. Refinement accepts answers and optional content, saves the current questionnaire and continues clarification without generating a style. Start generation through the existing interaction reply only when requirements are confirmed.
+
+These entries leave ordinary chat create, shared questionnaire parsing, generation, waiting and the original superun-creation packages unchanged. The PPT expert follows its separate demo and verified deck delivery; the agent application expert follows the actual questions, design selection, development and configuration wizard. The independent-creation-flow-v1 capability declares these dedicated commands. Application completion, resource verification and deployment remain separate checks.
+
+## Create a managed-agent configuration only
+
+```bash
+superun-ai agent create <sessionId> --message "Agent name: Research Assistant. Organize project references and answer related questions."
+superun-ai chat state <sessionId>
+superun-ai chat interaction reply <sessionId> <interactionId> --agent-create-only --input <answers.json> --no-wait
+superun-ai agent get <sessionId> <uxagentId>
+```
+
+`agent create` uses one explicit main-project resource scope, with an idle project and a current owner or editor. The actual Agent tool profile requires a selected mainline style for versions below 4, a viewed demo and current-mainline development marker for versions 4–5, and architecture approval for versions 6 and above. Older versions are not forced through a nonexistent demo step. Unknown versions or unmet stages stop the operation; it does not enter development or approve plans automatically. A synthetic optional feature-recommendation menu does not block a new explicit request, while real pending tools and other interactions still do. It never develops recommended features automatically. Supply up to 4,000 characters through `--message` or a JSON `--input` containing only content or message. The command preserves this work description and routes through the official `skill.superun_managed_agent_v2` enable/create entry, not a generic chat request or direct resource creation bypass. It submits the entry; use `chat state` and the existing wizard to answer real questions.
+
+The dedicated mode is persisted before submission, then bound to the acknowledged source message and actual wizard. Its first projection checks current mainline ownership, matching view/round/payload session IDs, and editor permission. `--agent-create-only` is an explicit safeguard; omitting it cannot disable an already recorded mode. Replaced source messages, cross-session tools, or unknown acknowledgments stop the flow rather than guessing mappings or resubmitting. Every resource write and final tool reply reloads the current binding and role. Completion or confirmed cancellation closes only that entry, without permanently changing unrelated wizards.
+
+The wizard retains its description, memory, existing-skill, and confirmation steps. Quick creation uses the current description without optional files, memories, or skills. This mode returns `adminPanelRequested=false` and does not create a management console, runtime session, test chat, or external deployment. New memories do not copy the entire role description into a shorter description field. Knowledge-file/custom-skill uploads and MCP configuration remain separate web operations; skipped options are not silently added.
+
+Successful replies include `managedAgentCreation` with resourceSessionId, agentId, actual optional memoryStoreId/skillIds, checkpoint, and adminPanelRequested. Successful create-only replies return receipts even if `--no-wait` was omitted, without generic automatic waiting. If later state reading fails, error details retain the successful structured IDs. Unknown creation outcomes preserve checkpoints, and an existing agentId must never cause a second creation POST.
+
+`agent get` only accepts public `uxagent_...` IDs. It reads through the same X-Session-Id mapping and checks the returned ID, rejecting native provider IDs. Only safe metadata such as name, description, model, and version is exposed; system prompts, MCP configuration, and credentials are omitted. Verification requires a real agentId and successful same-project readback. Plugin readiness or conversation completion alone is insufficient. A 402, authorization, or network error during GET does not mean creation failed: retain the ID and report incomplete readback rather than recreate it. Existing configuration does not imply execution or channel integration.
 
 ## Restore the project for this conversation
 
@@ -136,10 +289,11 @@ Bindings survive reopening the same host conversation and are isolated by conver
 ```bash
 superun-ai auth login
 superun-ai auth status
+superun-ai auth status --online
 superun-ai auth logout
 ```
 
-`auth login` reuses an existing PAT. If none is configured, it opens the system default browser for superun login and saves the resulting PAT locally. Business commands without a PAT use the same login flow, including commands run from an agent's non-TTY shell, then resume the original operation without requiring a separate `auth login` command. `auth status` only checks existing configuration and does not open a browser.
+`auth login` verifies an existing PAT online and reuses it when valid. If no credential exists, or the default site explicitly rejects a local file credential, it opens the system default browser and saves the new PAT only after successful login. Failed or cancelled login preserves the old credential. Business commands without a PAT use the same browser flow, including non-TTY agent shells. Existing credentials do not add a preflight request to each business command. If rejected, use the returned login command, then check the original result and project stage before continuing. Never automatically resend a write whose result is unknown.
 
 The CLI detects its host from injected environment markers, currently supporting WorkBuddy, Codex, Claude Code, Gemini CLI, Qwen Code, Cursor, and the QoderWork desktop app. Missing or conflicting markers fall back to `superun-ai-cli`; detection for Doubao Work, Qoder CLI, and Qianwen Work is not enabled yet. Flag markers must equal `1`, and WorkBuddy requires both its product marker and CodeBuddy invocation context. QoderWork requires both `QODER_PRODUCT_ID=qoder` and `QODER_SESSION_TYPE=app`, producing the channel `qoder`.
 
@@ -150,7 +304,7 @@ superun-ai auth login
 superun-ai --name my-token auth login
 ```
 
-Explicit and automatic login send `name` when requesting a PAT; the server handles registration-channel tags during PAT creation. Reusing or manually importing a PAT does not request another PAT or rename an existing token. Subsequent requests use the channel detected for the current CLI process. The browser login URL does not include the name, and new PATs retain the existing 365-day validity period.
+Explicit and automatic login send `name` when requesting a PAT; the server handles registration-channel tags during PAT creation. Reusing a valid PAT or manually importing a PAT does not request another PAT or rename an existing token. Subsequent requests use the channel detected for the current CLI process. The browser login URL does not include the name, and new PATs retain the existing 365-day validity period.
 
 Browser login waits for up to five minutes. Press Ctrl+C to cancel. If the browser does not open automatically, use the URL printed in the terminal. The website login token is only used to obtain a PAT and is not stored locally.
 
@@ -162,7 +316,7 @@ superun-ai auth login --pat
 
 `--pat` reads hidden input from the terminal, even if `SUPERUN_PAT` is already set. It is an input-mode switch: do not put the PAT after it, and do not combine it with `--stdin`.
 
-Automated business commands without a PAT fail instead of opening a browser. Set `SUPERUN_PAT` or log in using standard input:
+For unattended automation, configure `SUPERUN_PAT` ahead of time or import a PAT using standard input:
 
 ```bash
 printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
@@ -170,7 +324,9 @@ printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
 
 The CLI prefers `SUPERUN_PAT`, then `~/.config/superun-ai-cli/credentials.json`. The file uses `0600` permissions. Logging out removes the local credential without revoking the server-side PAT. Never put a PAT in command-line arguments, source control, or logs.
 
-`auth status` only checks local credential configuration. It does not open a browser or request a PAT. `CONFIGURED` means a credential is configured locally; its validity and project permissions are checked by actual business requests. An expired or disabled PAT, or a damaged credential file, results in an error rather than an automatic login or overwrite.
+`auth status` checks local configuration by default; `CONFIGURED` does not prove that the credential is valid. Add `--online` for read-only verification, returning `authenticated=true` and `checkedOnline=true` on success without opening a browser, requesting a PAT, displaying projects, or selecting a project. Project permission and stage checks still apply to each operation.
+
+A rejected `SUPERUN_PAT` must be updated or removed by its owner. A rejected credential on a custom endpoint requires checking that environment. HTTP 403, network or protocol errors, and damaged local files do not trigger automatic login or remove the existing credential.
 
 `auth logout` deletes the saved PAT. If `SUPERUN_PAT` is set, it remains effective until you remove it from your shell:
 
@@ -321,7 +477,7 @@ After development completes, the preview link is returned in `development.previe
 
 After the user selects a style, `chat style select` waits for its demo, completes the demo transition and preserves the version internally, then generates the development plan. Show only that the selected style is being used to prepare the plan, without demo-stage prompts or additional questions. The CLI silently generates and confirms the initial plan, then displays the actual feature list for the user to choose what to develop. Real business questions still require user input. After `--no-wait` or a local timeout, follow `CONTINUE_STYLE_PLANNING` with `chat wait` to check the current state and resume the transition. `chat state` remains read-only, and existing projects can still use `chat demo` and `chat develop`.
 
-After the user explicitly asks to launch the site, use `chat publish status <sessionId> --for-launch` to get the latest pending version from the publishing panel. Show its `changeLog` unchanged, then follow the returned publishing command without a second confirmation. For a deployment already in progress, only track progress. If deployment is complete but the site is not public, finish the visibility step and return the public URL. `status` is always read-only; an ordinary status query does not grant publishing authorization.
+After the user explicitly asks to launch the site, use `chat publish status <sessionId> --for-launch` to get the latest pending version from the publishing panel. Show its `changeLog` unchanged, then follow the returned publishing command without a second confirmation. For a deployment already in progress, only track progress. If deployment is complete but the site is not public, finish the visibility step and return the public URL. `status` may record cloud activity and persist timeout failures; a status query does not grant publishing authorization.
 
 `chat publish start --indexing allow|deny` controls search-engine indexing, not visitor access. Change site visibility with `chat publish visibility`. If the service requires acknowledgment of cloud costs, review them before explicitly passing `--acknowledge-cloud-fee`.
 
@@ -422,3 +578,31 @@ superun-ai auth logout && npm uninstall -g superun-ai-cli
 `npm uninstall` does not run `logout` automatically. If you configured `SUPERUN_PAT`, also run `unset SUPERUN_PAT` in the current shell and remove it from the shell configuration or environment that sets it. Logging out does not sign you out of the browser or revoke the server-side PAT.
 
 <!-- @author xiuyu.yi -->
+
+## Mainline version changes
+
+`superun-ai session diff <sessionId> <oldReplyMessageId> <newReplyMessageId> [--include-diff]`
+
+Select one project and two messageId values from its `session history` (not encryptedId). The CLI verifies project identity and server-side edit permission before reading differences. Both versions must belong to that project's mainline, with the old timestamp preceding the new one. This command reads history without advancing development or restoring a version.
+
+Results include added, updated and removed files with line counts. `--include-diff` adds up to 12000 characters per file, for at most 200 files, with explicit truncation indicators. The new side may include the current user's uncommitted staging: `basis=SNAPSHOT_WITH_CURRENT_USER_STAGING` does not represent two frozen snapshots. Changes to version or staging metadata during the read invalidate delivery. Missing underlying source content may be treated as empty files by the backend; `sourceCompleteness=UNVERIFIED` means that zero returned differences cannot prove source equality. Full source files and internal attachments are excluded.
+
+### Code review preflight
+
+`chat review` and `chat send --review-followup` verify the explicit project, server-side edit permission, canonical mainline and phase, normal idle state, and pending questions/background work before writing. New requests use mode 6 and previewVersionId 0; a previous message mode does not invalidate a legitimate new operation. Existing demo code can be reviewed; unapproved v6 development planning blocks the operation. Unknown stages, consult/plan contexts, newer user messages or a replaced mainline never advance automatically. This protocol fixes findings and has no enforced read-only mode. Wait for the actual audit and repair report; a completed message is not a passing review.
+
+### Automated test preflight
+
+`chat test` and `chat send --test-followup` apply the same edit-permission, canonical-mainline, phase and pending-work checks as code review, and revalidate the source before submitting. Verify one explicit flow per run. Confirmed defects may be repaired; infrastructure failures and untestable cases are not product defects or passes. Interpret COMPLETED with the current autoTest report. Temporary identities and authentication changes need explicit setup authorization. Demo results do not establish production behavior.
+
+### Prepared mainline deployment
+
+Use `chat publish prepare <sessionId>`, then `chat publish deploy <sessionId> <encryptedId> --source-message-id <sourceMessageId> --quote-id <quoteId> [--acknowledge-cloud-fee] --no-wait`. Prepare checks server-side edit access, canonical development phase, approved architecture and idle state before returning the current pending record and cost estimate. READY is preparation, not consent or deployment. Deploy requires both anchors and rechecks source, record, region and estimate before writing. The backend builds the latest completed mainline; an old publication record does not select old source code. The independent Skill uses deploy rather than the compatible start entry.
+
+Cost fields use GLOW_TOKEN cents, 100 units per token. Preserve server totals and itemized estimates, also show their computed daily/30-day sums and any discrepancy. Nonzero estimates need explicit consent to the current target and quote. Public visibility rechecks mainline state and permission, optionally binds source-message-id, and reads back publicStatus. Taking a site offline remains possible without requiring a completed development round. Indexing is separate from access; public visibility may enable homepage monitoring. Deployment does not automatically authorize visibility or AI integration.
+
+### Security scanning and existing results
+
+`chat security <sessionId> --list-checks` reads the catalog; `--status [--review-id <id>]` reads a current or specified snapshot without starting a scan. New scans verify the explicit project, edit access, canonical development phase, architecture approval, idle state and unmerged staging, then recheck before writing. Only explicit true availability/selectability is executable. Existing active scans reuse their ID; conflicting requested scope never creates or cancels a scan. Report retries require an explicit request and the same failed report state. A completed check is not proof of no risk: require an actual successful report and preserve failure, cancellation and invalidation.
+
+The `capabilities` array in `version` JSON declares client implementation contracts. Independent review, test and security packages verify the required declaration before preparation returns READY. A familiar command name or higher version is insufficient. Each project still needs live permission, mainline and phase checks.

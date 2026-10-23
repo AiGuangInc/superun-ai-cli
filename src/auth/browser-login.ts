@@ -10,6 +10,7 @@ import type { OutputWriter } from '../output/writer.js';
 import { ApiClient } from '../transport/api-client.js';
 import { PatStore, validatePat } from './pat-store.js';
 import type { PatCredential } from './pat-store.js';
+import { isCredentialRejected, verifyCredential } from './credential-status.js';
 
 async function openBrowser(url: string, signal: AbortSignal): Promise<boolean> {
   const [command, args]: [string, Array<string>] =
@@ -36,11 +37,32 @@ export async function ensurePat(options: {
   output: OutputWriter;
   signal: AbortSignal;
   allowBrowser: boolean;
+  verifyExisting?: boolean;
   name: string;
 }): Promise<PatCredential> {
   const { store, config, output, signal: commandSignal, allowBrowser, name } = options;
   const existing = await store.readIfPresent();
-  if (existing) return existing;
+  if (existing) {
+    output.registerSecret(existing.pat);
+    if (!options.verifyExisting) return existing;
+    try {
+      await verifyCredential(new ApiClient(config, existing.pat, undefined, commandSignal));
+      return existing;
+    } catch (error) {
+      if (!isCredentialRejected(error)) throw error;
+      if (existing.source === 'env')
+        throw new CliError('AUTH_REQUIRED', 'SUPERUN_PAT 已被拒绝，请更新或移除该环境变量后重新登录', {
+          authFailure: 'CREDENTIAL_REJECTED',
+          credentialSource: 'env',
+        });
+      if (config.endpoint !== DEFAULT_ENDPOINT)
+        throw new CliError('AUTH_REQUIRED', '目标环境拒绝了当前 PAT，请核对 endpoint 与对应环境的凭据', {
+          authFailure: 'CREDENTIAL_REJECTED',
+          credentialSource: 'file',
+        });
+      // 旧凭据先保留，只有完整网页登录成功后才原子替换。
+    }
+  }
   if (!allowBrowser)
     throw new CliError(
       'AUTH_REQUIRED',

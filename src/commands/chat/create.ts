@@ -7,6 +7,7 @@ export function registerCreate(chat: Command, context: CommandContext): void {
   messageOptions(chat.command('create').description('新建项目并发送需求'))
     .option('--model <model>', '选择模型')
     .option('--workspace-id <workspaceId>', '归属工作空间')
+    .option('--slides', '创建网页PPT作品；使用 --no-wait 保留独立演示流程')
     .option('--skip-question', '跳过需求问卷，创建后立即生成方案')
     .option(
       '--advanced',

@@ -39,6 +39,7 @@ async function loadCredentialContext(
   context: CommandContext,
   command: Command,
   allowBrowser: boolean,
+  verifyExisting: boolean,
 ): Promise<CredentialContext> {
   const options = object(command.optsWithGlobals());
   const config = runtimeConfig({
@@ -51,6 +52,7 @@ async function loadCredentialContext(
     output: context.output,
     signal: context.signal,
     allowBrowser,
+    verifyExisting,
     name: text(options.name) ?? requestChannel,
   });
   context.output.registerSecret(credential.pat);
@@ -69,13 +71,14 @@ async function loadCredentialContext(
   return { service, credentialSource: credential.source };
 }
 
-/** 已有 PAT 直接复用；允许浏览器登录时自动补齐缺失的凭据。 */
+/** 业务入口复用已有 PAT；显式登录可在线验证并恢复失效凭据。 */
 export async function requireCredentials(
   context: CommandContext,
   command: Command,
   allowBrowser = false,
+  verifyExisting = false,
 ): Promise<CredentialContext> {
-  context.connection ??= loadCredentialContext(context, command, allowBrowser);
+  context.connection ??= loadCredentialContext(context, command, allowBrowser, verifyExisting);
   return context.connection;
 }
 
