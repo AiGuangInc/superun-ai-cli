@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { PACKAGE_NAME, PAT_PREFIX } from '../config/constants.js';
 import { CliError } from '../output/exit-codes.js';
 import { object, text } from '../contracts/value.js';
+import { protectWindowsCredential, verifyWindowsCredential } from './windows-credential-acl.js';
 
 export const CREDENTIAL_DIRECTORY = join(homedir(), '.config', PACKAGE_NAME);
 export type PatCredential = { pat: string; source: 'env' | 'file' };
@@ -34,7 +35,11 @@ export class PatStore {
     const path = join(this.directory, 'credentials.json');
     try {
       const stat = await lstat(path);
-      if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) {
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        throw new CliError('AUTH_REQUIRED', '本地凭据必须为普通文件，不能使用符号链接');
+      }
+      if (process.platform === 'win32') await verifyWindowsCredential(path);
+      else if ((stat.mode & 0o077) !== 0) {
         throw new CliError('AUTH_REQUIRED', '本地凭据必须为权限 0600 的普通文件，请重新执行 auth login');
       }
       const value: unknown = JSON.parse(await readFile(path, 'utf8'));
@@ -47,12 +52,15 @@ export class PatStore {
   }
 
   async save(pat: string): Promise<void> {
+    const validPat = validatePat(pat);
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    await chmod(this.directory, 0o700);
+    if (process.platform !== 'win32') await chmod(this.directory, 0o700);
     const temporary = join(this.directory, `.credentials-${randomUUID()}.tmp`);
     const handle = await open(temporary, 'wx', 0o600);
     try {
-      await handle.writeFile(JSON.stringify({ pat: validatePat(pat), createdAt: new Date().toISOString() }));
+      // Windows 先收紧空临时文件的 ACL 并读回校验，成功后才写入秘密。
+      if (process.platform === 'win32') await protectWindowsCredential(temporary);
+      await handle.writeFile(JSON.stringify({ pat: validPat, createdAt: new Date().toISOString() }));
       await handle.sync();
       await handle.close();
       await rename(temporary, join(this.directory, 'credentials.json'));

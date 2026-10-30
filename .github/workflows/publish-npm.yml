@@ -63,10 +63,23 @@ jobs:
       - run: npm run build
       - run: npm pack --dry-run --json --registry=https://registry.npmjs.org/ > /dev/null
 
+  windows_credentials:
+    name: Windows credential smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm ci --registry=https://registry.npmjs.org/
+      - run: npm run build
+      - run: node scripts/check-credential-store.mjs
+
   publish:
     name: Publish and verify
     if: github.event_name == 'push'
-    needs: build
+    needs: [build, windows_credentials]
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -335,7 +335,7 @@ superun-ai auth login --pat
 printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
 ```
 
-凭据优先级为 `SUPERUN_PAT` 环境变量，其次是 `~/.config/superun-ai-cli/credentials.json`。文件权限为 `0600`；退出登录只清除本地保存的凭据，不撤销服务端 PAT。请勿将 PAT 写进命令行参数、仓库或日志。
+凭据优先级为 `SUPERUN_PAT` 环境变量，其次是 `~/.config/superun-ai-cli/credentials.json`。macOS/Linux 校验文件权限为 `0600`；Windows 使用系统 PowerShell 校验 ACL，文件须归当前用户所有，允许访问的主体仅为当前用户、SYSTEM 和本机管理员，不用 POSIX mode 判断 Windows 权限。Windows 保存时先将空临时文件的 ACL 收紧为当前用户独占并读回校验，再写入 PAT；权限设置或校验失败时停止，不回退为无保护存储。退出登录只清除本地保存的凭据，不撤销服务端 PAT。请勿将 PAT 写进命令行参数、仓库或日志。
 
 `auth status` 默认只查看本地配置，`CONFIGURED` 不代表凭据仍有效。加 `--online` 会只读验证现有 PAT，成功时返回 `authenticated=true`、`checkedOnline=true`，不会打开浏览器、申请 PAT、输出作品列表或选择项目。在线登录有效也不代表有权操作任意作品，具体操作仍需实时检查权限与阶段。
 

@@ -322,7 +322,7 @@ For unattended automation, configure `SUPERUN_PAT` ahead of time or import a PAT
 printf '%s\n' "$SUPERUN_PAT" | superun-ai auth login --stdin
 ```
 
-The CLI prefers `SUPERUN_PAT`, then `~/.config/superun-ai-cli/credentials.json`. The file uses `0600` permissions. Logging out removes the local credential without revoking the server-side PAT. Never put a PAT in command-line arguments, source control, or logs.
+The CLI prefers `SUPERUN_PAT`, then `~/.config/superun-ai-cli/credentials.json`. macOS/Linux enforce `0600` file permissions. Windows checks the system ACL through PowerShell: the current user must own the file, and only that user, SYSTEM, and local administrators may have access. Before saving on Windows, the CLI restricts the empty temporary file to the current user and verifies the ACL before writing the PAT. Failed permission checks stop the operation without falling back to unprotected storage. Logging out removes the local credential without revoking the server-side PAT. Never put a PAT in command-line arguments, source control, or logs.
 
 `auth status` checks local configuration by default; `CONFIGURED` does not prove that the credential is valid. Add `--online` for read-only verification, returning `authenticated=true` and `checkedOnline=true` on success without opening a browser, requesting a PAT, displaying projects, or selecting a project. Project permission and stage checks still apply to each operation.
 
