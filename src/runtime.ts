@@ -73,6 +73,8 @@ import {
 
 // 仅独立演示版本等待快照同步，研发主线直接使用稳定预览地址。
 const DEMO_SNAPSHOT_SYNC_MS = 15_000;
+const DEMO_SESSION_EXTRA = { hasViewedDemo: '1', demoGenerateStatus: '2' };
+const DEVELOPMENT_SESSION_EXTRA = { startDevelopment: '1', hasViewedBuild: '1' };
 
 export class CreationRuntime {
   readonly managedWizard: ManagedAgentWizard;
@@ -822,15 +824,15 @@ export class CreationRuntime {
       extra.business_type === 'fake_confirm_generate_more_demo' &&
       !enabled(extra.startDevelopment)
     ) {
-      if (!enabled(view.extra.hasViewedDemo))
-        await this.command.sessionExtra(sessionId, { hasViewedDemo: '1' });
+      if (!enabled(view.extra.hasViewedDemo) || Number(view.extra.demoGenerateStatus) !== 2)
+        await this.command.sessionExtra(sessionId, DEMO_SESSION_EXTRA);
       return this.waitForDemoView(sessionId, round.anchorUserMessageId, options);
     }
     if (result.state !== 'COMPLETED' || !result.demo)
       throw new CliError('INVALID_ARGUMENT', '当前演示尚不可查看，请先查询并等待当前任务完成', { sessionId });
     // 查看与选择是两个动作；只在取得对应演示快照后记录已查看。
     if (!enabled(view.extra.hasViewedDemo) || Number(view.extra.demoGenerateStatus) !== 2)
-      await this.command.sessionExtra(sessionId, { hasViewedDemo: '1', demoGenerateStatus: '2' });
+      await this.command.sessionExtra(sessionId, DEMO_SESSION_EXTRA);
     if (
       Number(view.extra.version) >= 4 &&
       !enabled(extra.showConfirmGenerateMoreDemo) &&
@@ -917,6 +919,7 @@ export class CreationRuntime {
       previewVersionId: 0,
       content: '开始研发，先生成研发规划',
       businessParams: { business_type: 'start_dev' },
+      sessionExtra: DEVELOPMENT_SESSION_EXTRA,
       roundExtra: {
         startDevelopment: '1',
         showDismissInBuildTutorial: '0',
@@ -924,11 +927,13 @@ export class CreationRuntime {
       },
     });
     try {
-      await this.command.sessionExtra(sessionId, { startDevelopment: '1', hasViewedBuild: '1' });
-    } catch {
+      await this.command.verifySessionExtra(sessionId, DEVELOPMENT_SESSION_EXTRA);
+    } catch (error) {
+      if (!(error instanceof CliError) || error.code !== 'OUTCOME_UNKNOWN') throw error;
       throw new CliError('OUTCOME_UNKNOWN', '进入研发已提交，但阶段同步未确认；请查询当前任务，勿重复进入', {
         sessionId,
         messageId: text(response.messageId),
+        replyMessageId: text(response.replyMessageId),
         phase: 'DEVELOPMENT_SYNC',
         retryable: false,
       });

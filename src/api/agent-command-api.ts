@@ -5,6 +5,8 @@ import type { InputAttachment } from './upload-api.js';
 import { object } from '../contracts/value.js';
 import { AUTO_TEST_OPERATION_KEY, AUTO_TEST_SOURCE_KEY } from '../conversation/auto-test.js';
 import { CODE_REVIEW_OPERATION_KEY, CODE_REVIEW_SOURCE_KEY } from '../conversation/code-review.js';
+import { AgentQueryApi } from './agent-query-api.js';
+import { CliError } from '../output/exit-codes.js';
 
 export type ChatInput = {
   sessionId?: string;
@@ -135,6 +137,41 @@ export class AgentCommandApi {
     await this.client.call(`${PREFIX}/updateContentExtra`, input, true);
   }
   async sessionExtra(sessionId: string, extra: Record<string, string>): Promise<void> {
-    await this.client.call(`${PREFIX}/updateSessionExtra`, { sessionId, extra }, true);
+    let acknowledged = false;
+    try {
+      acknowledged =
+        (await this.client.call(`${PREFIX}/updateSessionExtra`, { sessionId, extra }, true)) === true;
+    } catch (error) {
+      // 超时可能发生在落库之后；只回读，不重发写请求。认证、业务拒绝和中断仍保留原错误。
+      if (!(error instanceof CliError) || error.code !== 'OUTCOME_UNKNOWN') throw error;
+    }
+    await this.verifySessionExtra(sessionId, extra, acknowledged);
+  }
+  async verifySessionExtra(
+    sessionId: string,
+    extra: Record<string, string>,
+    acknowledged?: boolean,
+  ): Promise<void> {
+    const details = { sessionId, phase: 'SESSION_EXTRA_SYNC', retryable: false, acknowledged };
+    let current: JsonObject;
+    try {
+      current = await new AgentQueryApi(this.client).extra(sessionId);
+    } catch (error) {
+      if (error instanceof CliError && ['AUTH_REQUIRED', 'INTERRUPTED'].includes(error.code)) throw error;
+      throw new CliError(
+        'OUTCOME_UNKNOWN',
+        '会话标记已提交，但回读未确认；请查询原会话，勿重发业务请求',
+        details,
+      );
+    }
+    const missingKeys = Object.keys(extra).filter(
+      (key) => !Object.hasOwn(current, key) || String(current[key]) !== extra[key],
+    );
+    // false 可能只是没有发生变更；以实际落库值确认幂等成功，不能仅凭接口返回 true 判定完成。
+    if (missingKeys.length)
+      throw new CliError('OUTCOME_UNKNOWN', '会话标记尚未同步；请查询当前会话确认，勿重发业务请求', {
+        ...details,
+        missingKeys,
+      });
   }
 }
