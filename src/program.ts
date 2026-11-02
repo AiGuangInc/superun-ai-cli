@@ -11,6 +11,7 @@ import { registerSite } from './commands/site/index.js';
 import { registerMarket } from './commands/market/index.js';
 import { registerPpt } from './commands/ppt/index.js';
 import { registerAgent } from './commands/agent/index.js';
+import { registerApp } from './commands/app/index.js';
 import { registerFreeQuota } from './commands/free-quota.js';
 import { registerChat } from './commands/chat/index.js';
 import { registerUpdate } from './commands/system/update.js';
@@ -58,6 +59,7 @@ export function createProgram(
   registerMarket(program, context);
   registerPpt(program, context);
   registerAgent(program, context);
+  registerApp(program, context);
   registerFreeQuota(program, context);
   registerChat(program, context);
   registerUpdate(program, context.output, hooks.update);

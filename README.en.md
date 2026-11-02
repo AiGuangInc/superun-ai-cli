@@ -106,6 +106,40 @@ superun-ai
 │   │   └── refine <sessionId> <interactionId>                    # Save answers and continue clarification without generating designs
 │   ├── create <sessionId>                                        # Submit the official creation entry, then inspect its wizard with chat state
 │   └── get <sessionId> <agentId>                                 # Verify an existing agent in the specified project without creating a runtime session
+├── app                                                           # App 专属咨询、适配、配置、云打包与安装交付
+│   ├── status <sessionId>                                        # 只读查询本平台 App 准备状态和后续动作
+│   ├── prepare <sessionId>                                       # 汇总上线、应用、账号、签名和设备的真实缺项
+│   ├── guidance <sessionId>                                      # 查看当前专家平台的账号与签名准备说明
+│   ├── consult                                                   # 在原项目中咨询 App 适配，继续咨询不进入研发
+│   │   ├── start <sessionId>                                     # 本轮研发完成后发起或复用适配咨询
+│   │   ├── status <sessionId> [consultId]                        # 查询本次咨询，按原线程等待
+│   │   └── send <sessionId> <consultId>                          # 把具体问题或修改意见续接到原咨询
+│   ├── plan                                                      # 展示实际咨询规划，确认后才进入适配执行
+│   │   ├── get <sessionId> <consultId>                           # 读取并记录当前向用户展示的真实规划
+│   │   ├── execute <sessionId> <consultId>                       # 确认当前规划后按官方 plan_execution 合同执行
+│   │   └── wait <sessionId>                                      # 等待本次适配执行，不重复咨询或交接
+│   ├── config                                                    # 只读确认或修改当前平台应用信息
+│   │   ├── get <sessionId>                                       # 展示当前名称、图标及本平台应用 ID 并询问如何处理
+│   │   └── set <sessionId>                                       # 仅保存本次提供的应用信息字段
+│   ├── signing                                                   # 配置首次安卓正式签名主体；体验包无需此项
+│   │   └── set <sessionId>                                       # 保存正式签名的主体信息
+│   ├── account                                                   # 由项目主人连接自己的开发者账号，不回显凭据
+│   │   └── connect <sessionId>                                   # 从原始 .p8 或开发者级 Service Account 文件读取并验证账号
+│   ├── devices                                                   # 读取、登记与选择当前平台真实测试手机
+│   │   ├── list <sessionId>                                      # 读取账号下可用的测试手机与匹配应用
+│   │   ├── register <sessionId>                                  # 按用户提供的真实 UDID 登记测试手机
+│   │   └── select <sessionId>                                    # 保存用户明确选择的真实应用与测试手机 ID
+│   ├── build <sessionId>                                         # 适配并上线后提交本平台云构建，默认手机体验包
+│   ├── wait <sessionId> [taskId]                                 # 查询并等待原打包任务，不重复提交
+│   ├── install <sessionId> <taskId>                              # 交付本次真实安装页、二维码和可读取的包文件
+│   ├── history                                                   # 只读查看当前项目和平台的最近历史包，不重新打包
+│   │   ├── list <sessionId>                                      # 查看实际返回范围内的历史记录
+│   │   └── get <sessionId> <taskId>                              # 读取当前授权列表中指定包的详情
+│   ├── filing                                                    # 查询实际备案材料及其来源正式版本
+│   │   └── get <sessionId>                                       # 展示当前平台可用的备案资料和未就绪原因
+│   └── upload                                                    # 查询或主动重试已成功商店包的第三方上传
+│       ├── status <sessionId> <taskId>                           # 查看原包实际上传状态
+│       └── retry <sessionId> <taskId>                            # 用户要求后重试原成功包上传，不重新构建
 ├── free-quota [sessionId]                                        # Query signed-in user and optional project free quotas
 ├── chat                                                          # Conversational creation
 │   ├── create                                                    # Create a project and send a request
