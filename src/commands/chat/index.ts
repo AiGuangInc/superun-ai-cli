@@ -18,6 +18,7 @@ import { registerAgentFriendly } from './agent-friendly.js';
 import { registerInteraction } from './interaction.js';
 import { registerPlugin } from './plugin.js';
 import { registerPublish } from './publish.js';
+import { registerAutoMode } from './auto-mode.js';
 
 export function registerChat(program: Command, context: CommandContext): void {
   const chat = program.command('chat').description('对话创作');
@@ -38,4 +39,5 @@ export function registerChat(program: Command, context: CommandContext): void {
   registerInteraction(chat, context);
   registerPlugin(chat, context);
   registerPublish(chat, context);
+  registerAutoMode(chat, context);
 }

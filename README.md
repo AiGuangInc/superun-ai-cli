@@ -171,12 +171,21 @@ superun-ai
 │   │   ├── status <sessionId> <pluginId>                         # 查询插件状态
 │   │   ├── enable <sessionId> <pluginId>                         # 启用插件
 │   │   └── disable <sessionId> <pluginId>                        # 禁用插件
-│   └── publish                                                   # 发布应用和管理站点状态
-│       ├── status <sessionId>                                    # 查询发布版本与部署进度
-│       ├── start <sessionId> <encryptedId>                       # 通过指定发布记录发布当前主线，不支持选择历史源码
-│       ├── prepare <sessionId>                                   # 核对当前主线待发布记录与费用估算；状态查询可能更新活动和超时记录
-│       ├── deploy <sessionId> <encryptedId>                      # 按准备回执发布当前研发主线；成功会公开站点，写前复核目标与费用
-│       └── visibility <sessionId> <visibility>                   # 设置站点上线或下线状态
+│   ├── publish                                                   # 发布应用和管理站点状态
+│   │   ├── status <sessionId>                                    # 查询发布版本与部署进度
+│   │   ├── start <sessionId> <encryptedId>                       # 通过指定发布记录发布当前主线，不支持选择历史源码
+│   │   ├── prepare <sessionId>                                   # 核对当前主线待发布记录与费用估算；状态查询可能更新活动和超时记录
+│   │   ├── deploy <sessionId> <encryptedId>                      # 按准备回执发布当前研发主线；成功会公开站点，写前复核目标与费用
+│   │   └── visibility <sessionId> <visibility>                   # 设置站点上线或下线状态
+│   └── auto-mode                                                 # 全托管状态、真实对话、恢复、收费和完成处理
+│       ├── status <sessionId>                                    # 只读查询本次托管状态与对话
+│       ├── report <sessionId>                                    # 只读交付本次说明、预览和四项统计
+│       ├── history <sessionId>                                   # 只读重建本次托管历程
+│       ├── wait <sessionId>                                      # 只读观察整次托管，持续交付对话和进度，不推进普通阶段
+│       ├── retry <sessionId>                                     # 继续原来已暂停的全托管任务
+│       ├── quote <sessionId>                                     # 读取当前真实费用，准备现有完成托管入口，不购买
+│       ├── complete <sessionId>                                  # 正常收费并完成托管，回读成功后才开放后续创作
+│       └── require-completed <sessionId>                         # 新专家团后续业务前只读核对收费和完成状态，不自动扣款
 ├── update                                                        # 检查并将本机 CLI 更新到最新版本
 └── version                                                       # 显示本地版本、输出协议及能力声明
 ```
@@ -743,6 +752,14 @@ CLI 每次上传前读取 Glow 同源的服务端格式和大小限制。当前�
 所有文件（包括很小的 Markdown/TXT）都先上传、审核，再按 Glow 的 `name/url/mediaType/meta` 结构发送；PDF、Word、Excel/CSV 按同源服务预处理，保留解析元数据。不会把文件正文或 Base64 放入附件 `content`。上传过程写入 stderr，只有全部附件就绪后才发出一次创作消息；`--no-wait` 也会完成上传、审核和预处理。图片尺寸和视频时长由随包依赖在本机读取，无需安装 FFmpeg。不要上传 `.env` 或 CLI 凭据等敏感文件。
 
 `session get --include-attachments` 返回可见附件清单；`chat state --include-file <name>` 读取指定可见附件正文。系统文件和密钥配置文件不会作为结果附件返回。
+
+## WorkBuddy 全托管接入
+
+新专家团使用 `chat create --auto-mode --no-wait` 直接创建全托管，按当前服务端资格与运行时处理。该参数与演示、跳过问卷和高级设计师创建参数互斥；不加参数的原创建流程保持原样。
+
+`chat auto-mode status/wait/report/history` 只读已有任务；等待返回本次对话、实际进度、运行标识及游标。本地等待窗口结束不重复创建，下一次使用 `wait --cursor <原stdout.json>` 继续同一项目，避免重复展示旧回复。完整历程使用本次回执的运行标识与起止时间。
+
+整次完成后交付真实 id--预览、原始说明和四项统计。`quote` 只准备当前费用；用户已看到实际金额及项目账户并选择完成后，`complete --run-id <id>` 执行原服务端收费和解锁合同，试用购买还需匹配当前最小单位金额及付款授权参数。写结果未知先查询，未成功不开放后续创作。`require-completed` 为新专家团后续动作提供只读检查，不改变旧业务命令的默认行为。
 
 ## 输出与错误
 

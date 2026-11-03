@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { object, text } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
 import { requestChannel } from '../../config/request-channel.js';
+import { COMMAND_NAME } from '../../config/constants.js';
+import { AutoModeApi, managedEntryNotice } from '../../api/auto-mode-api.js';
 import { prepareUploadFiles } from '../../api/upload-files.js';
 import { uploadAttachment } from '../../api/upload-api.js';
 import type { InputAttachment } from '../../api/upload-api.js';
@@ -45,6 +47,20 @@ export async function sendMessage(
   check?: 'test' | 'review',
 ): Promise<void> {
   const options = object(command.opts());
+  const autoMode = options.autoMode === true;
+  if (
+    autoMode &&
+    (sessionId ||
+      check ||
+      options.wait !== false ||
+      options.skipQuestion ||
+      options.slides ||
+      options.advanced)
+  )
+    throw new CliError(
+      'INVALID_ARGUMENT',
+      '全托管仅支持 create --auto-mode --no-wait，不能与演示、跳过问卷或高级设计师参数组合',
+    );
   const skipQuestion = !sessionId && options.skipQuestion === true;
   if (options.advanced === true && !skipQuestion)
     throw new CliError('INVALID_ARGUMENT', '--advanced 只能与 create --skip-question 一起使用');
@@ -91,6 +107,7 @@ export async function sendMessage(
       check ? `${label}范围不能为空；省略 --message 可检查刚才完成的内容` : '需求文本不能为空',
     );
   const service = await runtime(context, command);
+  const managedCreation = autoMode ? await new AutoModeApi(service.client).creation() : undefined;
   const preparedFiles = await prepareUploadFiles(service, files);
   const previous =
     sessionId && (options.wait !== false || checkKind) ? await service.load(sessionId) : undefined;
@@ -136,6 +153,7 @@ export async function sendMessage(
       ...(attachments.length ? { attachments } : {}),
       model: text(options.model),
       workspaceId: text(options.workspaceId),
+      ...(autoMode ? { autoMode: 1 as const } : {}),
       ...(operation
         ? {
             roundExtra: {
@@ -152,7 +170,7 @@ export async function sendMessage(
         ? {
             sessionExtra: {
               // 新建项目直接进入 Stage 1（构想阶段）。
-              agentRuntime: 'glow',
+              agentRuntime: managedCreation?.agentRuntime ?? 'glow',
               hasSlidesIntent: options.slides === true ? '1' : '0',
               hasClarifiedPrd: '0',
               generatedByBranch: '1',
@@ -170,6 +188,45 @@ export async function sendMessage(
     });
   });
   const created = object(response);
+  if (autoMode) {
+    const id = text(created.sessionId)!;
+    let managed;
+    try {
+      managed = await new AutoModeApi(service.client).status(id);
+    } catch {
+      // 创建已经接纳；读取失败不能诱导用户重复创建或领取试用。
+    }
+    context.output.write({
+      state: 'ACCEPTED',
+      sessionId: id,
+      messageId: created.messageId,
+      replyMessageId: created.replyMessageId,
+      managed,
+      entryNotice: managedEntryNotice(managed?.billingMode),
+      nextActions: [
+        {
+          action: 'WAIT_AUTO_MODE',
+          requiresUserInput: false,
+          command: [
+            COMMAND_NAME,
+            '--endpoint',
+            service.client.config.endpoint,
+            '--locale',
+            service.client.config.locale,
+            'chat',
+            'auto-mode',
+            'wait',
+            ...(text(created.replyMessageId) ? ['--entry-message-id', String(created.replyMessageId)] : []),
+            '--',
+            id,
+          ],
+          instruction:
+            '全托管已接纳，持续展示真实对话和进度，等待同一项目整次托管结束；不得调用普通 chat wait 或手工选择方案、批准规划、勾选功能、重复发布。状态尚未同步时先查询，不重复创建。',
+        },
+      ],
+    });
+    return;
+  }
   if (
     checkPreflight &&
     ((created.sessionId !== undefined && created.sessionId !== sessionId) ||
