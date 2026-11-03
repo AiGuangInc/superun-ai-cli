@@ -19,6 +19,7 @@ export function registerVersion(program: Command, output: OutputWriter): void {
           'current-mainline-publish-v2',
           'security-scan-entry-v1',
           'app-publishing-flow-v1',
+          'auto-mode-flow-v1',
         ],
       }),
     );

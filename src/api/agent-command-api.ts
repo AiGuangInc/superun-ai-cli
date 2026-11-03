@@ -18,6 +18,7 @@ export type ChatInput = {
   workspaceId?: string;
   mode?: number;
   framework?: number;
+  autoMode?: 1;
   sessionExtra?: Record<string, string>;
   roundExtra?: Record<string, string>;
   businessParams?: JsonObject;
