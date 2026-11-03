@@ -190,7 +190,7 @@ async function observe(
                 requiresUserInput: true,
                 options: CONTINUATION,
                 instruction:
-                  '先再次交付本项目当前真实 id--预览和全部端入口，再用原生单选按顺序展示“1. 推荐更多功能／2. 手动输入需求／3. 上线运营”。不要增加是否已有需求判断。后续使用既有研发、QA、发布、高级设计师和 Agent 友好命令及实际 nextActions.when；每次业务写入前先 require-completed 核对同一运行。',
+                  '先再次交付本项目当前真实 id--预览和全部端入口，再用原生单选按顺序展示“推荐更多功能／手动输入需求／上线运营”。选项标签只填名称，不手工添加序号，编号由控件显示。不要增加是否已有需求判断。后续使用既有研发、QA、发布、高级设计师和 Agent 友好命令及实际 nextActions.when；每次业务写入前先 require-completed 核对同一运行。',
               },
             ]
           : [];
