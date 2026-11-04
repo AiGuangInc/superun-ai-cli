@@ -8,7 +8,7 @@ import { PluginApi } from './api/plugin-api.js';
 import { PublishApi } from './api/publish-api.js';
 import { PreviewVersionApi } from './api/preview-version-api.js';
 import { SecurityReviewApi } from './api/security-review-api.js';
-import { inspectSecurityReview } from './conversation/security-review.js';
+import { inspectSecurityReview, roundSecurityReviewId } from './conversation/security-review.js';
 import type { ApiClient } from './transport/api-client.js';
 import type { OutputWriter } from './output/writer.js';
 import type { NodeRound, SessionView } from './contracts/node-wire.js';
@@ -52,6 +52,7 @@ import type { WaitOptions } from './conversation/session-waiter.js';
 import { CliError } from './output/exit-codes.js';
 import { dispatchReply } from './interactions/handlers/index.js';
 import { TaskProgressReader } from './conversation/task-progress-reader.js';
+import { ExecutionActivityReader } from './conversation/execution-activity-reader.js';
 import { submittedTaskProgress, taskProgressSnapshot } from './conversation/task-progress.js';
 import { autoTestContext, AUTO_TEST_SPEC } from './conversation/auto-test.js';
 import { projectText } from './conversation/text-projector.js';
@@ -89,6 +90,7 @@ export class CreationRuntime {
   readonly security: SecurityReviewApi;
   readonly waiter: SessionWaiter;
   readonly taskProgress: TaskProgressReader;
+  readonly executionActivity: ExecutionActivityReader;
   readonly autoTestTasks: AutoTestTasks;
   private demoSnapshotSync?: { key: string; startedAt: number };
   constructor(
@@ -107,12 +109,14 @@ export class CreationRuntime {
     this.previewVersions = new PreviewVersionApi(client);
     this.security = new SecurityReviewApi(client);
     this.taskProgress = new TaskProgressReader(client);
+    this.executionActivity = new ExecutionActivityReader(client, this.taskProgress);
     this.autoTestTasks = new AutoTestTasks(client);
     this.waiter = new SessionWaiter({
       conversation: this.conversation,
       command: this.command,
       load: (id) => this.load(id),
       inspect: (view, styleTarget, reviewId) => this.inspect(view, styleTarget, reviewId),
+      onExecution: (result) => this.output.execution(result),
       onProgress: (result) => {
         // 静默整理清单时不输出内部进度；真实业务提问仍照常返回。
         if (!result.stylePlanning || (result.interactions.length && !pendingStylePlanApproval(result)))
@@ -151,6 +155,29 @@ export class CreationRuntime {
     );
   }
   async inspect(
+    view: SessionView,
+    styleTarget?: StyleWaitTarget,
+    reviewId?: string,
+  ): Promise<CreationResult> {
+    const result = await this.inspectResult(view, styleTarget, reviewId);
+    // 沿用初始演示与规划的静默衔接，不额外暴露内部执行过程。
+    if (result.stylePlanning && (!result.interactions.length || pendingStylePlanApproval(result)))
+      return result;
+    return {
+      ...result,
+      executionActivity: await this.executionActivity.read(
+        view,
+        result.securityReview
+          ? {
+              rounds: (view.pipeline.render?.rounds ?? []).filter(
+                (round) => roundSecurityReviewId(view, round) === result.securityReview?.reviewId,
+              ),
+            }
+          : {},
+      ),
+    };
+  }
+  private async inspectResult(
     view: SessionView,
     styleTarget?: StyleWaitTarget,
     reviewId?: string,
@@ -580,6 +607,7 @@ export class CreationRuntime {
     // QA 完成/修复仍保留报告引导，同时交付该轮真实预览的全部端入口。
     if (completed.development?.previewUrl && (completed.autoTest || completed.codeReview))
       for (const action of nextActions) action.instruction += ` ${routingInstruction('preview')}`;
+    this.output.execution(completed);
     return { ...completed, nextActions };
   }
   async wait(sessionId: string, options: WaitOptions): Promise<CreationResult> {

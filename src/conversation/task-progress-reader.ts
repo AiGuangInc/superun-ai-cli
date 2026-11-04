@@ -90,6 +90,11 @@ export class TaskProgressReader {
     );
   }
 
+  /** 过程展示复用同一拍的发现结果，不另外轮询任务清单。 */
+  subagentTasks(sessionId: string) {
+    return this.discovery(sessionId);
+  }
+
   async hasPendingSubagentWork(sessionId: string): Promise<boolean> {
     try {
       const discovery = await this.discovery(sessionId);

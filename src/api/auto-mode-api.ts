@@ -212,6 +212,7 @@ export class AutoModeApi {
           previewVersionId: 0,
           limit: 30,
           timelineVariant: 'work_block',
+          toolActivityVersion: 2,
           withAttachment: false,
           lanes: {
             chain: { ...(cursor ? { lastMessageId: cursor } : {}), hasMore: true },

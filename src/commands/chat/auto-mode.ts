@@ -209,6 +209,11 @@ async function observe(
     entryNotice: managedEntryNotice(managed.billingMode),
     messages,
     progress: projected.progress,
+    executionActivity: await service.executionActivity.read(view, {
+      rounds: visibleRounds,
+      runId: scope.runId,
+      anchorUserMessageId: scope.entryMessageId,
+    }),
     taskProgress,
     delivery: { previewUrl, routing, report: report?.content, reportPending: done && !report },
     metrics: metrics(snapshot ?? managed),
@@ -263,7 +268,9 @@ export function registerAutoMode(chat: Command, context: CommandContext) {
             '完整历程需要本次 run-id 和起止时间，结束后请使用原托管回执，不能混入后续创作',
           );
       }
-      context.output.write(await observe(service, sessionId, scope, undefined, name === 'history'));
+      const result = await observe(service, sessionId, scope, undefined, name === 'history');
+      context.output.execution(result);
+      context.output.write(result);
     });
   }
   scopeOptions(
@@ -308,6 +315,7 @@ export function registerAutoMode(chat: Command, context: CommandContext) {
           shown.set(message.id, revision);
           return true;
         });
+        context.output.execution(value, shown);
         if (messages.length)
           context.output.log(
             JSON.stringify({

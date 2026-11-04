@@ -476,6 +476,7 @@ export class AppService {
       messages,
       thread,
       notice: '按顺序展示本次真实咨询内容；只有规划确认后才执行适配。继续咨询沿用同一个线程。',
+      executionActivity: await this.runtime.executionActivity.read(view, { rounds: [round], consultId }),
     });
     if (['FAILED', 'INTERRUPTED'].includes(state) && !thread.closed)
       return this.question(

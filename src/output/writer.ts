@@ -4,6 +4,7 @@ import type { CreationResult } from '../contracts/cli-output.js';
 import { CliError, EXIT_CODES } from './exit-codes.js';
 import { TaskReminder } from './task-reminder.js';
 import { creditFailureDetails } from '../conversation/insufficient-credits.js';
+import { executionHash, executionMessages } from '../conversation/execution-activity.js';
 
 const SENSITIVE_KEY =
   /^(?:pat|token|access[-_]?token|private[-_]?token|gatewayToken|authorization|password|secret|secrets|secretValues|apiKey|api_key|rowKey|authToken)$/i;
@@ -53,6 +54,26 @@ export class OutputWriter {
     if (!this.written && !this.disposed) this.taskReminder.start();
   }
 
+  /** 新过程复用原消息事件，避免依赖进度卡的变化及包装脚本的过滤规则。 */
+  execution(data: Pick<CreationResult, 'sessionId' | 'executionActivity'>, shown = this.shownMessages): void {
+    const messages = executionMessages(data.executionActivity).filter((message) => {
+      const revision = executionHash(message.text);
+      if (shown.get(message.id) === revision) return false;
+      shown.set(message.id, revision);
+      return true;
+    });
+    if (!messages.length || this.disposed) return;
+    this.stderr(
+      `${this.serialize({
+        schemaVersion: SCHEMA_VERSION,
+        event: 'conversation_message',
+        data: { sessionId: data.sessionId, messages },
+        instruction:
+          '展示这些执行过程消息及本组工具次数；同一消息 ID 更新正文，不重复追加。继续等待原进程，过程消息不表示整体完成，不触发后置菜单，不重复提交任务。',
+      })}\n`,
+    );
+  }
+
   /** stderr 输出过程事件，stdout 仍只输出一次最终结果。 */
   progress(
     data: Pick<CreationResult, 'sessionId' | 'messageId' | 'taskProgress'> &
@@ -94,7 +115,7 @@ export class OutputWriter {
           ? '展示本次安全扫描的 taskProgress.markdown，按同一 id 更新检查列表和阶段状态，不展示历史扫描或内部修复指令。评估和修复自动推进，无需用户确认。继续等待本次报告，不把检查完成或单条消息结束当作整个流程结束，不重复启动任务。'
           : checkName
             ? `展示 data.taskProgress.markdown 中实际任务进度，不把功能步骤数当作${checkName}的问题数或通过数。及时展示 conversation_message 中发现的问题和修复说明。继续等待当前命令的最终结果，不重复提交任务、不展示操作菜单。`
-            : '每次查询都展示 data.taskProgress.markdown 中当前开发中的功能及步骤，即使 changed 为 false 也展示；不要从历史消息补回已完成的功能或旧步骤。支持原位更新时按卡片 id 更新，否则每次展示当前快照。不追加执行详情或工具次数。这是过程更新，继续等待当前命令的最终结果，不代表整个任务结束，不重复提交任务。',
+            : '每次查询都展示 data.taskProgress.markdown 中当前开发中的功能及步骤，即使 changed 为 false 也展示；不要从历史消息补回已完成的功能或旧步骤。支持原位更新时按卡片 id 更新，否则每次展示当前快照。执行过程和工具次数由 conversation_message 单独展示，不往功能卡重复追加。这是过程更新，继续等待当前命令的最终结果，不代表整个任务结束，不重复提交任务。',
       })}\n`,
     );
   }
