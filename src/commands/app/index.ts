@@ -83,11 +83,16 @@ export function registerApp(program: Command, context: CommandContext) {
       const appService = await service(sid, cmd);
       const result = cmd.opts().wait
         ? await pollOperation(
-            () => appService.consultation(id),
+            async () => {
+              const value = await appService.consultation(id);
+              context.output.execution(value);
+              return value;
+            },
             (result) => !['RUNNING', 'QUEUED', 'ACCEPTED'].includes(result.state),
             { timeout: limit(cmd.opts().timeout, 600), signal: context.signal },
           )
         : await appService.consultation(id);
+      context.output.execution(result);
       context.output.write(result);
     });
   input(

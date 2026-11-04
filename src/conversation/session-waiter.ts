@@ -102,6 +102,8 @@ export class SessionWaiter {
       ) => Promise<CreationResult>;
       /** 只展示过程，不结束等待，也不参与整体状态判断。 */
       onProgress?: (result: CreationResult) => void;
+      /** 独立展示执行过程，最后一拍与本地超时也不能漏掉。 */
+      onExecution?: (result: CreationResult) => void;
       signal?: AbortSignal;
     },
   ) {}
@@ -198,6 +200,7 @@ export class SessionWaiter {
         result.taskProgress.changed = result.taskProgress.revision !== progressRevision;
         result.cursor = { ...result.cursor, progressRevision: result.taskProgress.revision };
       }
+      this.dependencies.onExecution?.(result);
       // 单个方案可预览就交还进度，调用方按 QUERY_STYLES 继续查询，不停止远端生成。
       if (!['RUNNING', 'QUEUED'].includes(result.state) || hasReadyStylePreview(result, options.styleTarget))
         return {

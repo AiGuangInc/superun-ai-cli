@@ -51,6 +51,7 @@ export class AppApi {
       recentlySchema,
       await this.client.call('/web-api/conversation-v2/consult-detail-recently', {
         sessionId,
+        toolActivityVersion: 2,
         previewVersionId: 0,
         withAttachment: false,
         withAllAttachmentContent: false,
@@ -64,6 +65,7 @@ export class AppApi {
         sessionId,
         previewVersionId: 0,
         timelineVariant: 'work_block',
+        toolActivityVersion: 2,
         lanes: {
           chain: { hasMore: true, ...(beforeMessageId ? { lastMessageId: beforeMessageId } : {}) },
           consultIndex: { hasMore: false },

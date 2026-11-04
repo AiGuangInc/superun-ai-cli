@@ -1,5 +1,6 @@
 /** 面向终端、Agent 和 MCP 调用方的稳定输出协议。@author xiuyu.yi */
 import type { SecurityReviewResult } from './security-review.js';
+import type { ExecutionActivity } from '../conversation/execution-activity.js';
 export type CreationState =
   | 'ACCEPTED'
   | 'QUEUED'
@@ -173,6 +174,8 @@ export type CreationResult = {
   messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
   progress: Array<{ id: string; text: string; status?: string }>;
   taskProgress?: TaskProgressSnapshot;
+  /** 执行过程事实快照；展示继续复用 conversation_message，不参与业务状态判断。 */
+  executionActivity?: ExecutionActivity;
   /** 整轮完成后附加 Glow 同源的工具调用次数，原始完成说明及后续引导保持不变。 */
   toolUsage?: { toolCount?: number; complete: boolean; markdown: string };
   interactions: Array<Interaction>;

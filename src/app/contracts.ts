@@ -1,6 +1,7 @@
 /** App 专属数据合同，不改变通用创作输出。@author xiuyu.yi */
 import { z } from 'zod';
 import type { NextAction, CreationState } from '../contracts/cli-output.js';
+import type { ExecutionActivity } from '../conversation/execution-activity.js';
 
 export const platformSchema = z.enum(['android', 'harmony', 'ios']);
 export type AppPlatform = z.infer<typeof platformSchema>;
@@ -100,6 +101,7 @@ export type AppQuestion = {
   options: Array<{ label: string; description: string; action: string }>;
 };
 export type AppResult = {
+  executionActivity?: ExecutionActivity;
   state: CreationState | 'READY';
   sessionId: string;
   platform: AppPlatform;
