@@ -53,3 +53,18 @@ export function executionMessages(activity?: ExecutionActivity): CreationResult[
     ) ?? []
   );
 }
+
+/** 快照也通过原消息字段交付过程，完成说明与待答问题仍放在最后。 */
+export function withExecutionMessages(result: CreationResult): CreationResult {
+  const execution = executionMessages(result.executionActivity);
+  if (!execution.length) return result;
+  const lastAssistant = result.messages.map((message) => message.role).lastIndexOf('assistant');
+  const position =
+    ['ACCEPTED', 'QUEUED', 'RUNNING'].includes(result.state) || lastAssistant < 0
+      ? result.messages.length
+      : lastAssistant;
+  return {
+    ...result,
+    messages: [...result.messages.slice(0, position), ...execution, ...result.messages.slice(position)],
+  };
+}

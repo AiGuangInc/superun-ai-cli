@@ -418,6 +418,8 @@ superun-ai chat stop <sessionId>
 
 写命令支持 `--no-wait`：请求被接受后立即返回。`chat wait` 等待到需要输入、需要选择或任务结束；达到本地等待时限后返回当前状态和 `waitTimedOut: true`，可以继续查询。按 Ctrl+C 只结束本地等待；远端停止需要显式执行 `chat stop`。
 
+执行过程正文和本组工具次数同时通过 stderr 的 `conversation_message.data.messages` 与 stdout 结果的 `data.messages` 返回，二者沿用相同的消息 ID。接入方按项目与消息 ID 展示新增正文、更新变化内容，再按业务状态续等；即使只读取每段等待结束后的 JSON，也能收到最新过程。完成说明和待答问题仍保留在消息末尾，过程消息不改变业务状态、交互或后续动作。
+
 `chat create --skip-question` 在创建请求返回 `sessionId` 和用户消息 `replyMessageId` 后，立即以该消息为锚点生成首个方案，不等待需求问卷回复。默认生成免费方案（`index: 0`）。加上 `--advanced` 则直接委托高级设计师生成方案（`index: 1`）；使用前先运行 `free-quota` 查询当前登录用户额度，并按高级设计师用户额度项的 `expectedCharge` 展示本次预计免费或付费。若额度项缺失或查询失败，不继续高级设计师委托。额度可能在查询后变化，提交后的实际状态以服务端 `tokenFree` 回执为准，预计耗时 30 分钟。`--advanced` 只适用于 `create --skip-question`。两种方式都能搭配 `--no-wait`，它只控制并行方案请求提交后的本地等待；请求结果不确定时先查询返回的项目和风格锚点，不要再次创建项目。
 
 聊天任务的响应还包含 `taskProgress`。当前用户已确认规划的研发阶段，`tasks` 优先展示功能和内部步骤：从 Glow 同源的 `internal/features.json`、`internal/todos.json` 独立读取，按真实 `featureId` 关联；`steps` 保留步骤原文、顺序和 `pending / in_progress / completed` 状态，`stepProgress` 返回实际完成数和总数。与 Glow 的开发中列表一致，只展示 `checked=true` 且未完成的功能，执行中优先、同状态保持服务端顺序。历史已完成项及其步骤不进入当前进度；已选但等待中的功能只显示标题和状态，不展开旧 Todo。未关联功能的旧版 Todo 不混入其他功能；执行中尚无步骤时明确提示，不显示虚构的 0/0。功能进度卡不重复展示主任务、子任务表格或工具次数，执行过程通过独立消息展示。整轮状态为 `COMPLETED` 后，保持原来的完成回复：原样展示 `messages` 中的完成说明，保留预览链接、“继续创作 / 上线运营”等原有引导，不用步骤表或结束卡片替代。只在完成说明后补充 `toolUsage.markdown`（如“已生成：10 次工具调用”），次数与 Glow 完成气泡同源，读取当前轮 `activity.summary.toolCount`，不累加子任务次数，也不拆分读取、修改或部署次数；统计缺失时明确提示不可用。
@@ -763,7 +765,7 @@ CLI 每次上传前读取 Glow 同源的服务端格式和大小限制。当前�
 
 ## 输出与错误
 
-消息观察结果新增 `executionActivity`，保存主、子 Agent 的安全执行过程及工具记录。过程小字和本组工具次数通过既有 stderr `conversation_message.data.messages` 输出，继续使用 `{id, role, text}`；同一过程分组保持相同 ID，正文或次数变化时更新，未变化时不重复输出。原专家团按原消息事件消费，无需读取新字段。普通等待、全托管、App 咨询及 `chat state` 观察沿用原入口；过程记录不进入 stdout 的业务 `messages`，不改变功能步骤、最终回复、完成统计或结束判断。`executionActivity.complete` 仅表示过程读取完整性。全托管续等沿原游标；普通命令跨进程再次输出的同 ID 快照由宿主按既有规则更新。实际宿主展示仍需分别验收。
+消息观察结果新增 `executionActivity`，保存主、子 Agent 的安全执行过程及工具记录。过程小字和本组工具次数通过既有 stderr `conversation_message.data.messages` 输出，继续使用 `{id, role, text}`；同一过程分组保持相同 ID，正文或次数变化时更新，未变化时不重复输出。原专家团按原消息事件消费，无需读取新字段。普通等待、全托管、App 咨询及 `chat state` 观察沿用原入口；过程正文同步进入 stdout 的 `data.messages`，保留原业务消息的相对顺序，不改变功能步骤、最终回复、完成统计或结束判断。`executionActivity.complete` 仅表示过程读取完整性。全托管续等沿原游标；普通命令跨进程再次输出的同 ID 快照由宿主按既有规则更新。实际宿主展示仍需分别验收。
 
 业务命令在 stdout 输出一条 JSON，诊断和更新进度写入 stderr。
 

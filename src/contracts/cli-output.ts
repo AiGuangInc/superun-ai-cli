@@ -174,7 +174,7 @@ export type CreationResult = {
   messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>;
   progress: Array<{ id: string; text: string; status?: string }>;
   taskProgress?: TaskProgressSnapshot;
-  /** 执行过程事实快照；展示继续复用 conversation_message，不参与业务状态判断。 */
+  /** 执行过程事实快照；对外正文复用 messages 与 conversation_message，不参与业务状态判断。 */
   executionActivity?: ExecutionActivity;
   /** 整轮完成后附加 Glow 同源的工具调用次数，原始完成说明及后续引导保持不变。 */
   toolUsage?: { toolCount?: number; complete: boolean; markdown: string };
