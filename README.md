@@ -765,7 +765,7 @@ CLI 每次上传前读取 Glow 同源的服务端格式和大小限制。当前�
 
 ## 输出与错误
 
-消息观察结果新增 `executionActivity`，保存主、子 Agent 的安全执行过程及工具记录。过程小字和本组工具次数通过既有 stderr `conversation_message.data.messages` 输出，继续使用 `{id, role, text}`；同一过程分组保持相同 ID，正文或次数变化时更新，未变化时不重复输出。原专家团按原消息事件消费，无需读取新字段。普通等待、全托管、App 咨询及 `chat state` 观察沿用原入口；过程记录不进入 stdout 的业务 `messages`，不改变功能步骤、最终回复、完成统计或结束判断。`executionActivity.complete` 仅表示过程读取完整性。全托管续等沿原游标；普通命令跨进程再次输出的同 ID 快照由宿主按既有规则更新。实际宿主展示仍需分别验收。
+消息观察结果新增 `executionActivity`，保存主、子 Agent 的安全执行过程及工具记录。过程小字和本组工具次数通过既有 stderr `conversation_message.data.messages` 输出，继续使用 `{id, role, text}`；同一过程分组保持相同 ID，正文或次数变化时更新，未变化时不重复输出。原专家团按原消息事件消费，无需读取新字段。普通等待、全托管、App 咨询及 `chat state` 观察沿用原入口；过程正文同步进入 stdout 的 `data.messages`，保留原业务消息的相对顺序，不改变功能步骤、最终回复、完成统计或结束判断。`executionActivity.complete` 仅表示过程读取完整性。全托管续等沿原游标；普通命令跨进程再次输出的同 ID 快照由宿主按既有规则更新。实际宿主展示仍需分别验收。
 
 业务命令在 stdout 输出一条 JSON，诊断和更新进度写入 stderr。
 
