@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import { PACKAGE_NAME } from '../config/constants.js';
 import { requestChannel } from '../config/request-channel.js';
+import { assertProjectWritable } from '../api/project-mode.js';
+import { object, text } from '../contracts/value.js';
 import { HttpClient } from './http-client.js';
 import type { HttpResponse } from './http-client.js';
 
@@ -29,6 +31,10 @@ export class ApiClient {
       native?: boolean;
     } = {},
   ): Promise<HttpResponse> {
+    if (options.write) {
+      const sessionId = options.sessionId ?? text(object(body).sessionId);
+      if (sessionId) await assertProjectWritable(this, sessionId);
+    }
     return this.http.request({
       url: `${this.config.endpoint}${path}`,
       method: options.method ?? 'POST',

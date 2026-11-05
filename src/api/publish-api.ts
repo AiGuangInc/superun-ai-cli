@@ -1,4 +1,5 @@
 /** 发布记录查询和站点公开状态管理。@author xiuyu.yi */
+import { assertProjectWritable } from './project-mode.js';
 import type { ApiClient } from '../transport/api-client.js';
 import { object } from '../contracts/value.js';
 import type { JsonObject } from '../contracts/value.js';
@@ -8,6 +9,8 @@ export class PublishApi {
     return this.client.call('/api/uxa-center/agent/AgentCommand/prePublish', { sessionId });
   }
   async status(sessionId: string): Promise<JsonObject> {
+    // 查询发布记录会刷新云服务活动时间，并可能把超时的部署标记为失败。
+    await assertProjectWritable(this.client, sessionId);
     return object(
       await this.client.call('/api/uxa-center/agent/AgentQuery/queryPublishLogInfo', { sessionId }),
     );

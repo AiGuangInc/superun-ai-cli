@@ -5,6 +5,7 @@ import type { CreationResult } from '../contracts/cli-output.js';
 import type { ConversationApi } from '../api/conversation-api.js';
 import type { AgentCommandApi } from '../api/agent-command-api.js';
 import { currentRound, roundMessage } from './round-selector.js';
+import { enabled } from '../contracts/value.js';
 import { pendingAutomaticTools } from '../auto-tools/registry.js';
 import { replyReadLogs } from '../auto-tools/read-logs.js';
 import { CliError } from '../output/exit-codes.js';
@@ -170,7 +171,8 @@ export class SessionWaiter {
           sessionId,
           messageId: target,
         });
-      for (const tool of pendingAutomaticTools(view)) {
+      const automaticTools = enabled(view.extra.autoMode) ? [] : pendingAutomaticTools(view);
+      for (const tool of automaticTools) {
         if (!replied.has(tool.key) && pendingAutomaticTools(view).some((active) => active.key === tool.key)) {
           await replyReadLogs(this.dependencies.command, sessionId, tool.toolId);
           replied.add(tool.key);
