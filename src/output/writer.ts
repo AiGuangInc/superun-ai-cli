@@ -4,7 +4,11 @@ import type { CreationResult } from '../contracts/cli-output.js';
 import { CliError, EXIT_CODES } from './exit-codes.js';
 import { TaskReminder } from './task-reminder.js';
 import { creditFailureDetails } from '../conversation/insufficient-credits.js';
-import { executionHash, executionMessages } from '../conversation/execution-activity.js';
+import {
+  executionHash,
+  executionMessages,
+  withExecutionMessages,
+} from '../conversation/execution-activity.js';
 
 const SENSITIVE_KEY =
   /^(?:pat|token|access[-_]?token|private[-_]?token|gatewayToken|authorization|password|secret|secrets|secretValues|apiKey|api_key|rowKey|authToken)$/i;
@@ -121,7 +125,13 @@ export class OutputWriter {
   }
 
   write(data: unknown): void {
-    this.emit({ schemaVersion: SCHEMA_VERSION, ok: true, data });
+    const result = data as CreationResult | undefined;
+    this.emit({
+      schemaVersion: SCHEMA_VERSION,
+      ok: true,
+      data:
+        result?.executionActivity && Array.isArray(result.messages) ? withExecutionMessages(result) : data,
+    });
   }
 
   fail(error: unknown): number {
