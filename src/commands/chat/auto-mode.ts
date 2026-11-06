@@ -14,6 +14,7 @@ import { projectText } from '../../conversation/text-projector.js';
 import { currentRound, roundMessage } from '../../conversation/round-selector.js';
 import { readProjectRouting } from '../../conversation/project-routing.js';
 import { CliError } from '../../output/exit-codes.js';
+import { managedTaskReminder } from '../../output/managed-task-reminder.js';
 
 const REPORT = 'artifacts/auto-mode-summary.md';
 const CONTINUATION = ['推荐更多功能', '手动输入需求', '上线运营'];
@@ -308,6 +309,7 @@ export function registerAutoMode(chat: Command, context: CommandContext) {
       };
       let anchor = text(cursor.anchor),
         progressRevision = text(cursor.progressRevision);
+      let reminder = cursor.reminder;
       while (true) {
         const value = await observe(service, sessionId, scope, anchor, !anchor);
         scope = value.scope;
@@ -335,6 +337,14 @@ export function registerAutoMode(chat: Command, context: CommandContext) {
         const waiting =
           value.managedPhase === 'MANAGED_RUNNING' ||
           (value.managedPhase === 'MANAGED_DONE' && value.delivery.reportPending);
+        if (
+          value.managed.autoMode === 1 &&
+          ['RUNNING', 'WAITING_CALLBACK'].includes(value.managed.status ?? '')
+        ) {
+          const update = managedTaskReminder(sessionId, scope.runId!, scope.startedAt, reminder);
+          reminder = update.cursor;
+          if (update.message) context.output.reminder(update.message);
+        }
         if (!waiting || Date.now() >= deadline) {
           context.output.write({
             ...value,
@@ -345,6 +355,7 @@ export function registerAutoMode(chat: Command, context: CommandContext) {
               ...scope,
               anchor,
               progressRevision,
+              reminder,
               shownMessages: [...shown].map(([id, revision]) => ({ id, revision })),
             },
           });

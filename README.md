@@ -759,6 +759,8 @@ CLI 每次上传前读取 Glow 同源的服务端格式和大小限制。当前�
 
 新专家团使用 `chat create --auto-mode --no-wait` 直接创建全托管，按当前服务端资格与运行时处理。该参数与演示、跳过问卷和高级设计师创建参数互斥；不加参数的原创建流程保持原样。
 
+创建成功后，接入 Agent 展示一次 `entryNotice.progressGuide.message`，并链接 `entryNotice.progressGuide.url`，引导用户前往 superun.ai 查看制作进度。`chat auto-mode wait` 在制作中按整次托管的累计时间，每五分钟输出既有 `task_reminder` 事件；提醒计时与序号保存在 `cursor.reminder`，使用完整结果文件 `--cursor` 接续不会重新计时。相同提醒 ID 只展示一次，进度没有变化也要展示新的提醒；恢复观察只发送当前应到的提醒，不连续补发错过的时间段。暂停、制作结束及退出后不再发送制作中提醒，普通命令的单进程提醒保持原规则。
+
 `chat auto-mode status/wait/report/history` 只读已有任务；等待返回本次对话、实际进度、运行标识及游标。本地等待窗口结束不重复创建，下一次使用 `wait --cursor <原stdout.json>` 继续同一项目，避免重复展示旧回复。完整历程使用本次回执的运行标识与起止时间。
 
 全托管期间，CLI 可查看状态、历程、报告、发布状态和解锁报价。发送咨询、修改项目、停止或重试任务，以及购买解锁，请到项目详情页操作。解锁或退出后，可继续用 CLI 创作。
