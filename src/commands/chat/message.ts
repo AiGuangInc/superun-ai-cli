@@ -6,6 +6,7 @@ import { CliError } from '../../output/exit-codes.js';
 import { requestChannel } from '../../config/request-channel.js';
 import { COMMAND_NAME } from '../../config/constants.js';
 import { AutoModeApi, managedEntryNotice } from '../../api/auto-mode-api.js';
+import { MANAGED_PROGRESS_GUIDE } from '../../output/managed-task-reminder.js';
 import { prepareUploadFiles } from '../../api/upload-files.js';
 import { uploadAttachment } from '../../api/upload-api.js';
 import type { InputAttachment } from '../../api/upload-api.js';
@@ -202,7 +203,10 @@ export async function sendMessage(
       messageId: created.messageId,
       replyMessageId: created.replyMessageId,
       managed,
-      entryNotice: managedEntryNotice(managed?.billingMode),
+      entryNotice: {
+        ...managedEntryNotice(managed?.billingMode),
+        progressGuide: MANAGED_PROGRESS_GUIDE,
+      },
       nextActions: [
         {
           action: 'WAIT_AUTO_MODE',

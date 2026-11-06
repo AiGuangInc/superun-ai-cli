@@ -20,6 +20,7 @@ export function registerVersion(program: Command, output: OutputWriter): void {
           'security-scan-entry-v1',
           'app-publishing-flow-v1',
           'auto-mode-flow-v1',
+          'auto-mode-reminder-v1',
         ],
       }),
     );

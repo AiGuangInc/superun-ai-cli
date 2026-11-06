@@ -3,6 +3,7 @@ import { SCHEMA_VERSION } from '../config/constants.js';
 import type { CreationResult } from '../contracts/cli-output.js';
 import { CliError, EXIT_CODES } from './exit-codes.js';
 import { TaskReminder } from './task-reminder.js';
+import type { TaskReminderMessage } from './task-reminder.js';
 import { creditFailureDetails } from '../conversation/insufficient-credits.js';
 import {
   executionHash,
@@ -18,7 +19,10 @@ export class OutputWriter {
   private readonly secrets = new Set<string>();
   private readonly shownMessages = new Map<string, string>();
   private disposed = false;
-  private readonly taskReminder = new TaskReminder((data) => {
+  private readonly taskReminder = new TaskReminder((data) => this.reminder(data));
+
+  reminder(data: TaskReminderMessage): void {
+    if (this.written || this.disposed) return;
     this.stderr(
       `${this.serialize({
         schemaVersion: SCHEMA_VERSION,
@@ -28,7 +32,7 @@ export class OutputWriter {
           '立即原样展示 data.message，将 superun.ai 链接到 data.url。同一 data.id 不重复展示；不同 ID 是每隔 5 分钟的再次提醒，文案相同也要展示。继续等待当前任务，不结束等待、不重新提交任务。',
       })}\n`,
     );
-  });
+  }
 
   constructor(
     private readonly stdout: (text: string) => void = (text) => process.stdout.write(text),
