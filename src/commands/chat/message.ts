@@ -139,7 +139,7 @@ export async function sendMessage(
     operation = check ?? 'repair';
   }
   const attachments: InputAttachment[] = [];
-  for (const file of preparedFiles) attachments.push(await uploadAttachment(service, file));
+  for (const file of preparedFiles) attachments.push(await uploadAttachment(service, file, sessionId));
   const previousMessageId = previous ? roundMessage(previous, currentRound(previous))?.messageId : undefined;
   const create = sessionId ? undefined : await service.config.creation(content);
   const response = await businessWrite(context, service, sessionId, async () => {

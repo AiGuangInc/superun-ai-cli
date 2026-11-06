@@ -72,7 +72,7 @@ export function registerDesign(chat: Command, context: CommandContext): void {
     const files = z.array(z.string()).parse(options.file ?? []);
     const prepared = await prepareUploadFiles(service, files);
     const attachments: InputAttachment[] = [];
-    for (const file of prepared) attachments.push(await uploadAttachment(service, file));
+    for (const file of prepared) attachments.push(await uploadAttachment(service, file, sessionId));
     const content = `@高级设计师 ${directive}`;
     const response = object(
       await businessWrite(context, service, sessionId, () =>

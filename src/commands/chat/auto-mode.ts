@@ -25,6 +25,9 @@ function tokenAmount(value: string) {
     throw new CliError('INVALID_ARGUMENT', '实际解锁金额必须为非负安全整数最小单位');
   return Number(value);
 }
+function projectUrl(service: CreationRuntime, sessionId: string) {
+  return new URL(`/web/project/${encodeURIComponent(sessionId)}`, service.client.config.endpoint).href;
+}
 function commandFor(service: CreationRuntime, operation: string, sessionId: string, options: string[] = []) {
   return [
     COMMAND_NAME,
@@ -179,9 +182,8 @@ async function observe(
             {
               action: 'RESUME_AUTO_MODE',
               requiresUserInput: true,
-              command: commandFor(service, 'retry', sessionId, ['--run-id', scope.runId!]),
-              instruction:
-                '说明真实暂停原因和处理方式，提供“继续全托管”；用户处理并选择后恢复同一次任务，不发送普通聊天“继续”。',
+              url: projectUrl(service, sessionId),
+              instruction: '说明暂停原因，引导用户到项目详情页继续全托管。',
             },
           ]
         : phase === 'CONTINUING'
@@ -241,7 +243,7 @@ function readScope(command: Command): Scope {
 }
 
 export function registerAutoMode(chat: Command, context: CommandContext) {
-  const auto = chat.command('auto-mode').description('全托管状态、真实对话、恢复、收费和完成处理');
+  const auto = chat.command('auto-mode').description('查看全托管状态、进展和报价；恢复及解锁请到项目详情页');
   for (const name of ['status', 'report', 'history']) {
     scopeOptions(
       auto
@@ -371,7 +373,7 @@ export function registerAutoMode(chat: Command, context: CommandContext) {
     });
   auto
     .command('retry <sessionId>')
-    .description('继续原来已暂停的全托管任务')
+    .description('暂停的全托管任务请在项目详情页恢复')
     .requiredOption('--run-id <runId>', '本次托管运行标识')
     .action(async (sessionId: string, _options: unknown, command: Command) => {
       const service = await runtime(context, command),
@@ -437,26 +439,21 @@ export function registerAutoMode(chat: Command, context: CommandContext) {
           expiresAt: quote.expiresAt,
           serverTime: quote.serverTime,
         },
-        nextActions: [
-          {
-            action: 'COMPLETE_AUTO_MODE',
-            requiresUserInput: true,
-            command: commandFor(service, 'complete', sessionId, [
-              '--run-id',
-              runId,
-              ...(purchase
-                ? ['--expected-token-amount', String(quote.purchaseTokenAmount), '--acknowledge-purchase']
-                : []),
-            ]),
-            instruction:
-              '把当前实际解锁金额、项目扣费账户和优惠说明放在“完成托管，继续创作”选项说明中，与“查看完成报告／创作历程”同一道原生选择收答。用户明确选择且授权覆盖当前金额后才执行。报价变动先更新说明；正常计费不再购买。',
-          },
-        ],
+        nextActions: quote.completionVerified
+          ? []
+          : [
+              {
+                action: 'COMPLETE_AUTO_MODE',
+                requiresUserInput: true,
+                url: projectUrl(service, sessionId),
+                instruction: '展示当前报价和扣费账户，由用户在项目详情页确认解锁。',
+              },
+            ],
       });
     });
   auto
     .command('complete <sessionId>')
-    .description('正常收费并完成托管，回读成功后才开放后续创作')
+    .description('购买或解锁请到项目详情页；已解锁可回读结果')
     .requiredOption('--run-id <runId>', '本次托管运行标识')
     .option('--expected-token-amount <minor>', '用户已看到并授权的当前解锁金额最小单位', tokenAmount)
     .option('--acknowledge-purchase', '本次实际金额已向用户展示并取得付款授权')

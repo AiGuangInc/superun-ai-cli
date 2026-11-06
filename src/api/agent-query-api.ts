@@ -1,5 +1,6 @@
 /** 项目、附件和风格结果查询。@author xiuyu.yi */
 import type { ApiClient } from '../transport/api-client.js';
+import { querySessionExtra } from './project-mode.js';
 import { list, object, text } from '../contracts/value.js';
 import type { JsonObject } from '../contracts/value.js';
 import { z } from 'zod';
@@ -133,7 +134,7 @@ export class AgentQueryApi {
     return object(await this.client.call(`${PREFIX}/pageQuerySessionByLastId`, input));
   }
   async extra(sessionId: string): Promise<JsonObject> {
-    return object(await this.client.call(`${PREFIX}/querySessionExtra`, { sessionId }));
+    return object(await querySessionExtra(this.client, sessionId));
   }
   async snapshots(sessionId: string): Promise<unknown> {
     return this.client.call('/api/uxa-center/agent/SessionSnapshot/pageQuerySessionSnapshotHistory', {

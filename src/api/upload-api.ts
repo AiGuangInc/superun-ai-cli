@@ -5,6 +5,7 @@ import { pollOperation } from '../commands/shared.js';
 import { list, object, requiredText } from '../contracts/value.js';
 import type { JsonObject } from '../contracts/value.js';
 import { CliError } from '../output/exit-codes.js';
+import { assertProjectWritable } from './project-mode.js';
 import { HttpClient } from '../transport/http-client.js';
 import { getSuperunHostingDomain } from '../config/runtime-config.js';
 import { MAX_PIXELS, MB } from './upload-files.js';
@@ -139,7 +140,9 @@ const bytesToMb = (bytes: number): number => Math.round((bytes / MB) * 100) / 10
 export async function uploadAttachment(
   service: CreationRuntime,
   file: PreparedFile,
+  sessionId?: string,
 ): Promise<InputAttachment> {
+  if (sessionId) await assertProjectWritable(service.client, sessionId);
   service.output.log(`${file.name}：正在上传附件`);
   const url = await uploadToCdn(service, file);
   const attachment: InputAttachment = { name: file.name, url, mediaType: file.mediaType };

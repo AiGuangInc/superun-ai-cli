@@ -175,20 +175,22 @@ superun-ai
 │   │   ├── prepare <sessionId>                                   # 核对当前主线待发布记录与费用估算；状态查询可能更新活动和超时记录
 │   │   ├── deploy <sessionId> <encryptedId>                      # 按本次准备回执发布当前研发主线，写前复核目标和费用
 │   │   └── visibility <sessionId> <visibility>                   # Make the site public or private
-│   └── auto-mode                                                 # 全托管状态、真实对话、恢复、收费和完成处理
+│   └── auto-mode                                                 # 查看全托管状态、进展和报价；恢复及解锁请到项目详情页
 │       ├── status <sessionId>                                    # 只读查询本次托管状态与对话
 │       ├── report <sessionId>                                    # 只读交付本次说明、预览和四项统计
 │       ├── history <sessionId>                                   # 只读重建本次托管历程
 │       ├── wait <sessionId>                                      # 只读观察整次托管，持续交付对话和进度，不推进普通阶段
-│       ├── retry <sessionId>                                     # 继续原来已暂停的全托管任务
+│       ├── retry <sessionId>                                     # 暂停的全托管任务请在项目详情页恢复
 │       ├── quote <sessionId>                                     # 读取当前真实费用，准备现有完成托管入口，不购买
-│       ├── complete <sessionId>                                  # 正常收费并完成托管，回读成功后才开放后续创作
+│       ├── complete <sessionId>                                  # 购买或解锁请到项目详情页；已解锁可回读结果
 │       └── require-completed <sessionId>                         # 新专家团后续业务前只读核对收费和完成状态，不自动扣款
 ├── update                                                        # Check and update to the latest CLI version
 └── version                                                       # Show local and output-schema versions
 ```
 
 Run `npm run docs:sync` after changing command registration to update both command trees. `npm run docs:check` validates their completeness; `prepack` also checks them before packaging.
+
+During Autopilot, use the CLI to read project status, history, reports, publish status, and unlock quotes. Open the project page to resume or unlock it. Once the project leaves Autopilot, you can edit it from the CLI again.
 
 ## Query project history
 
