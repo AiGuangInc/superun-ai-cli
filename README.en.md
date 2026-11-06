@@ -190,7 +190,7 @@ superun-ai
 
 Run `npm run docs:sync` after changing command registration to update both command trees. `npm run docs:check` validates their completeness; `prepack` also checks them before packaging.
 
-During Autopilot, use the CLI to read project status, history, reports, and unlock quotes. Open the project page to resume or unlock it. Once the project leaves Autopilot, you can edit it from the CLI again. Use `chat auto-mode status` to check progress during Autopilot because the publish-status query updates activity and timeout records.
+During Autopilot, use the CLI to read project status, history, reports, publish status, and unlock quotes. Open the project page to resume or unlock it. Once the project leaves Autopilot, you can edit it from the CLI again.
 
 ## Query project history
 

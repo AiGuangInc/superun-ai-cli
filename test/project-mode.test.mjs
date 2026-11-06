@@ -43,14 +43,23 @@ test('managed status reads both the BFF status and the POST query without a writ
   );
 });
 
-test('managed projects reject writes in the body or header, uploads and side-effecting publish queries', async () => {
+test('publish status remains a query without an extra project mode check', async () => {
+  const { client, requests } = mockClient(new Error('mode lookup must not run'), { status: 'DONE' });
+  assert.deepEqual(await new PublishApi(client).status(sessionId), { status: 'DONE' });
+  assert.deepEqual(
+    requests.map(({ path }) => path),
+    ['/api/uxa-center/agent/AgentQuery/queryPublishLogInfo'],
+  );
+});
+
+test('managed projects reject explicit writes in the body or header and uploads', async () => {
   const { client, requests } = mockClient({ autoMode: '1' });
   const actions = [
     () => new AgentCommandApi(client).stop(sessionId, 'all'),
     () => new AgentCommandApi(client).chat({ sessionId, content: 'edit' }),
     () => new AppApi(client).consult({ sessionId, content: 'question' }),
     () => new ManagedAgentApi(client).create(sessionId, 'agents', {}),
-    () => new PublishApi(client).status(sessionId),
+    () => new AgentCommandApi(client).reply(sessionId, 'tool-id'),
     () => uploadAttachment({ client }, {}, sessionId),
   ];
   for (const act of actions) {
@@ -91,11 +100,8 @@ test('missing or invalid response and status lookup failure do not send the writ
   }
 });
 
-test('waiting for progress never acknowledges ReadLogs in managed mode, ordinary waits still do', async () => {
-  for (const [autoMode, expectReplies] of [
-    ['1', 0],
-    ['0', 1],
-  ]) {
+test('waiting for progress keeps the existing automatic tool handling in both modes', async () => {
+  for (const autoMode of ['1', '0']) {
     const replies = [];
     const waiter = new SessionWaiter({
       command: { reply: async (...args) => replies.push(args) },
@@ -114,7 +120,7 @@ test('waiting for progress never acknowledges ReadLogs in managed mode, ordinary
       inspect: async () => ({ state: 'COMPLETED', messages: [], progress: [] }),
     });
     assert.equal((await waiter.wait(sessionId)).state, 'COMPLETED');
-    assert.equal(replies.length, expectReplies);
+    assert.deepEqual(replies, [[sessionId, 't']]);
   }
 });
 
