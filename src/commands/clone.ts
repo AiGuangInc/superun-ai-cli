@@ -1,13 +1,15 @@
-/** 网站搬家：输入网址新建复刻项目，不修改通用 creation 流程。 */
+/** 网站搬家：输入网址新建复刻项目，提交后在后台运行，不修改通用 creation 流程。 */
 import { InvalidArgumentError } from 'commander';
 import type { Command } from 'commander';
 import type { CommandContext } from './shared.js';
 import { businessWrite, runtime } from './shared.js';
-import { object } from '../contracts/value.js';
+import { object, text } from '../contracts/value.js';
+import { CliError } from '../output/exit-codes.js';
 import { requestChannel } from '../config/request-channel.js';
 
-const CLONE_NOTICE =
-  '已开始搬家：先读取网站，读完后自动生成第一版页面，期间如有问题会停下来问用户；之后可以选这一版继续编辑，或委托高级设计师重新设计。';
+const CLONE_NOTICE = '网站搬家已经开始，在后台运行：先读网站，读完自动生成第一版页面，整个过程比较久。';
+const CLONE_INSTRUCTION =
+  '告诉用户搬家已经在后台运行、需要一段时间，给项目页链接让用户随时去看；不要等待或轮询，用户之后问起进度再查询。';
 
 /** 与 Glow 搬家页的网址校验一致：省略协议时按 https://，此时域名必须带点；不接受其他协议和账号密码。 */
 export function siteUrl(value: string): string {
@@ -40,7 +42,7 @@ export function registerClone(program: Command, context: CommandContext): void {
     .command('create')
     .argument('<url>', '要搬家的网站地址，省略协议时按 https://', siteUrl)
     .description(
-      '输入网址新建搬家项目，后续沿回执查询进度；每周有免费次数（free-quota 的 site_clone_weekly），用完后按积分收费',
+      '输入网址新建搬家项目，提交后在后台运行，不用等待；每周有免费次数（free-quota 的 site_clone_weekly），用完后按积分收费',
     )
     .option('--workspace-id <workspaceId>', '归属工作空间')
     .action(async (url: string, _options: unknown, command: Command) => {
@@ -65,9 +67,30 @@ export function registerClone(program: Command, context: CommandContext): void {
           }),
         ),
       );
+      // 搬家耗时长，提交后不跟：告诉用户已在后台运行，给项目页链接。
+      const sessionId = text(response.sessionId);
+      if (!sessionId)
+        throw new CliError('OUTCOME_UNKNOWN', '搬家请求已返回，但缺少项目 ID；请先查询项目列表，勿重复创建', {
+          retryable: false,
+        });
+      const projectUrl = new URL(
+        `/web/project/${encodeURIComponent(sessionId)}`,
+        service.client.config.endpoint,
+      ).href;
       context.output.write({
-        ...(await service.accepted(response, undefined, false, {})),
+        state: 'ACCEPTED',
+        sessionId,
+        messageId: text(response.messageId),
+        replyMessageId: text(response.replyMessageId),
         cloneNotice: CLONE_NOTICE,
+        nextActions: [
+          {
+            action: 'VIEW_PROJECT',
+            requiresUserInput: false,
+            url: projectUrl,
+            instruction: CLONE_INSTRUCTION,
+          },
+        ],
       });
     });
 }

@@ -76,7 +76,13 @@ test('clone create starts a site clone project the way the Glow clone page does'
   assert.equal(chat.roundExtra.ROUND_LANGUAGE, 'en');
   assert.equal(json.data.state, 'ACCEPTED');
   assert.equal(json.data.sessionId, sessionId);
-  assert.match(json.data.cloneNotice, /搬家/);
+  assert.match(json.data.cloneNotice, /后台运行/);
+  assert.deepEqual(
+    json.data.nextActions.map(({ action, url }) => [action, url]),
+    [['VIEW_PROJECT', `http://localhost/web/project/${sessionId}`]],
+  );
+  assert.doesNotMatch(JSON.stringify(json.data), /chat wait/);
+  assert.ok(!requests.some(({ path }) => path.endsWith('/unified-recently')));
 });
 
 test('reading a site clone gives no manual start, other stage0 projects keep it', () => {

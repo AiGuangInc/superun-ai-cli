@@ -101,7 +101,7 @@ superun-ai
 │   ├── status <sessionId>                                        # Discover an existing PPT task or compare a specific generation ID
 │   └── get <sessionId>                                           # Read an existing deck or verify delivery using both generation and mainline IDs
 ├── clone                                                         # Site clone: copy an existing website's page styles and content into a superun project
-│   └── create <url>                                              # Create a site clone project from a URL and follow the receipt; weekly free clones (site_clone_weekly in free-quota), then credits
+│   └── create <url>                                              # Create a site clone project from a URL; it runs in the background, no waiting; weekly free clones (site_clone_weekly in free-quota), then credits
 ├── agent                                                         # Create managed-agent configuration and read it back without running or deploying it
 │   ├── app                                                       # Build an agent application through the independent entry
 │   │   ├── create                                                # Submit requirements independently, then inspect the returned questionnaire
@@ -302,7 +302,7 @@ These entries leave ordinary chat create, shared questionnaire parsing, generati
 superun-ai clone create <url>
 ```
 
-Same as the Glow clone page (`/clone`): the message is the URL, `https://` when the protocol is omitted; the new project carries `siteClone=1` and `agentRuntime=shire`. It only submits and returns the project and message anchors; follow the receipt with `chat wait`. The server reads the site first, then hands off by itself and builds the first version (a style choice). After a reading turn ends, `chat wait` keeps polling for about a minute for that handoff; without it, the reading agent is waiting for the user (unusable address, sign-in, a site too large for one turn), so the wait returns what it said and the user replies with `chat send`. After the first version, select it to keep editing or delegate to the advanced designer as usual. Weekly free clones are `site_clone_weekly` in `free-quota`, then credits; Autopilot cannot start while the site is being read.
+Same as the Glow clone page (`/clone`): the message is the URL, `https://` when the protocol is omitted; the new project carries `siteClone=1` and `agentRuntime=shire`. Cloning takes a while, so it only submits: the receipt tells the user it is running in the background and gives the project page link, with no waiting. The server reads the site first, then hands off by itself and builds the first version (a style choice). After a reading turn ends, `chat wait` keeps polling for about a minute for that handoff; without it, the reading agent is waiting for the user (unusable address, sign-in, a site too large for one turn), so the wait returns what it said and the user replies with `chat send`. After the first version, select it to keep editing or delegate to the advanced designer as usual. Weekly free clones are `site_clone_weekly` in `free-quota`, then credits; Autopilot cannot start while the site is being read.
 
 ## Create a managed-agent configuration only
 

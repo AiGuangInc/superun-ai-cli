@@ -103,7 +103,7 @@ superun-ai
 │   ├── status <sessionId>                                        # 只读发现现有PPT任务或核对指定generationId
 │   └── get <sessionId>                                           # 读取既有deck；同时提供生成ID和主线锚点才核验本次交付
 ├── clone                                                         # 网站搬家：把已有网站的页面样式和内容复刻成 superun 项目
-│   └── create <url>                                              # 输入网址新建搬家项目，后续沿回执查询进度；每周有免费次数（free-quota 的 site_clone_weekly），用完后按积分收费
+│   └── create <url>                                              # 输入网址新建搬家项目，提交后在后台运行，不用等待；每周有免费次数（free-quota 的 site_clone_weekly），用完后按积分收费
 ├── agent                                                         # 搭建托管智能体配置并读回资源，不运行或部署
 │   ├── app                                                       # 从需求独立搭建智能体应用
 │   │   ├── create                                                # 独立新建并提交需求，后续沿回执查询问卷
@@ -320,7 +320,7 @@ superun-ai agent app refine <sessionId> <interactionId> --input <澄清.json> --
 superun-ai clone create <网址>
 ```
 
-和 Glow 搬家页（`/clone`）一样：内容就是网址，省略协议时按 `https://`；新建项目带 `siteClone=1`、`agentRuntime=shire`。只提交并返回项目和消息锚点，后续按回执的 `chat wait` 查询。服务端先读网站，读完自动交接并生成第一版页面（风格方案）。读站的一轮结束后，`chat wait` 再等约 1 分钟等自动交接；没交接说明读站 Agent 在等用户（网址用不了、要登录、一轮读不完等），返回它说的话，用户回复用 `chat send`。第一版出来后照常选方案继续编辑，或委托高级设计师。每周免费次数看 `free-quota` 的 `site_clone_weekly`，用完按积分收费；读站阶段不能开全托管。
+和 Glow 搬家页（`/clone`）一样：内容就是网址，省略协议时按 `https://`；新建项目带 `siteClone=1`、`agentRuntime=shire`。搬家耗时长，提交后在后台运行，回执告诉用户已经开始并给项目页链接，不用等待。服务端先读网站，读完自动交接并生成第一版页面（风格方案）。读站的一轮结束后，`chat wait` 再等约 1 分钟等自动交接；没交接说明读站 Agent 在等用户（网址用不了、要登录、一轮读不完等），返回它说的话，用户回复用 `chat send`。第一版出来后照常选方案继续编辑，或委托高级设计师。每周免费次数看 `free-quota` 的 `site_clone_weekly`，用完按积分收费；读站阶段不能开全托管。
 
 ## 只搭建托管智能体
 
