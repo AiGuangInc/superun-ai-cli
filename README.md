@@ -102,6 +102,8 @@ superun-ai
 │   ├── generate <sessionId>                                      # 检查PPT前置并生成或复用任务，不自动重试写请求
 │   ├── status <sessionId>                                        # 只读发现现有PPT任务或核对指定generationId
 │   └── get <sessionId>                                           # 读取既有deck；同时提供生成ID和主线锚点才核验本次交付
+├── clone                                                         # 网站搬家：把已有网站的页面样式和内容复刻成 superun 项目
+│   └── create <url>                                              # 输入网址新建搬家项目，后续沿回执查询进度；每周有免费次数（free-quota 的 site_clone_weekly），用完后按积分收费
 ├── agent                                                         # 搭建托管智能体配置并读回资源，不运行或部署
 │   ├── app                                                       # 从需求独立搭建智能体应用
 │   │   ├── create                                                # 独立新建并提交需求，后续沿回执查询问卷
@@ -311,6 +313,14 @@ superun-ai agent app refine <sessionId> <interactionId> --input <澄清.json> --
 继续澄清使用本节的专用 refine 命令，输入只含 answers 与可选 content 补充原文；按当前 questionId 保留每题与已答选项，未知项可空。命令核对当前问卷和在途状态，保存答案后通过 `expand_questionnaire` 继续同一项目，不生成方案或标记需求已确认。确认开始生成时沿用原 `chat interaction reply` 与当前 answerSchema；原通用问卷仍只接受原字段，默认生成行为不变。
 
 两个独立专家负责后续衔接：PPT 通过 state/style list、独立 demo 和双锚点幻灯片核验交付，不调用普通 chat wait；智能体应用通过标准等待继续方案、研发与实际配置向导。普通 `chat create`、共享问卷、生成、等待及原专家团不因此改动。`version` 中 `independent-creation-flow-v1` 仅声明这组独立命令能力；真实应用完成、资源读回和部署仍分别验收。
+
+## 网站搬家
+
+```bash
+superun-ai clone create <网址>
+```
+
+和 Glow 搬家页（`/clone`）一样：内容就是网址，省略协议时按 `https://`；新建项目带 `siteClone=1`、`agentRuntime=shire`。只提交并返回项目和消息锚点，后续按回执的 `chat wait` 查询。服务端先读网站，读完自动交接并生成第一版页面（风格方案）。读站的一轮结束后，`chat wait` 再等约 1 分钟等自动交接；没交接说明读站 Agent 在等用户（网址用不了、要登录、一轮读不完等），返回它说的话，用户回复用 `chat send`。第一版出来后照常选方案继续编辑，或委托高级设计师。每周免费次数看 `free-quota` 的 `site_clone_weekly`，用完按积分收费；读站阶段不能开全托管。
 
 ## 只搭建托管智能体
 

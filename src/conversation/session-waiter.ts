@@ -23,6 +23,20 @@ function hasReadyStylePreview(result: CreationResult, styleTarget?: StyleWaitTar
   );
 }
 
+/** 和 Glow 一样：网站搬家读站轮结束后，服务端要过一会儿才自动交接并开第一版，先接着查约一分钟。 */
+const SITE_CLONE_HANDOFF_GRACE_MS = 60_000;
+
+/** 搬家项目这一轮结束了，但第一版方案还没出来：可能正在交接，也可能是 Agent 停下来等用户。 */
+function awaitingSiteCloneHandoff(view: SessionView, result: CreationResult): boolean {
+  return (
+    result.state === 'COMPLETED' &&
+    String(view.extra.siteClone) === '1' &&
+    String(view.extra.hasSelectedStyle) !== '1' &&
+    !view.session.pendingBranch &&
+    !result.choices?.length
+  );
+}
+
 export type WaitOptions = {
   /** 跨越扫描和自动修复消息轮次，始终跟进同一次扫描。 */
   reviewId?: string;
@@ -122,6 +136,7 @@ export class SessionWaiter {
     let progressRevision = options.progressRevision;
     let reviewId = options.reviewId;
     let responseObserved = !options.requiredMessageId && !options.previousMessageId;
+    let siteCloneEndedAt: number | undefined;
     const inspect = async (): Promise<CreationResult> => {
       if (!responseObserved) {
         const latestMessageId = roundMessage(view, currentRound(view))?.messageId;
@@ -194,6 +209,11 @@ export class SessionWaiter {
         view = await this.dependencies.load(sessionId);
         result = suppressSubmitted(await inspect());
       }
+      if (awaitingSiteCloneHandoff(view, result)) {
+        siteCloneEndedAt ??= Date.now();
+        if (Date.now() - siteCloneEndedAt < SITE_CLONE_HANDOFF_GRACE_MS)
+          result = { ...result, state: 'RUNNING' };
+      } else siteCloneEndedAt = undefined;
       for (const item of result.messages) messages.set(item.id, item);
       for (const item of result.progress) progress.set(item.id, item);
       if (result.taskProgress) {

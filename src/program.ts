@@ -10,6 +10,7 @@ import { registerBill } from './commands/bill/index.js';
 import { registerSite } from './commands/site/index.js';
 import { registerMarket } from './commands/market/index.js';
 import { registerPpt } from './commands/ppt/index.js';
+import { registerClone } from './commands/clone.js';
 import { registerAgent } from './commands/agent/index.js';
 import { registerApp } from './commands/app/index.js';
 import { registerFreeQuota } from './commands/free-quota.js';
@@ -58,6 +59,7 @@ export function createProgram(
   registerSite(program, context);
   registerMarket(program, context);
   registerPpt(program, context);
+  registerClone(program, context);
   registerAgent(program, context);
   registerApp(program, context);
   registerFreeQuota(program, context);

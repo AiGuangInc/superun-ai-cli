@@ -8,6 +8,7 @@ const QUOTA_NAMES: Record<string, string> = {
   'free_round:stage2_designer': '高级设计师方案优化',
   'free_round:issue_review': '代码审查',
   'free_round:auto_test': '自动测试',
+  site_clone_weekly: '本周免费网站搬家',
 };
 
 export function registerFreeQuota(program: Command, context: CommandContext): void {

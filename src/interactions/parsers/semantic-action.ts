@@ -22,6 +22,8 @@ export function semanticInteraction(
   let kind:
     'ENTER_IDEATION' | 'APPROVE_ARCHITECTURE_PLAN' | 'START_EXECUTION' | 'SELECT_FEATURES' | undefined;
   if (view.extra.agentRuntime === 'shire') {
+    // 网站搬家建好后服务端自己读完站、交接并生成风格方案，不给手动进入构想阶段的入口。
+    if (String(view.extra.siteClone) === '1') return undefined;
     if (extra.business_type === 'stage0_handoff_generate' && extra.stage0_handoff_status !== 'failed')
       return undefined;
     variant = 'stage0_handoff';

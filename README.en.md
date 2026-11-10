@@ -100,6 +100,8 @@ superun-ai
 │   ├── generate <sessionId>                                      # Check PPT prerequisites and submit or reuse a task without write retries
 │   ├── status <sessionId>                                        # Discover an existing PPT task or compare a specific generation ID
 │   └── get <sessionId>                                           # Read an existing deck or verify delivery using both generation and mainline IDs
+├── clone                                                         # Site clone: copy an existing website's page styles and content into a superun project
+│   └── create <url>                                              # Create a site clone project from a URL and follow the receipt; weekly free clones (site_clone_weekly in free-quota), then credits
 ├── agent                                                         # Create managed-agent configuration and read it back without running or deploying it
 │   ├── app                                                       # Build an agent application through the independent entry
 │   │   ├── create                                                # Submit requirements independently, then inspect the returned questionnaire
@@ -293,6 +295,14 @@ Changed attachments, replaced tasks, failures, or local wait timeouts must not a
 Use `ppt create` / `ppt refine` or `agent app create` / `agent app refine` for the two dedicated experts. Creation submits the matching Glow homepage direction and returns the new session and message IDs. Refinement accepts answers and optional content, saves the current questionnaire and continues clarification without generating a style. Start generation through the existing interaction reply only when requirements are confirmed.
 
 These entries leave ordinary chat create, shared questionnaire parsing, generation, waiting and the original superun-creation packages unchanged. The PPT expert follows its separate demo and verified deck delivery; the agent application expert follows the actual questions, design selection, development and configuration wizard. The independent-creation-flow-v1 capability declares these dedicated commands. Application completion, resource verification and deployment remain separate checks.
+
+## Site clone
+
+```bash
+superun-ai clone create <url>
+```
+
+Same as the Glow clone page (`/clone`): the message is the URL, `https://` when the protocol is omitted; the new project carries `siteClone=1` and `agentRuntime=shire`. It only submits and returns the project and message anchors; follow the receipt with `chat wait`. The server reads the site first, then hands off by itself and builds the first version (a style choice). After a reading turn ends, `chat wait` keeps polling for about a minute for that handoff; without it, the reading agent is waiting for the user (unusable address, sign-in, a site too large for one turn), so the wait returns what it said and the user replies with `chat send`. After the first version, select it to keep editing or delegate to the advanced designer as usual. Weekly free clones are `site_clone_weekly` in `free-quota`, then credits; Autopilot cannot start while the site is being read.
 
 ## Create a managed-agent configuration only
 
