@@ -6,3 +6,4 @@ dist/
 credentials.json
 .DS_Store
 .idea/
+pnpm-lock.yaml
