@@ -24,7 +24,7 @@ export async function versionGate(
     throw new CliError('UPDATE_FAILED', '重启后版本仍不匹配，已停止重复更新');
 
   const { root, origin } = await installationRoot();
-  let entry = await activeEntry(root, required);
+  let entry = await activeEntry(root, { exact: required });
   if (!entry) {
     try {
       await mkdir(root, { recursive: true, mode: 0o700 });
