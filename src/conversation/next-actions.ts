@@ -28,6 +28,7 @@ export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
       | 'codeReview'
       | 'securityReview'
       | 'replyMessageId'
+      | 'stateConfirmation'
     >
   >;
 
@@ -344,7 +345,9 @@ function nextActionsForState(
     return [
       {
         action: 'WAIT',
-        instruction: '任务尚未结束，继续等待下一步问题或结果；不要重复提交。',
+        instruction: result.stateConfirmation
+          ? '尚未取得实际待回答问题，继续查询确认当前任务；无需用户回答或去网页处理，不重复提交。'
+          : '任务尚未结束，继续等待下一步问题或结果；不要重复提交。',
         requiresUserInput: false,
         command: [
           ...command,

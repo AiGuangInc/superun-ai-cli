@@ -16,7 +16,19 @@ export function registerInteraction(chat: Command, context: CommandContext): voi
       const service = await runtime(context, command);
       const result = await service.state(sessionId);
       const current = result.interactions.find((item) => item.interactionId === interactionId);
-      if (!current) throw new CliError('STALE_INTERACTION', '该问题已结束或被替换');
+      if (!current) {
+        // 分页是只读操作，旧问题消失时返回刚查询的当前状态，不诱导重交旧答案。
+        context.output.write({
+          ...result,
+          interactionRefresh: {
+            reason: 'STALE_INTERACTION',
+            requestedInteractionId: interactionId,
+            instruction:
+              '旧问题已结束或被替换，按当前 state、interactions 和 nextActions 继续；没有实际问题时继续查询，不要求用户去网页处理，不提交旧答案。',
+          },
+        });
+        return;
+      }
       context.output.write({
         state: 'NEEDS_INPUT',
         sessionId,

@@ -97,24 +97,11 @@ export function resolveState(
   if (waitingForStyles) return result;
   if (hasPendingCreationWork(view)) return result;
   if (view.session.status === 4) {
-    result.state = 'NEEDS_INPUT';
-    result.interactions = [
-      {
-        interactionId: `unsupported:${result.sessionId}:${result.messageId ?? 'session'}`,
-        kind: 'UNSUPPORTED',
-        supported: false,
-        source: {
-          roundId: round?.roundId ?? '',
-          messageId: result.messageId ?? '',
-          contentId: '',
-          variant: 'unknown',
-        },
-        questions: [],
-        actions: [],
-        answerSchema: {},
-        details: { notice: '服务端正在等待未识别的交互，请到 superun 网页处理后再查询。' },
-      },
-    ];
+    // 等待状态本身不能证明存在用户问题；主子任务交接期间可能暂未同步交互。
+    result.stateConfirmation = {
+      reason: 'WAITING_WITHOUT_INTERACTION',
+      notice: '尚未取得实际待回答问题，继续查询当前任务确认状态，无需用户操作。',
+    };
     return result;
   }
   if (view.session.status === 10) result.state = 'QUEUED';

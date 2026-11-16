@@ -254,6 +254,24 @@ export async function cloneResult(
   if (phase === 'NEEDS_INPUT') {
     const result = service.withGuidance(await service.inspect(view));
     const interactions = result.interactions.filter((item) => item.kind !== 'UNSUPPORTED');
+    if (
+      result.stateConfirmation ||
+      (['RUNNING', 'QUEUED', 'COMPLETED'].includes(result.state) && !result.interactions.length)
+    ) {
+      return {
+        ...result,
+        state: result.state === 'COMPLETED' ? 'RUNNING' : result.state,
+        siteClone: { ...progress, phase: 'HANDOFF' },
+        nextActions: [
+          {
+            action: 'WAIT',
+            requiresUserInput: false,
+            instruction: result.stateConfirmation?.notice ?? '任务仍在处理，继续查询确认，无需用户操作。',
+            command: cloneCommand(service, 'wait', sessionId),
+          },
+        ],
+      };
+    }
     return {
       ...result,
       state: 'NEEDS_INPUT',
