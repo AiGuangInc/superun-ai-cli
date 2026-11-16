@@ -268,6 +268,7 @@ export class SessionWaiter {
       }
       if (
         !responseObserved ||
+        result.stateConfirmation ||
         !target ||
         options.styleTarget ||
         view.session.pendingBranch ||

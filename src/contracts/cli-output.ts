@@ -217,6 +217,8 @@ export type SiteCloneCursor = {
 };
 
 export type CreationResult = {
+  /** 仅表示需要继续只读确认，不能据此要求用户去网页操作。 */
+  stateConfirmation?: { reason: 'WAITING_WITHOUT_INTERACTION'; notice: string };
   siteClone?: SiteCloneProgress;
   siteCloneEditing?: boolean;
   state: CreationState;
