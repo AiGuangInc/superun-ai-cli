@@ -21,3 +21,4 @@ export const SCHEMA_VERSION = '1';
 export const DEFAULT_ENDPOINT = 'https://superun.com';
 export const PAT_PREFIX = 'sup_pat_';
 export const DEFAULT_WAIT_SECONDS = 1800;
+export const SITE_CLONE_WEEKLY_QUOTA_KEY = 'site_clone_weekly';

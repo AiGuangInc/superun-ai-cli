@@ -13,6 +13,7 @@ export type HttpRequest = {
   signal?: AbortSignal;
   write?: boolean;
   native?: boolean;
+  retryRead?: boolean;
 };
 
 export class HttpClient {
@@ -27,7 +28,7 @@ export class HttpClient {
           error instanceof CliError &&
           error.code === 'PROTOCOL_ERROR' &&
           (error.details.retryable === true || [502, 503, 504].includes(Number(error.details.httpStatus)));
-        if (request.write || !transientRead || attempt >= 2) throw error;
+        if (request.write || request.retryRead === false || !transientRead || attempt >= 2) throw error;
         // 只恢复幂等查询；写请求结果不确定时必须交还调用方确认，不能自动重发。
         try {
           await delay((attempt + 1) * 500, undefined, { signal: request.signal });
@@ -38,8 +39,17 @@ export class HttpClient {
     }
   }
   private async requestOnce(request: HttpRequest): Promise<HttpResponse> {
-    const timeout = AbortSignal.timeout(request.timeoutMs ?? 65_000);
-    const signal = request.signal ? AbortSignal.any([timeout, request.signal]) : timeout;
+    // 保持请求超时计时器存活，网络暂时没有活跃句柄时仍能返回完整错误回执。
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(), request.timeoutMs ?? 65_000);
+    const signal = request.signal ? AbortSignal.any([timeout.signal, request.signal]) : timeout.signal;
+    try {
+      return await this.readResponse(request, signal);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  private async readResponse(request: HttpRequest, signal: AbortSignal): Promise<HttpResponse> {
     let response: Response;
     try {
       response = await this.fetcher(request.url, {

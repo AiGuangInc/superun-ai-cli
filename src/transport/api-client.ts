@@ -29,6 +29,8 @@ export class ApiClient {
       method?: 'GET' | 'POST';
       sessionId?: string;
       native?: boolean;
+      timeoutMs?: number;
+      retryRead?: boolean;
     } = {},
   ): Promise<HttpResponse> {
     if (options.write) {
@@ -50,7 +52,8 @@ export class ApiClient {
         ...(options.sessionId ? { 'X-Session-Id': options.sessionId } : {}),
         ...(options.etag ? { 'if-none-match': options.etag } : {}),
       },
-      timeoutMs: this.config.timeoutMs,
+      timeoutMs: options.timeoutMs ?? this.config.timeoutMs,
+      retryRead: options.retryRead,
       signal: this.signal,
       write: options.write,
       native: options.native,

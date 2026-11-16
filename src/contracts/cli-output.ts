@@ -37,6 +37,8 @@ export type Question = {
   recommendedIndices?: Array<number>;
 };
 export type Interaction = {
+  /** 宿主可直接渲染的完整分页，默认每页最多三个选项，包含本页都不选。 */
+  presentation?: ReturnType<typeof import('../interactions/question-pages.js').questionPages>;
   page?: { id: string; revision: string; index?: number; total?: number; title: string };
   supported?: boolean;
   interactionId: string;
@@ -69,6 +71,7 @@ export type NextAction = {
   requiresUserInput: boolean;
   /** 完整命令的参数数组；仅提供引导，不会自动执行。 */
   command: Array<string>;
+  url?: string;
   interactionId?: string;
   choiceId?: string;
   /** 回复的固定字段，用户数据仍需按对应交互的 answerSchema 补齐。 */
@@ -160,7 +163,62 @@ export type CheckContext<T extends 'test' | 'review'> = {
   error?: string;
 };
 
+export type SiteCloneQuotaEstimate =
+  | { status: 'unknown'; quotaKey: 'site_clone_weekly' }
+  | {
+      status: 'available';
+      quotaKey: 'site_clone_weekly';
+      scope: 'user';
+      limit: number;
+      used: number;
+      remaining: number;
+      expectedCharge: 'free' | 'paid';
+    };
+export type SiteCloneProgress = {
+  phase:
+    | 'READING'
+    | 'HANDOFF'
+    | 'QUEUED'
+    | 'GENERATING'
+    | 'NEEDS_INPUT'
+    | 'PREVIEW_READY'
+    | 'FAILED'
+    | 'INTERRUPTED'
+    | 'EDITING'
+    | 'DEVELOPING';
+  projectUrl: string;
+  previewUrl?: string;
+  resultId?: string;
+  result?: Choice;
+  /** 搬家列表的原始投影状态。面向用户的当前阶段使用 phase。 */
+  status?: number;
+  branchAnchor?: string;
+  startedAt?: number;
+  remainingMinutes?: number;
+  estimate?: { basis: 'display_estimate'; totalMinutes: number; remainingMinutes: number; overdue: boolean };
+  errorType?: string;
+  retryChoiceId?: string;
+  retryMessageId?: string;
+  weeklyFreeDecision?: 'claimed' | 'not_claimed' | 'unknown';
+};
+export type SiteCloneCursor = {
+  version: 1;
+  sessionId: string;
+  endpoint: string;
+  accountScope: string;
+  taskAnchor: string;
+  reminderStartedAt: number;
+  cloneSequence: number;
+  generalSequence: number;
+  handoff?: { messageId: string; observedAt: number };
+  requiredMessageId?: string;
+  submittedInteractionId?: string;
+  displayedMessages: Array<{ id: string; revision: string }>;
+};
+
 export type CreationResult = {
+  siteClone?: SiteCloneProgress;
+  siteCloneEditing?: boolean;
   state: CreationState;
   sessionId: string;
   messageId?: string;
@@ -186,7 +244,13 @@ export type CreationResult = {
   stylePlanning?: { choiceId: string };
   demo?: DemoPreview;
   development?: DevelopmentProgress;
-  cursor?: { messageId?: string; etag?: string; branchAnchor?: string; progressRevision?: string };
+  cursor?: {
+    messageId?: string;
+    etag?: string;
+    branchAnchor?: string;
+    progressRevision?: string;
+    siteClone?: SiteCloneCursor;
+  };
   attachments?: Array<Record<string, unknown>>;
   waitTimedOut?: boolean;
   nextActions?: Array<NextAction>;

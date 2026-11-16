@@ -9,8 +9,17 @@ const projectMode = z.object({
     .optional(),
 });
 
-export function querySessionExtra(client: ApiClient, sessionId: string) {
-  return client.call('/api/uxa-center/agent/AgentQuery/querySessionExtra', { sessionId });
+export async function querySessionExtra(client: ApiClient, sessionId: string, timeoutMs?: number) {
+  return (
+    await client.request(
+      '/api/uxa-center/agent/AgentQuery/querySessionExtra',
+      { sessionId },
+      {
+        timeoutMs,
+        retryRead: timeoutMs === undefined,
+      },
+    )
+  ).data;
 }
 
 export async function assertProjectWritable(client: ApiClient, sessionId: string): Promise<void> {

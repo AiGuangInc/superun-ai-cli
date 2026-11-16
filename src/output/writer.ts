@@ -1,6 +1,7 @@
+import { questionPages, nextActionPages } from '../interactions/question-pages.js';
 /** stdout 单结果输出，敏感值统一脱敏。@author xiuyu.yi */
 import { SCHEMA_VERSION } from '../config/constants.js';
-import type { CreationResult } from '../contracts/cli-output.js';
+import type { CreationResult, SiteCloneProgress, SiteCloneQuotaEstimate } from '../contracts/cli-output.js';
 import { CliError, EXIT_CODES } from './exit-codes.js';
 import { TaskReminder } from './task-reminder.js';
 import type { TaskReminderMessage } from './task-reminder.js';
@@ -20,6 +21,56 @@ export class OutputWriter {
   private readonly shownMessages = new Map<string, string>();
   private disposed = false;
   private readonly taskReminder = new TaskReminder((data) => this.reminder(data));
+
+  cloneQuota(estimate: SiteCloneQuotaEstimate): void {
+    if (this.written || this.disposed) return;
+    const message =
+      estimate.status === 'unknown'
+        ? '暂时无法核对本周免费网站搬家次数，实际是否享受免费资格以提交后的项目回执为准。'
+        : estimate.remaining > 0
+          ? `本周免费网站搬家已使用 ${estimate.used}/${estimate.limit} 次，还剩 ${estimate.remaining} 次。本次首轮搬家预计可用免费额度，实际以服务端领取结果为准。后续样式编辑和研发按平台规则计费。`
+          : `本周 ${estimate.limit} 次免费额度已用完，当前剩余 0 次。本次预计按算力计费，实际以服务端及账单为准。`;
+    this.stderr(
+      this.serialize({
+        schemaVersion: SCHEMA_VERSION,
+        event: 'clone_quota',
+        data: { ...estimate, message },
+        instruction: '立即展示 data.message。额度未知时保持未知，创建后读取项目免费资格及账单。',
+      }) + '\n',
+    );
+  }
+
+  /** 搬家提醒与通用站点提醒分别展示。 */
+  cloneReminder(
+    data: TaskReminderMessage & {
+      sessionId: string;
+      phase: SiteCloneProgress['phase'];
+      projectUrl: string;
+      remainingMinutes?: number;
+    },
+  ): void {
+    if (this.written || this.disposed) return;
+    this.stderr(
+      this.serialize({
+        schemaVersion: SCHEMA_VERSION,
+        event: 'site_clone_reminder',
+        data,
+        instruction: '展示当前提醒和项目链接，按 id 去重，继续读取原任务。',
+      }) + '\n',
+    );
+  }
+
+  cloneMessages(sessionId: string, messages: CreationResult['messages']): void {
+    if (!messages.length || this.written || this.disposed) return;
+    this.stderr(
+      this.serialize({
+        schemaVersion: SCHEMA_VERSION,
+        event: 'conversation_message',
+        data: { sessionId, messages },
+        instruction: '展示本轮网站搬家的实际消息，同一消息 ID 更新正文。',
+      }) + '\n',
+    );
+  }
 
   reminder(data: TaskReminderMessage): void {
     if (this.written || this.disposed) return;
@@ -55,6 +106,10 @@ export class OutputWriter {
 
   dispose(): void {
     this.disposed = true;
+    this.taskReminder.stop();
+  }
+
+  stopTaskReminder(): void {
     this.taskReminder.stop();
   }
 
@@ -129,12 +184,27 @@ export class OutputWriter {
   }
 
   write(data: unknown): void {
-    const result = data as CreationResult | undefined;
+    const original = data as CreationResult | undefined;
+    const result =
+      original && Array.isArray(original.interactions)
+        ? {
+            ...original,
+            interactions: original.interactions.map((interaction) => ({
+              ...interaction,
+              ...(interaction.questions.length || interaction.kind === 'SELECT_FEATURES'
+                ? { presentation: questionPages(interaction, 3) }
+                : {}),
+            })),
+          }
+        : original;
+    const actionPresentation =
+      result && Array.isArray(result.nextActions) ? nextActionPages(result.nextActions) : undefined;
+    if (actionPresentation && result) Object.assign(result, { nextActionsPresentation: actionPresentation });
     this.emit({
       schemaVersion: SCHEMA_VERSION,
       ok: true,
       data:
-        result?.executionActivity && Array.isArray(result.messages) ? withExecutionMessages(result) : data,
+        result?.executionActivity && Array.isArray(result.messages) ? withExecutionMessages(result) : result,
     });
   }
 

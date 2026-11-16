@@ -46,7 +46,8 @@ export function createProgram(
     const authCommand = action.parent?.name() === 'auth' && action.parent.parent === program;
     const offline =
       (rootCommand && (action.name() === 'version' || action.name() === 'update')) ||
-      (authCommand && action.name() === 'logout');
+      (authCommand && action.name() === 'logout') ||
+      (action.parent?.name() === 'clone' && action.name() === 'prepare');
     if (offline || action === program) return;
     if (!authCommand) await hooks.beforeBusiness();
     if (!(authCommand && action.name() === 'login')) await requireCredentials(context, action, !authCommand);

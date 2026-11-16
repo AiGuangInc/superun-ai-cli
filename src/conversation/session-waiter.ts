@@ -122,10 +122,14 @@ export class SessionWaiter {
     },
   ) {}
 
-  async wait(sessionId: string, options: WaitOptions = {}): Promise<CreationResult> {
+  async wait(
+    sessionId: string,
+    options: WaitOptions = {},
+    initialView?: SessionView,
+  ): Promise<CreationResult> {
     const deadline =
       options.timeout === undefined ? Number.POSITIVE_INFINITY : Date.now() + options.timeout * 1000;
-    let view = await this.dependencies.load(sessionId),
+    let view = initialView ?? (await this.dependencies.load(sessionId)),
       lastRefresh = Date.now();
     let etag: string | undefined,
       target: string | undefined = options.messageId,

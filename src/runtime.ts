@@ -1,3 +1,4 @@
+import { resolvePageAnswers } from './interactions/question-pages.js';
 /** 组织项目创作、交互回复和任务查询。@author xiuyu.yi */
 import { AgentCommandApi } from './api/agent-command-api.js';
 import { AgentQueryApi } from './api/agent-query-api.js';
@@ -64,6 +65,8 @@ import { checkContextFromExtra, reportReference } from './conversation/check-con
 import { styleResultNotice } from './conversation/style-guidance.js';
 import { creditCode, throwCreditResult } from './conversation/insufficient-credits.js';
 import { readProjectRouting, routingInstruction } from './conversation/project-routing.js';
+import { cloneCommand, cloneResult, cloneState, continueClone } from './conversation/site-clone.js';
+import { waitForClone } from './conversation/site-clone-waiter.js';
 import { stylePlanningChoice } from './conversation/style-planning.js';
 import {
   generateInitialStyles,
@@ -137,6 +140,7 @@ export class CreationRuntime {
       view.session.status === 3 &&
       extra.agentRuntime !== 'shire' &&
       message?.roundExtra?.hasSelectedStyle === '1' &&
+      (String(extra.siteClone) !== '1' || enabled(message.roundExtra.startDevelopment)) &&
       !enabled(object(message.extra).featureListConfirmed)
     ) {
       // 对齐 Glow 的功能面板，读取当前文件而不是旧用户轮次的附件快照。
@@ -316,6 +320,18 @@ export class CreationRuntime {
     const roundExtra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
     const planningChoiceId = await stylePlanningChoice(view, this.query);
     const started = enabled(roundExtra.startDevelopment);
+    const siteClone = String(view.extra.siteClone) === '1';
+    const siteCloneEditing = siteClone && isStyleSelected(view, choices) && !started;
+    if (siteCloneEditing) result.siteCloneEditing = true;
+    if (siteCloneEditing || (siteClone && started)) {
+      result.siteClone = {
+        phase: siteCloneEditing ? 'EDITING' : 'DEVELOPING',
+        projectUrl: new URL(
+          `/web/project/${encodeURIComponent(result.sessionId)}`,
+          this.client.config.endpoint,
+        ).href,
+      };
+    }
     const planApproved = enabled(roundExtra.architecturePlanApproved);
     if (
       planningChoiceId &&
@@ -334,9 +350,11 @@ export class CreationRuntime {
           {
             id: `${result.replyMessageId}:style-planning`,
             role: 'assistant',
-            text: choice
-              ? `已采用${styleChoiceLabel(choice)}，正在整理开发功能清单。`
-              : '风格已选定，正在整理开发功能清单。',
+            text: siteClone
+              ? '网站已进入研发，正在整理开发功能清单。'
+              : choice
+                ? `已采用${styleChoiceLabel(choice)}，正在整理开发功能清单。`
+                : '风格已选定，正在整理开发功能清单。',
           },
         ];
         if (result.taskProgress) {
@@ -355,14 +373,19 @@ export class CreationRuntime {
     }
     if (result.state === 'COMPLETED' && isStyleSelected(view, choices) && isInitialDemoRound(view)) {
       const message = roundMessage(view, currentRound(view));
-      if (demoGenerationStatus(view) !== 2 || Number(message?.roundExtra?.demoReadyAt) > Date.now())
+      if (
+        !siteCloneEditing &&
+        (demoGenerationStatus(view) !== 2 || Number(message?.roundExtra?.demoReadyAt) > Date.now())
+      )
         return { ...result, state: 'RUNNING' };
-      const demo = projectDemoPreview(
-        await this.query.snapshots(view.session.sessionId),
-        view,
-        choices,
-        planningChoiceId,
-      );
+      const demo =
+        (await (siteCloneEditing ? findModifiedDemoPreview(this.query, view) : undefined)) ??
+        projectDemoPreview(
+          await this.query.snapshots(view.session.sessionId),
+          view,
+          choices,
+          planningChoiceId,
+        );
       // 不能用“消息完成”代替演示就绪，也不能拿另一种风格的最新快照兜底。
       if (!demo) return { ...result, state: 'RUNNING' };
       result.demo = demo;
@@ -371,8 +394,8 @@ export class CreationRuntime {
       result.state === 'COMPLETED' &&
       !started &&
       !isInitialDemoRound(view) &&
-      enabled(view.extra.hasViewedDemo) &&
-      enabled(roundExtra.showConfirmGenerateMoreDemo);
+      (siteCloneEditing ||
+        (enabled(view.extra.hasViewedDemo) && enabled(roundExtra.showConfirmGenerateMoreDemo)));
     if (modifiedDemo) {
       result.demo = await findModifiedDemoPreview(this.query, view);
       if (result.demo) this.demoSnapshotSync = undefined;
@@ -381,9 +404,15 @@ export class CreationRuntime {
         if (this.demoSnapshotSync?.key !== key) this.demoSnapshotSync = { key, startedAt: Date.now() };
         if (Date.now() - this.demoSnapshotSync.startedAt < DEMO_SNAPSHOT_SYNC_MS)
           return { ...result, state: 'RUNNING' };
+        if (siteCloneEditing)
+          result.progress.push({
+            id: `${key}:preview-unavailable`,
+            text: '本轮回复已结束，暂未返回本轮新预览，可打开项目查看当前效果。',
+            status: 'completed',
+          });
       }
     }
-    if (started || result.demo?.viewed || modifiedDemo) {
+    if (started || result.demo?.viewed || (modifiedDemo && !siteCloneEditing)) {
       result.development = {
         started,
         planApproved,
@@ -407,6 +436,7 @@ export class CreationRuntime {
         );
       await this.attachDevelopmentPreview(result, view);
     }
+    if (result.siteClone) result.siteClone.previewUrl = result.demo?.url ?? result.development?.previewUrl;
     return result;
   }
   private pluginInteraction(binding: InteractionBinding, state: JsonObject): InteractionBinding {
@@ -576,7 +606,12 @@ export class CreationRuntime {
     throw new CliError('PROTOCOL_ERROR', '后台回执的来源链存在循环或层数过多，无法确认当前结果');
   }
   async state(sessionId: string, reviewId?: string): Promise<CreationResult> {
-    return this.withGuidance(await this.inspect(await this.load(sessionId), undefined, reviewId));
+    return this.stateFromView(await this.load(sessionId), reviewId);
+  }
+  async stateFromView(view: SessionView, reviewId?: string): Promise<CreationResult> {
+    if (!reviewId && String(view.extra.siteClone) === '1')
+      return cloneResult(this, await cloneState(this, view.session.sessionId, view));
+    return this.withGuidance(await this.inspect(view, undefined, reviewId));
   }
   withGuidance<T extends GuidanceResult>(result: T) {
     throwCreditResult(result, this.client.config);
@@ -614,8 +649,26 @@ export class CreationRuntime {
     const deadline = options.timeout === undefined ? undefined : Date.now() + options.timeout * 1000;
     const remaining = () =>
       deadline === undefined ? undefined : Math.max(0, (deadline - Date.now()) / 1000);
+    let initialView: SessionView | undefined;
+    if (!options.reviewId && !options.styleTarget) {
+      const view = (initialView = await this.load(sessionId));
+      if (String(view.extra.siteClone) === '1') {
+        const observation = await cloneState(this, sessionId, view);
+        if (!['EDITING', 'DEVELOPING'].includes(observation.progress.phase))
+          return waitForClone(
+            this,
+            sessionId,
+            {
+              timeout: remaining(),
+              messageId: options.requiredMessageId ?? options.messageId,
+              submittedInteractionId: options.submittedInteractionId,
+            },
+            observation,
+          );
+      }
+    }
     let pending = options;
-    let result = await this.waiter.wait(sessionId, { ...pending, timeout: remaining() });
+    let result = await this.waiter.wait(sessionId, { ...pending, timeout: remaining() }, initialView);
     while (result.stylePlanning && (result.state === 'COMPLETED' || pendingStylePlanApproval(result))) {
       if (deadline !== undefined && Date.now() >= deadline)
         return this.withGuidance({
@@ -688,9 +741,17 @@ export class CreationRuntime {
       text(response.planningNotice) ?? text(response.progressTitle) ?? '任务已提交',
     );
     let taskProgress = receipt;
+    let awaitingClone = false;
     try {
       // 接受回执也展示同一项目的其他活跃任务；仅查进度，不推进任务或读取功能清单。
-      const view: SessionView = { ...(await this.conversation.recently(id)), extra: {} };
+      const recently = await this.conversation.recently(id);
+      const view: SessionView = { ...recently, extra: {} };
+      const sessionExtra = object(recently.session.sessionExtra);
+      const extra = roundMessage(view, currentRound(view))?.roundExtra ?? {};
+      awaitingClone =
+        String(sessionExtra.siteClone) === '1' &&
+        !enabled(extra.hasSelectedStyle) &&
+        !enabled(extra.startDevelopment);
       const snapshot = await this.taskProgress.read(view, await this.choices(id, undefined, view), [], {
         autoTest: ['test', 'repair'].includes(String(response.autoTestPhase)),
         codeReview: ['review', 'repair'].includes(String(response.codeReviewPhase)),
@@ -714,7 +775,7 @@ export class CreationRuntime {
         '请求已接受，其他任务进度暂未读取，请继续查询。',
       ]);
     }
-    return this.withGuidance({
+    const accepted = this.withGuidance({
       state: 'ACCEPTED',
       sessionId: id,
       messageId: text(response.messageId),
@@ -765,6 +826,21 @@ export class CreationRuntime {
           }
         : {}),
     });
+    if (awaitingClone) {
+      for (const action of accepted.nextActions) {
+        if (action.action === 'WAIT')
+          action.command = cloneCommand(
+            this,
+            'wait',
+            id,
+            ...(accepted.messageId ? ['--message-id', accepted.messageId] : []),
+            ...(options.submittedInteractionId
+              ? ['--submitted-interaction-id', options.submittedInteractionId]
+              : []),
+          );
+      }
+    }
+    return accepted;
   }
   async generateStyles(sessionId: string, content: string, preReplyMessageId?: string): Promise<JsonObject> {
     return generateInitialStyles(this, sessionId, content, preReplyMessageId);
@@ -787,6 +863,7 @@ export class CreationRuntime {
   }
   async selectStyle(sessionId: string, choiceId: string): Promise<JsonObject> {
     const view = await this.load(sessionId);
+    if (String(view.extra.siteClone) === '1') return continueClone(this, sessionId, 'demo', choiceId);
     if (!view.session.pendingBranch || isStyleSelected(view))
       throw new CliError('STALE_INTERACTION', '当前已离开风格选择阶段，请查看进度');
     const choice = (await this.choices(sessionId, undefined, view)).find(
@@ -984,6 +1061,7 @@ export class CreationRuntime {
         const step = wizardQuestion(page.interaction);
         if (step.interaction.interactionId === interactionId) {
           binding = candidate;
+          if (input.pageAnswers !== undefined) input = resolvePageAnswers(step.interaction, input);
           wizardInput = step.input(input);
           break;
         }
@@ -991,6 +1069,7 @@ export class CreationRuntime {
     }
     if (!binding)
       throw new CliError('STALE_INTERACTION', '交互已结束或被新问题替换，请重新查询当前状态', { sessionId });
+    if (input.pageAnswers !== undefined) input = resolvePageAnswers(binding.interaction, input);
     const toolId = binding.interaction.source.toolId;
     if (toolId) {
       const sources = new Set<string>();

@@ -24,11 +24,12 @@ export class ConversationApi {
     sessionId: string,
     messageId: string,
     etag?: string,
+    timeoutMs?: number,
   ): Promise<{ status: number; etag?: string; pipeline?: NodePipeline }> {
     const response = await this.client.request(
       '/web-api/conversation-v2/message-snapshot',
       { sessionId, messageId, previewVersionId: 0, timelineVariant: 'work_block', toolActivityVersion: 2 },
-      { etag },
+      { etag, timeoutMs, retryRead: timeoutMs === undefined },
     );
     return {
       status: response.status,
