@@ -22,6 +22,13 @@ export async function stylePlanningChoice(
   const current = currentRound(view);
   if (!current) return undefined;
   const extra = roundMessage(view, current)?.roundExtra ?? {};
+  // 搬家首次进入研发复用普通规划衔接，编辑和后续独立规划仍按各自流程执行。
+  if (String(view.extra.siteClone) === '1')
+    return extra.business_type === 'start_dev' &&
+      enabled(extra.startDevelopment) &&
+      !enabled(extra.architecturePlanApproved)
+      ? current.anchorUserMessageId
+      : undefined;
   if (!canContinue(extra)) return undefined;
   const direct = text(extra.cliPlanAfterStyle);
   if (direct) return direct;

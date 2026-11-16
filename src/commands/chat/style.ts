@@ -37,6 +37,10 @@ export function registerStyle(chat: Command, context: CommandContext): void {
         currentAnchor = styleBranchAnchor(view),
         anchor = text(object(command.opts()).anchor) ?? currentAnchor,
         choices = await service.choices(sessionId, anchor, view);
+      if (!object(command.opts()).anchor && String(view.extra.siteClone) === '1') {
+        context.output.write({ ...(await service.stateFromView(view)), choices });
+        return;
+      }
       const taskProgress = await service.taskProgress.read(view, choices);
       taskProgress.changed = taskProgress.revision !== object(command.opts()).progressRevision;
       const result = service.withGuidance({

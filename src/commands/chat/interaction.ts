@@ -1,12 +1,28 @@
+import { questionPages } from '../../interactions/question-pages.js';
 /** 提交当前交互的回答。@author xiuyu.yi */
 import type { Command } from 'commander';
 import type { CommandContext } from '../shared.js';
-import { runtime, readInput, withWait, waitOptions, businessWrite } from '../shared.js';
+import { runtime, readInput, withWait, waitOptions, businessWrite, positive } from '../shared.js';
 import { object, requiredText } from '../../contracts/value.js';
 import { CliError } from '../../output/exit-codes.js';
 
 export function registerInteraction(chat: Command, context: CommandContext): void {
   const interaction = chat.command('interaction').description('回答或跳过交互');
+  interaction
+    .command('pages <sessionId> <interactionId>')
+    .description('生成完整问题分页及本页都不选控件')
+    .requiredOption('--max-options <count>', '宿主每页选项容量，包含本页都不选', positive)
+    .action(async (sessionId: string, interactionId: string, _options: unknown, command: Command) => {
+      const service = await runtime(context, command);
+      const result = await service.state(sessionId);
+      const current = result.interactions.find((item) => item.interactionId === interactionId);
+      if (!current) throw new CliError('STALE_INTERACTION', '该问题已结束或被替换');
+      context.output.write({
+        state: 'NEEDS_INPUT',
+        sessionId,
+        presentation: questionPages(current, command.opts<{ maxOptions: number }>().maxOptions),
+      });
+    });
   for (const action of ['reply', 'skip']) {
     const command = withWait(
       interaction

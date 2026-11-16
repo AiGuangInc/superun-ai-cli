@@ -102,7 +102,10 @@ superun-ai
 │   ├── status <sessionId>                                        # Discover an existing PPT task or compare a specific generation ID
 │   └── get <sessionId>                                           # Read an existing deck or verify delivery using both generation and mainline IDs
 ├── clone                                                         # Site clone: copy an existing website's page styles and content into a superun project
-│   └── create <url>                                              # Create a site clone project from a URL; it runs in the background, no waiting; weekly free clones (site_clone_weekly in free-quota), then credits
+│   ├── prepare                                                   # 解析搬家输入，返回单网址、多网址选择或补充网址引导
+│   ├── create <url>                                              # Create a site clone project from a URL; it runs in the background, no waiting; weekly free clones (site_clone_weekly in free-quota), then credits
+│   ├── wait <sessionId>                                          # 等待网站搬家，展示预计剩余时间和项目链接
+│   └── continue <sessionId>                                      # 采用搬家结果修改样式，或开发真实功能
 ├── agent                                                         # Create managed-agent configuration and read it back without running or deploying it
 │   ├── app                                                       # Build an agent application through the independent entry
 │   │   ├── create                                                # Submit requirements independently, then inspect the returned questionnaire
@@ -165,6 +168,7 @@ superun-ai
 │   ├── security <sessionId>                                      # Scan security, apply necessary fixes, and generate an audit report
 │   ├── agent-friendly <sessionId>                                # Prepare agent-friendly access and choose Skill or connector instructions
 │   ├── interaction                                               # Answer or skip interactions
+│   │   ├── pages <sessionId> <interactionId>                     # 生成完整问题分页及本页都不选控件
 │   │   ├── reply <sessionId> <interactionId>                     # Submit an answer
 │   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互
 │   ├── plugin                                                    # Query, enable, and disable plugins
@@ -304,9 +308,16 @@ These entries leave ordinary chat create, shared questionnaire parsing, generati
 
 ```bash
 superun-ai clone create <url>
+superun-ai clone wait <sessionId> --timeout 45
+superun-ai clone wait <sessionId> --timeout 45 --cursor <previous-json-receipt>
+superun-ai clone continue <sessionId> --target <demo|development> [--result-id <id>]
 ```
 
-Same as the Glow clone page (`/clone`): the message is the URL, `https://` when the protocol is omitted; the new project carries `siteClone=1` and `agentRuntime=shire`. Cloning takes a while, so it only submits: the receipt tells the user it is running in the background and gives the project page link, with no waiting. The server reads the site first, then hands off by itself and builds the first version (a style choice). After a reading turn ends, `chat wait` keeps polling for about a minute for that handoff; without it, the reading agent is waiting for the user (unusable address, sign-in, a site too large for one turn), so the wait returns what it said and the user replies with `chat send`. After the first version, select it to keep editing or delegate to the advanced designer as usual. Weekly free clones are `site_clone_weekly` in `free-quota`, then credits; Autopilot cannot start while the site is being read.
+Creation returns the project link while the server reads the site and builds the first preview. Wait checks current project and branch data, emits a project estimate every two minutes, and emits an independent superun.ai reminder every five minutes. Save the full stdout JSON as the cursor to resume messages and reminders across processes. When `waitTimedOut` is true, continue tracking the same project.
+
+Use `chat interaction reply` for structured questions and `chat send` for regular follow-ups. After the first preview, use the returned result ID to enter appearance editing or development. Each completed appearance edit returns its preview and available choices. Development hands off to the feature list and the standard development, checks, and publishing workflow.
+
+The `clone_quota` event reports the `site_clone_weekly` estimate before submission. Create retains it as `siteClone.quotaEstimate`. `siteClone.weeklyFreeDecision` in create and wait reads the server's project decision. A missing quota is unknown. Check the project bill for actual credit charges.
 
 ## Create a managed-agent configuration only
 
@@ -615,7 +626,7 @@ Business commands write one JSON result to stdout. Diagnostics and update progre
 
 ## Updates
 
-The CLI checks npm's `latest` version before business commands. If it differs from the local version, the CLI installs that version and resumes the command. If an update or verification fails, the CLI stops; resolve the reported issue before retrying. Help, `version`, and `auth logout` work offline.
+The CLI checks npm's `latest` version before business commands. The CLI installs it and resumes the command when npm has a newer version. A newer local build continues to run. If an update or verification fails, the CLI stops; resolve the reported issue before retrying. Help, `version`, and `auth logout` work offline.
 
 Version checks and installation both run through npm, inheriting its proxy and certificate configuration and retrying transient network failures. If the official Registry is unavailable, the CLI tries the user's configured Registry and uses the successful source for installation. Recovery does not print errors or installation logs. If all sources fail, `error.checks` provides reason codes without raw npm logs or credentials. The CLI does not disable certificate verification or skip the version check to allow business requests.
 

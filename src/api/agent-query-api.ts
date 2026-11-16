@@ -133,8 +133,8 @@ export class AgentQueryApi {
   async sessions(input: JsonObject): Promise<JsonObject> {
     return object(await this.client.call(`${PREFIX}/pageQuerySessionByLastId`, input));
   }
-  async extra(sessionId: string): Promise<JsonObject> {
-    return object(await querySessionExtra(this.client, sessionId));
+  async extra(sessionId: string, timeoutMs?: number): Promise<JsonObject> {
+    return object(await querySessionExtra(this.client, sessionId, timeoutMs));
   }
   async snapshots(sessionId: string): Promise<unknown> {
     return this.client.call('/api/uxa-center/agent/SessionSnapshot/pageQuerySessionSnapshotHistory', {
@@ -179,11 +179,13 @@ export class AgentQueryApi {
       }),
     );
   }
-  async userFreeQuota(sessionId?: string): Promise<Array<UserFreeQuotaItem>> {
-    return parseWire(
-      userFreeQuotaSchema,
-      await this.client.call(`${PREFIX}/queryUserFreeQuota`, sessionId ? { sessionId } : {}),
-    ).items;
+  async userFreeQuota(sessionId?: string, timeoutMs?: number): Promise<Array<UserFreeQuotaItem>> {
+    const response = await this.client.request(
+      `${PREFIX}/queryUserFreeQuota`,
+      sessionId ? { sessionId } : {},
+      { timeoutMs, retryRead: timeoutMs === undefined },
+    );
+    return parseWire(userFreeQuotaSchema, response.data).items;
   }
   async designerFreeRemaining(sessionId: string): Promise<number> {
     const response = object(await this.client.call(`${PREFIX}/querySessionFreeQuota`, { sessionId }));

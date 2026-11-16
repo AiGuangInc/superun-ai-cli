@@ -2,13 +2,14 @@
 import type { Command } from 'commander';
 import type { CommandContext } from './shared.js';
 import { runtime } from './shared.js';
+import { SITE_CLONE_WEEKLY_QUOTA_KEY } from '../config/constants.js';
 import { CliError } from '../output/exit-codes.js';
 
 const QUOTA_NAMES: Record<string, string> = {
   'free_round:stage2_designer': '高级设计师方案优化',
   'free_round:issue_review': '代码审查',
   'free_round:auto_test': '自动测试',
-  site_clone_weekly: '本周免费网站搬家',
+  [SITE_CLONE_WEEKLY_QUOTA_KEY]: '本周免费网站搬家',
 };
 
 export function registerFreeQuota(program: Command, context: CommandContext): void {
@@ -33,7 +34,7 @@ export function registerFreeQuota(program: Command, context: CommandContext): vo
           };
         }),
         uncertainty:
-          '各项费用状态按查询时的额度预估，额度可能在查询后变化；提交任务后以服务端 tokenFree 回执确认高级设计师委托的实际状态。',
+          '各项费用状态按查询时的额度预估，额度可能在查询后变化；网站搬家提交后查看 siteClone.weeklyFreeDecision，高级设计师委托查看服务端 tokenFree。',
       });
     });
 }

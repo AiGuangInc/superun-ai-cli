@@ -3,6 +3,7 @@ import { execFile, spawn } from 'node:child_process';
 import { mkdir, mkdtemp } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
+import { gte } from 'semver';
 import { PACKAGE_NAME, PACKAGE_VERSION } from '../config/constants.js';
 import { object } from '../contracts/value.js';
 import { CliError } from '../output/exit-codes.js';
@@ -19,7 +20,7 @@ export async function versionGate(
 ): Promise<{ reexecuted: boolean; version: string; exitCode?: number }> {
   const source = await latestVersion();
   const required = source.version;
-  if (required === PACKAGE_VERSION) return { reexecuted: false, version: required };
+  if (gte(PACKAGE_VERSION, required)) return { reexecuted: false, version: PACKAGE_VERSION };
   if (process.env.SUPERUN_AI_CLI_REEXEC === '1')
     throw new CliError('UPDATE_FAILED', '重启后版本仍不匹配，已停止重复更新');
 

@@ -104,7 +104,10 @@ superun-ai
 │   ├── status <sessionId>                                        # 只读发现现有PPT任务或核对指定generationId
 │   └── get <sessionId>                                           # 读取既有deck；同时提供生成ID和主线锚点才核验本次交付
 ├── clone                                                         # 网站搬家：把已有网站的页面样式和内容复刻成 superun 项目
-│   └── create <url>                                              # 输入网址新建搬家项目，提交后在后台运行，不用等待；每周有免费次数（free-quota 的 site_clone_weekly），用完后按积分收费
+│   ├── prepare                                                   # 解析搬家输入，返回单网址、多网址选择或补充网址引导
+│   ├── create <url>                                              # 输入网址新建搬家项目，提交后在后台运行，不用等待；每周有免费次数（free-quota 的 site_clone_weekly），用完后按积分收费
+│   ├── wait <sessionId>                                          # 等待网站搬家，展示预计剩余时间和项目链接
+│   └── continue <sessionId>                                      # 采用搬家结果修改样式，或开发真实功能
 ├── agent                                                         # 搭建托管智能体配置并读回资源，不运行或部署
 │   ├── app                                                       # 从需求独立搭建智能体应用
 │   │   ├── create                                                # 独立新建并提交需求，后续沿回执查询问卷
@@ -167,6 +170,7 @@ superun-ai
 │   ├── security <sessionId>                                      # 安全扫描，自动评估、必要修复并生成审计报告
 │   ├── agent-friendly <sessionId>                                # 准备 Agent 友好能力，选择技能或连接器接入方式
 │   ├── interaction                                               # 回答或跳过交互
+│   │   ├── pages <sessionId> <interactionId>                     # 生成完整问题分页及本页都不选控件
 │   │   ├── reply <sessionId> <interactionId>                     # 提交回答
 │   │   └── skip <sessionId> <interactionId>                      # 跳过当前交互
 │   ├── plugin                                                    # 查询、启用和禁用插件
@@ -320,11 +324,26 @@ superun-ai agent app refine <sessionId> <interactionId> --input <澄清.json> --
 
 ## 网站搬家
 
+新建前可用 `clone prepare --input <JSON文件>` 离线解析用户原话，JSON 包含 content 和可选 selectedUrl。结果 READY 提供单一网址，NEEDS_SELECTION 提供完整候选及分页，NEEDS_URL / INVALID_URL 引导补充或修正网址。originalInput 保留原文，供专家关联后续需求；解析不触发登录、额度查询或项目创建。已有项目的对话继续沿原 sessionId 执行。
+
 ```bash
 superun-ai clone create <网址>
+superun-ai clone wait <sessionId> --timeout 45
+superun-ai clone wait <sessionId> --timeout 45 --cursor <上次JSON回执>
+superun-ai clone continue <sessionId> --target <demo|development> [--result-id <id>]
 ```
 
-和 Glow 搬家页（`/clone`）一样：内容就是网址，省略协议时按 `https://`；新建项目带 `siteClone=1`、`agentRuntime=shire`。搬家耗时长，提交后在后台运行，回执告诉用户已经开始并给项目页链接，不用等待。服务端先读网站，读完自动交接并生成第一版页面（风格方案）。读站的一轮结束后，`chat wait` 再等约 1 分钟等自动交接；没交接说明读站 Agent 在等用户（网址用不了、要登录、一轮读不完等），返回它说的话，用户回复用 `chat send`。第一版出来后照常选方案继续编辑，或委托高级设计师。每周免费次数看 `free-quota` 的 `site_clone_weekly`，用完按积分收费；读站阶段不能开全托管。
+`clone create` 提交后立即交付动态项目链接。服务端先读取网站，再自动交接和生成第一版。`clone wait` 以本人项目列表与当前主线、分支核对完成状态，每 2 分钟给出项目链接与剩余时间估算，每 5 分钟独立给出 superun.ai 入口。把上次完整 stdout JSON 保存后传入 `--cursor`，可跨进程接续提醒和过程消息。达到本地等候窗口时，按 `waitTimedOut` 继续跟进同一项目。
+
+有真实交互时使用 `chat interaction reply`，普通补充信息使用 `chat send`。首版预览就绪后，用回执中的结果 ID 进入样式编辑或研发。每轮样式修改完成后使用回执中的当前预览及后续操作。进入研发后等待功能清单，再按公共研发、检查和发布流程继续。
+
+`clone create` 提交前查询 `site_clone_weekly`，通过 stderr 的 `clone_quota` 事件展示预估，并在创建回执中保留 `siteClone.quotaEstimate`。创建及等候回执的 `siteClone.weeklyFreeDecision` 读取服务端记录的本项目免费资格。额度读取失败时显示未知；实际算力扣减按本项目账单核对。
+
+## 原生问答分页
+
+CLI 的真实问卷回执附带 `interactions[].presentation`，默认每页最多三个选项，完整保留原文与说明，并附「本页都不选」。宿主可直接用原生问答控件渲染；容量不同时使用 `chat interaction pages <sessionId> <interactionId> --max-options <容量>` 获取对应分页。
+
+宿主收集各页真实选择后，通过原 `chat interaction reply --input <文件>` 提交 `presentation: {revision, maxOptions}`、`pageAnswers: [{pageId, selectedOptionIds}]` 和可选 `otherAnswers`。CLI 校验当前题目与分页修订，汇总为原始 questionId/selectedIndices。`page:none` 只表示本页没有选择，全部未选时保留问题未决。需要 action 的原交互仍按其 answerSchema 提供 action。
 
 ## 只搭建托管智能体
 
@@ -816,13 +835,13 @@ CLI 每次上传前读取 Glow 同源的服务端格式和大小限制。当前�
 
 ## 更新
 
-CLI 每次执行业务命令前都查询 npm `latest`。版本不一致时，使用当前 Node 运行 npm，在独立的新目录安装目标版本；核对包版本并实际启动离线 `version` 验证模块与依赖后，原子切换默认入口，再继续原业务命令。后续调用及离线 `version` 都使用已切换的版本。普通终端、WorkBuddy 的 Node 环境以及不同 CLI 安装各自维护入口，用户无需判断目录或手动升级。版本查询、安装或验证失败时停止业务，不回退旧版本继续请求；已有安装与入口保留。帮助、`version` 和 `auth logout` 可离线使用。
+CLI 每次执行业务命令前都查询 npm `latest`。仅当 npm `latest` 高于本地版本时，使用当前 Node 运行 npm，在独立的新目录安装目标版本；核对包版本并实际启动离线 `version` 验证模块与依赖后，原子切换默认入口，再继续原业务命令。后续调用及离线 `version` 都使用已切换的版本。普通终端、WorkBuddy 的 Node 环境以及不同 CLI 安装各自维护入口，用户无需判断目录或手动升级。版本查询、安装或验证失败时停止业务，不回退旧版本继续请求；已有安装与入口保留。帮助、`version` 和 `auth logout` 可离线使用。
 
 自动更新保留原 npm 安装作为稳定启动入口，新版本存放于 `~/.cache/superun-ai-cli/installations/` 下按安装来源和 Node 环境隔离的目录，通过小型入口记录切换实际执行版本，不原地覆盖全局包。每次安装使用独立目录，并发安装互不覆盖；不创建更新锁，不在业务命令中删除旧版本、失败安装目录或切换残留，避免 npm 清理旧包触发宿主的批量删除确认。历史版本会占用磁盘，本版不自动清理。CLI 不绕过宿主权限保护，其他文件写入或网络权限仍受宿主管理。
 
 公开包的版本预检与安装使用无登录凭证的 npm 配置，不读取用户、全局或项目的 npmrc。更新子进程仅接收运行和网络所需的环境变量，不继承 npm Token、superun PAT、其他业务凭证或 `NODE_OPTIONS`，也不弹出 CLI 自己的 npm 登录步骤。环境变量中的代理、CA/证书与缓存配置继续生效；只写在 npmrc 中的配置不用于自动更新。官方 Registry 不可用时，可回退到 `npm_config_registry` / `NPM_CONFIG_REGISTRY` 环境变量指定的无凭证镜像地址，安装沿用查询成功的源。恢复过程不输出 npm 原始日志或凭据；失败只返回原因码，不关闭证书校验、不绕过宿主权限保护。AI 安装助手的首次安装与旧版升级也按 [安装指南](INSTALL.md) 使用无凭证环境，避免旧入口在加载新版之前读取 npm 凭证。
 
-可以执行 `superun-ai update` 主动同步 npm `latest`。从源码安装也遵循相同的版本校验；修改源码后需要重新构建，如果全局命令不是链接到该目录，再执行 `npm install -g .`。
+可以执行 `superun-ai update` 主动同步 npm `latest`。更高的本地版本继续运行。源码安装也遵循相同的版本校验；修改源码后需要重新构建，如果全局命令不是链接到该目录，再执行 `npm install -g .`。
 
 ```bash
 superun-ai version

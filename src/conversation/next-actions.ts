@@ -7,12 +7,13 @@ import { AUTO_TEST_RESULT_INSTRUCTION } from './auto-test.js';
 import { CODE_REVIEW_RESULT_INSTRUCTION } from './code-review.js';
 import { routingInstruction } from './project-routing.js';
 import { securityNextActions, SECURITY_REVIEW_INSTRUCTION } from './security-review.js';
-import { USER_CHOICE_INSTRUCTION } from './user-choice-guidance.js';
+import { PAGED_CHOICE_INSTRUCTION, USER_CHOICE_INSTRUCTION } from './user-choice-guidance.js';
 
 export type GuidanceResult = Pick<CreationResult, 'state' | 'sessionId'> &
   Partial<
     Pick<
       CreationResult,
+      | 'siteCloneEditing'
       | 'interactions'
       | 'choices'
       | 'messageId'
@@ -54,13 +55,17 @@ export function hasCompletedCreationResult(result: GuidanceResult): boolean {
 }
 
 const QUESTIONNAIRE_INSTRUCTION =
-  '先展示 messages 中本轮需要阅读的说明，再完整展示当前 questions 的问题、选项标签和说明，保留单选/多选与自定义回答能力。可按宿主工具容量分批收答；本次问题答齐后按原 question.id 和 options.index 一次提交 answers，不代选、不追加提交确认。提交后读取新结果，有新交互 ID 就继续提问，不能把一页回答当作整个任务完成。';
+  '先展示 messages 中本轮需要阅读的说明，再完整展示当前 questions 的问题、选项标签和说明，保留单选/多选与自定义回答能力。' +
+  PAGED_CHOICE_INSTRUCTION +
+  '本次问题答齐后按原 question.id 和 options.index 一次提交 answers，不代选、不追加提交确认。提交后读取新结果，有新交互 ID 就继续提问，不能把一页回答当作整个任务完成。';
 
 const PLAN_REVIEW_INSTRUCTION =
   '请按 messages 顺序展示原始规划对话，与产品页面保持一致，不自行摘要、改写或追加 attachments 中的完整研发规划。然后展示：\n- **确认规划**：回复 **“确认规划”** 继续。\n- **调整功能**：直接告诉我需要增加或修改的内容。\n每次调整后都要等待并展示更新方案，再次给出这两个入口；如果服务端再次提问，先回答问题再等待方案。补充要求不等于确认，不能确认旧方案。';
 
 const FEATURE_SELECTION_INSTRUCTION =
-  '请按 messages 顺序展示原始对话和功能清单，保留展示编号与 details.features 中真实 id 的对应关系；无需额外生成或链接功能清单文档，也不追加勾选状态提示。此时功能尚待选择开发，不展示“继续创作”或“上线运营”入口。最后只提示：“请回复要开发的功能编号或具体需求。”';
+  '请按 messages 顺序展示原始对话和功能清单，保留展示编号与 details.features 中真实 id 的对应关系；无需额外生成或链接功能清单文档，也不追加勾选状态提示。此时功能尚待选择开发，不展示“继续创作”或“上线运营”入口。如果使用宿主选择工具，' +
+  PAGED_CHOICE_INSTRUCTION +
+  '最后提示：“请回复要开发的功能编号或具体需求。”';
 
 const INTERACTION_INSTRUCTIONS: Record<InteractionKind, string> = {
   MANAGED_AGENT_WIZARD: QUESTIONNAIRE_INSTRUCTION,
@@ -133,6 +138,34 @@ function nextActionsForState(
 ): Array<NextAction> {
   // 显式保留连接地址，避免调用方执行下一步时切回默认环境；凭据不进入命令。
   const command = [COMMAND_NAME, '--endpoint', config.endpoint, '--locale', config.locale, 'chat'];
+  if (result.siteCloneEditing && result.state === 'COMPLETED')
+    return [
+      {
+        action: 'CONTINUE_EDITING',
+        requiresUserInput: true,
+        instruction:
+          '展示最新网站预览，然后询问继续修改样式和内容，还是进入研发。继续修改时收集用户原话并发送。',
+        command: [...command, 'send', '--input', '-', result.sessionId],
+      },
+      {
+        action: 'START_DEVELOPMENT',
+        requiresUserInput: true,
+        instruction: '用户选择进入研发后，基于最新编辑成果生成研发功能清单。',
+        command: [
+          COMMAND_NAME,
+          '--endpoint',
+          config.endpoint,
+          '--locale',
+          config.locale,
+          'clone',
+          'continue',
+          result.sessionId,
+          '--target',
+          'development',
+        ],
+      },
+    ];
+
   const securityActions = securityNextActions(result, command);
   if (securityActions) return securityActions;
   const styleActions = styleNextActions(result, command);

@@ -26,11 +26,11 @@ export function registerState(chat: Command, context: CommandContext): void {
         const snapshot = await service.conversation.snapshot(sessionId, options.messageId);
         if (snapshot.pipeline) view = applySnapshot(view, snapshot.pipeline);
       }
-      const result = await service.inspect(view, undefined, text(options.reviewId)),
+      const result = await service.stateFromView(view, text(options.reviewId)),
         names = z.array(z.string()).parse(options.includeFile);
       if (result.taskProgress)
         result.taskProgress.changed = result.taskProgress.revision !== options.progressRevision;
       if (names.length) result.attachments = await service.query.attachments(sessionId, names);
-      context.output.write(service.withGuidance(result));
+      context.output.write(result);
     });
 }
