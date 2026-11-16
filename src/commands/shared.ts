@@ -52,6 +52,7 @@ async function loadCredentialContext(
     output: context.output,
     signal: context.signal,
     allowBrowser,
+    openLocalBrowser: options.browser !== false,
     verifyExisting,
     name: text(options.name) ?? requestChannel,
   });

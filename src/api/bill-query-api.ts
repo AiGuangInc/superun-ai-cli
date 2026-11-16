@@ -57,6 +57,16 @@ const billStatisticsSchema = z.object({
 });
 const billProjectsSchema = z.array(z.object({ sessionId: z.string().min(1), topic: optionalText }));
 const billTypesSchema = z.array(z.object({ code: integer.nonnegative(), desc: z.string() }));
+const accountSchema = z.object({
+  balances: z.array(
+    z.object({
+      currency: z.string(),
+      ownerType: z.string().nullish(),
+      ownerId: z.union([z.string(), z.number()]).nullish(),
+      balanceStr: z.string().nullish(),
+    }),
+  ),
+});
 
 export type BillFilters = {
   workspaceId?: string;
@@ -81,6 +91,19 @@ function filterRequest(filters: BillFilters) {
 
 export class BillQueryApi {
   constructor(private readonly client: ApiClient) {}
+
+  async balance() {
+    const account = parseWire(
+      accountSchema,
+      await this.client.call('/api/uxa-center/support/UserAccount/queryAccount', { product: 13 }),
+    );
+    const personal = account.balances.find(
+      (item) => item.currency === 'GLOW_TOKEN' && (item.ownerType === 'user' || String(item.ownerId) === '0'),
+    );
+    if (!personal || !personal.balanceStr || !decimal.safeParse(personal.balanceStr).success)
+      throw new CliError('PROTOCOL_ERROR', '当前个人算力余额未返回有效数值，不能按零处理');
+    return { balanceStr: personal.balanceStr };
+  }
 
   async page(filters: BillFilters, cursor?: string) {
     const result = parseWire(

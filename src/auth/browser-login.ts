@@ -37,6 +37,7 @@ export async function ensurePat(options: {
   output: OutputWriter;
   signal: AbortSignal;
   allowBrowser: boolean;
+  openLocalBrowser?: boolean;
   verifyExisting?: boolean;
   name: string;
 }): Promise<PatCredential> {
@@ -77,8 +78,12 @@ export async function ensurePat(options: {
   const signal = AbortSignal.any([commandSignal, timeout]);
   try {
     signal.throwIfAborted();
-    output.log(`请在浏览器完成 superun 登录：${loginUrl.href}`);
-    if (!(await openBrowser(loginUrl.href, signal))) output.log('未能自动打开浏览器，请手动打开上面的地址。');
+    if (options.openLocalBrowser === false) output.log(loginUrl.href);
+    else {
+      output.log(`请在浏览器完成 superun 登录：${loginUrl.href}`);
+      if (!(await openBrowser(loginUrl.href, signal)))
+        output.log('未能自动打开浏览器，请手动打开上面的地址。');
+    }
     const anonymousClient = new ApiClient(loginConfig, '', undefined, signal);
     while (true) {
       signal.throwIfAborted();

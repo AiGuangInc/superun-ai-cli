@@ -72,7 +72,7 @@ test('managed projects reject explicit writes in the body or header and uploads'
 });
 
 test('ordinary and released projects submit their original write, new projects need no check', async () => {
-  for (const extra of [{}, { autoMode: '0', autoModeRunId: 'old-run' }]) {
+  for (const extra of [{}, { autoMode: '0', autoModeRunId: 'old-run' }, { autoMode: '2' }, { autoMode: 2 }]) {
     const { client, requests } = mockClient(extra);
     await new AgentCommandApi(client).stop(sessionId, 'all');
     assert.deepEqual(
@@ -178,5 +178,17 @@ test('CLI reads a managed project quote but does not submit purchase, unlock or 
       assert.equal(result.code, 5);
     }
     assert.ok(requests.every(({ path }) => !/\/(purchase-credits|unlock-normal|retry)$/.test(path)));
+  }
+});
+
+test('chat submission accepts ordinary and bypass project modes', async () => {
+  for (const autoMode of ['0', 0, '2', 2]) {
+    const { client, requests } = mockClient({ autoMode });
+    await new AgentCommandApi(client).chat({ sessionId, content: 'edit' });
+    assert.deepEqual(
+      requests.map(({ path }) => path),
+      [flagPath, '/api/uxa-center/agent/AgentCommand/glowChat'],
+    );
+    assert.equal(requests.at(-1).body.content, 'edit');
   }
 });

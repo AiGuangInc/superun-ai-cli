@@ -11,6 +11,9 @@ export function registerLogin(auth: Command, context: CommandContext): void {
     .description('登录 superun 并保存 PAT')
     .addOption(new Option('--pat', '在终端隐藏输入现有 PAT').conflicts('stdin'))
     .option('--stdin', '从标准输入读取 PAT')
+    .addOption(
+      new Option('--no-browser', '输出远程授权链接并等待回调，由宿主打开链接').conflicts(['pat', 'stdin']),
+    )
     .action(async (options: { pat?: boolean; stdin?: boolean }, command: Command) => {
       if (!options.pat && !options.stdin) {
         const { credentialSource } = await requireCredentials(context, command, true, true);

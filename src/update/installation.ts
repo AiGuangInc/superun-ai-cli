@@ -4,6 +4,7 @@ import { readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { lt, valid } from 'semver';
 import { PACKAGE_NAME } from '../config/constants.js';
 import { object } from '../contracts/value.js';
 
@@ -36,14 +37,18 @@ export async function verifiedEntry(directory: string, version: string): Promise
   return undefined;
 }
 
-export async function activeEntry(root: string, version?: string): Promise<string | undefined> {
+export async function activeEntry(
+  root: string,
+  { exact, minimum }: { exact?: string; minimum?: string } = {},
+): Promise<string | undefined> {
   try {
     const active = object(JSON.parse(await readFile(join(root, 'active.json'), 'utf8')));
     if (
       typeof active.directory !== 'string' ||
       !/^[a-zA-Z0-9][a-zA-Z0-9.+-]*$/.test(active.directory) ||
       typeof active.version !== 'string' ||
-      (version !== undefined && active.version !== version)
+      (exact !== undefined && active.version !== exact) ||
+      (minimum !== undefined && (!valid(active.version) || lt(active.version, minimum)))
     )
       return undefined;
     return verifiedEntry(join(root, active.directory), active.version);

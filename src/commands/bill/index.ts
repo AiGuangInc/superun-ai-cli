@@ -58,7 +58,21 @@ function queryScope(filters: BillFilters) {
 }
 
 export function registerBill(program: Command, context: CommandContext): void {
-  const bill = program.command('bill').description('查询算力账单和扣减类统计');
+  const bill = program.command('bill').description('查询实时算力余额、账单和扣减类统计');
+  bill
+    .command('balance')
+    .description('查询当前登录账号的实时个人算力余额')
+    .action(async (_options: unknown, command: Command) => {
+      const service = await runtime(context, command);
+      const result = await new BillQueryApi(service.client).balance();
+      context.output.write({
+        state: 'COMPLETED',
+        currency: 'GLOW_TOKEN',
+        scope: 'personal',
+        amountUnit: 'credit',
+        ...result,
+      });
+    });
   withFilters(bill.command('list').description('查询算力账单明细，按服务端游标翻页，无日期或条数选项'))
     .option('--cursor <scrollId>', '上次返回的 scrollId；账户或筛选变化时省略', positiveLong)
     .action(async (_options: unknown, command: Command) => {

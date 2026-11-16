@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** superun-ai 发行入口。@author xiuyu.yi */
-import { PACKAGE_PRIVATE } from './config/constants.js';
+import { PACKAGE_PRIVATE, PACKAGE_VERSION } from './config/constants.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { activeEntry, installationRoot } from './update/installation.js';
 
@@ -8,8 +8,8 @@ import { activeEntry, installationRoot } from './update/installation.js';
 if (PACKAGE_PRIVATE) await import('./development.js');
 else {
   const { root } = await installationRoot();
-  const active = await activeEntry(root);
-  // 在加载业务模块之前切换，帮助和离线 version 也使用已验证的新版本。
+  const active = await activeEntry(root, { minimum: PACKAGE_VERSION });
+  // 保留同版本或更新的已验证入口，避免 npm 更新后仍切回旧缓存。
   if (active && active !== fileURLToPath(import.meta.url)) await import(pathToFileURL(active).href);
   else {
     const { runCli } = await import('./runner.js');
