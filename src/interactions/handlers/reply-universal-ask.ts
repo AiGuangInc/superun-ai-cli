@@ -18,21 +18,32 @@ export const replyUniversalAsk: ReplyHandler = async ({ runtime, binding, input 
   return runtime.command.chat({
     sessionId: binding.round.sessionId,
     content,
-    ...(autoTest
-      ? {
-          roundExtra: {
+    // 与 Glow 一致：标记原问卷身份，并保留检查流程的轮次字段。
+    roundExtra: {
+      questionnaireSubmission: JSON.stringify([
+        binding.interaction.source.messageId,
+        binding.interaction.source.contentId,
+      ]),
+      ...(autoTest
+        ? {
             [AUTO_TEST_OPERATION_KEY]: autoTest.phase,
             [AUTO_TEST_SOURCE_KEY]: autoTest.sourceMessageId,
-          },
+          }
+        : {}),
+      ...(codeReview
+        ? {
+            [CODE_REVIEW_OPERATION_KEY]: 'repair',
+            [CODE_REVIEW_SOURCE_KEY]: codeReview.sourceMessageId,
+          }
+        : {}),
+    },
+    ...(autoTest
+      ? {
           businessParams: { business_type: autoTest.phase === 'test' ? 'auto_test' : 'casual_chat' },
         }
       : {}),
     ...(codeReview
       ? {
-          roundExtra: {
-            [CODE_REVIEW_OPERATION_KEY]: 'repair',
-            [CODE_REVIEW_SOURCE_KEY]: codeReview.sourceMessageId,
-          },
           businessParams: { business_type: 'casual_chat' },
         }
       : {}),
