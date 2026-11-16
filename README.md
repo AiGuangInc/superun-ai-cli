@@ -82,7 +82,8 @@ superun-ai
 │   └── clear                                                     # 清除当前会话的项目绑定，保留远端项目
 ├── order                                                         # 查询本人购买的 superun 产品和服务订单
 │   └── list                                                      # 分页查询购买订单、商品、订单金额和已有发票信息
-├── bill                                                          # 查询算力账单和扣减类统计
+├── bill                                                          # 查询实时算力余额、账单和扣减类统计
+│   ├── balance                                                   # 查询当前登录账号的实时个人算力余额
 │   ├── list                                                      # 查询算力账单明细，按服务端游标翻页，无日期或条数选项
 │   ├── stats                                                     # 按日期汇总扣减类账单，含负数冲正，不含充值类用量返还
 │   ├── projects                                                  # 查询账单作品筛选候选，不代表当前编辑权限
@@ -224,9 +225,10 @@ superun-ai order list --status 20 --page 1 --limit 20
 
 最外层 `total` 是当前筛选条件下的订单总数，`hasMore` / `nextPage` 用于继续查询。接口不支持订单号、关键词或日期过滤；这些条件只能在已返回的记录中匹配。未查完所有相关分页时，不要宣称某笔订单不存在。缺失字段保留为空或缺失，查询失败会报错，不伪造空订单列表。
 
-## 查询算力账单
+## 查询算力余额和账单
 
 ```bash
+superun-ai bill balance
 superun-ai bill list
 superun-ai bill list --cursor <scrollId> --session-id <sessionId>
 superun-ai bill stats --from 2026-10-01 --to 2026-10-22 --granularity DAY
@@ -234,7 +236,9 @@ superun-ai bill projects
 superun-ai bill types
 ```
 
-四条命令只读 `GLOW_TOKEN`。省略 `--workspace-id` 查询个人账户；明确传入正整数工作空间 ID 后，查询该工作空间中当前账号有权查看的范围，普通成员及离开成员只看自己的历史消费。作品筛选 `--session-id` 不改变付费账户，也不要求当前项目可编辑；团队作品可能由个人付费，不能从项目归属推断账户。目录 `bill projects` 只是账单筛选候选，不是完整授权清单；候选缺失不证明没有历史消费。
+`bill balance` 通过 Glow 账户接口查询当前登录账号的实时个人 `GLOW_TOKEN` 余额；`balanceStr` 为算力十进制字符串（`amountUnit=credit`）。它不接受工作空间 ID，也不代表任一团队余额；接口未返回有效余额时报错，不当作零。
+
+其余四条命令只读 `GLOW_TOKEN` 账单。省略 `--workspace-id` 查询个人账户；明确传入正整数工作空间 ID 后，查询该工作空间中当前账号有权查看的范围，普通成员及离开成员只看自己的历史消费。作品筛选 `--session-id` 不改变付费账户，也不要求当前项目可编辑；团队作品可能由个人付费，不能从项目归属推断账户。目录 `bill projects` 只是账单筛选候选，不是完整授权清单；候选缺失不证明没有历史消费。
 
 `bill list` 返回 `items/hasNext/scrollId`，没有总数、日期过滤或可调条数。服务端每次取 100 条原始账单再聚合和过滤，空 `items` 仍可能 `hasNext=true`；只使用返回的 `scrollId` 继续，不能按展示条数判断结束或自行构造游标。后续游标必须严格向更早记录推进；切换账户或筛选时清空旧游标。`amountUnit=hundredth-credit` 表示 `amount` 为 1/100 算力；按 Glow 规则，type=1 显示 `amount/100`，其他类型显示其相反数。明细含充值、返还与扣减，不能把所有原始 amount 相加当消费。`aiMessageRunning=true` 时金额是进行中的暂时值。
 
