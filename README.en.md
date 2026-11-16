@@ -81,6 +81,7 @@ superun-ai
 ├── order                                                         # Query your superun product and service purchase orders
 │   └── list                                                      # List purchase orders, items, order amounts, and existing invoices
 ├── bill                                                          # Query credit bills and deduction statistics
+│   ├── balance                                                   # 查询当前登录账号的实时个人算力余额
 │   ├── list                                                      # List credit bills with server pagination, without date or page-size options
 │   ├── stats                                                     # Summarize deductions including negative reversals, excluding recharge-type usage rebates
 │   ├── projects                                                  # List bill-filter project candidates, not current editing permissions
@@ -100,6 +101,8 @@ superun-ai
 │   ├── generate <sessionId>                                      # Check PPT prerequisites and submit or reuse a task without write retries
 │   ├── status <sessionId>                                        # Discover an existing PPT task or compare a specific generation ID
 │   └── get <sessionId>                                           # Read an existing deck or verify delivery using both generation and mainline IDs
+├── clone                                                         # Site clone: copy an existing website's page styles and content into a superun project
+│   └── create <url>                                              # Create a site clone project from a URL; it runs in the background, no waiting; weekly free clones (site_clone_weekly in free-quota), then credits
 ├── agent                                                         # Create managed-agent configuration and read it back without running or deploying it
 │   ├── app                                                       # Build an agent application through the independent entry
 │   │   ├── create                                                # Submit requirements independently, then inspect the returned questionnaire
@@ -215,9 +218,10 @@ Results retain the `items[].orderInfo` and `items[].orderItems` structure and ad
 
 The top-level `total` counts orders matching the current status filter; use `hasMore` / `nextPage` to continue. The API has no order-number, keyword, or date filter, so these conditions can only be matched against returned records. Do not declare an order absent before checking all relevant pages. Missing fields remain null or absent, and query failures produce errors rather than fabricated empty lists.
 
-## Query credit bills
+## Query credit balance and bills
 
 ```bash
+superun-ai bill balance
 superun-ai bill list
 superun-ai bill list --cursor <scrollId> --session-id <sessionId>
 superun-ai bill stats --from 2026-10-01 --to 2026-10-22 --granularity DAY
@@ -225,7 +229,9 @@ superun-ai bill projects
 superun-ai bill types
 ```
 
-All four commands only read `GLOW_TOKEN`. Without `--workspace-id`, they query the personal account. An explicit positive workspace ID queries the workspace bills visible to the current account; ordinary and former members are limited to their own historical consumption. `--session-id` filters within the selected billing account without changing it or requiring current project editing permission. A team project can be personally funded, so its workspace does not determine the billing account. `bill projects` only lists filter candidates; an absent candidate does not prove that historical charges are absent.
+`bill balance` reads the signed-in user's real-time personal `GLOW_TOKEN` balance from Glow's account API. `balanceStr` is a decimal credit string (`amountUnit=credit`). It does not accept a workspace ID or report team balances. An absent or invalid balance produces an error, not zero.
+
+The other four commands only read `GLOW_TOKEN` bills. Without `--workspace-id`, they query the personal account. An explicit positive workspace ID queries the workspace bills visible to the current account; ordinary and former members are limited to their own historical consumption. `--session-id` filters within the selected billing account without changing it or requiring current project editing permission. A team project can be personally funded, so its workspace does not determine the billing account. `bill projects` only lists filter candidates; an absent candidate does not prove that historical charges are absent.
 
 `bill list` returns `items/hasNext/scrollId`, without a total, date filter, or adjustable page size. The server fetches 100 raw bill rows and then aggregates and filters them, so empty `items` may still have `hasNext=true`. Continue using the returned `scrollId`; do not infer completion from displayed row counts or construct a cursor. Subsequent cursors must move strictly toward earlier records. Reset the cursor when changing accounts or filters. `amountUnit=hundredth-credit` means that `amount` is in hundredths of a credit. Glow displays `amount/100` for type=1 and the negated value for other types. Details include recharges, rebates, and deductions, so summing every raw amount does not measure consumption. An item with `aiMessageRunning=true` has a provisional amount.
 
@@ -293,6 +299,14 @@ Changed attachments, replaced tasks, failures, or local wait timeouts must not a
 Use `ppt create` / `ppt refine` or `agent app create` / `agent app refine` for the two dedicated experts. Creation submits the matching Glow homepage direction and returns the new session and message IDs. Refinement accepts answers and optional content, saves the current questionnaire and continues clarification without generating a style. Start generation through the existing interaction reply only when requirements are confirmed.
 
 These entries leave ordinary chat create, shared questionnaire parsing, generation, waiting and the original superun-creation packages unchanged. The PPT expert follows its separate demo and verified deck delivery; the agent application expert follows the actual questions, design selection, development and configuration wizard. The independent-creation-flow-v1 capability declares these dedicated commands. Application completion, resource verification and deployment remain separate checks.
+
+## Site clone
+
+```bash
+superun-ai clone create <url>
+```
+
+Same as the Glow clone page (`/clone`): the message is the URL, `https://` when the protocol is omitted; the new project carries `siteClone=1` and `agentRuntime=shire`. Cloning takes a while, so it only submits: the receipt tells the user it is running in the background and gives the project page link, with no waiting. The server reads the site first, then hands off by itself and builds the first version (a style choice). After a reading turn ends, `chat wait` keeps polling for about a minute for that handoff; without it, the reading agent is waiting for the user (unusable address, sign-in, a site too large for one turn), so the wait returns what it said and the user replies with `chat send`. After the first version, select it to keep editing or delegate to the advanced designer as usual. Weekly free clones are `site_clone_weekly` in `free-quota`, then credits; Autopilot cannot start while the site is being read.
 
 ## Create a managed-agent configuration only
 
