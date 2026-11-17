@@ -16,7 +16,6 @@ const candidateSchema = z.object({
   websiteIntroduction: z.string().nullish(),
 });
 const feeSchema = z.object({
-  costItems: z.array(z.object({ name: z.string().min(1), estimatedDailyCost: amount })),
   estimatedDailyTotal: amount,
   estimatedMonthlyTotal: amount,
 });
@@ -63,24 +62,16 @@ export async function preparePublish(service: CreationRuntime, sessionId: string
       throw new CliError('PROTOCOL_ERROR', '正式访问地址不符合安全链接格式，未继续发布');
   }
   const rawFee = parseWire(feeSchema, await service.publish.preflightCost(sessionId));
-  const costItems = [...rawFee.costItems].sort(
-    (a, b) => a.name.localeCompare(b.name) || a.estimatedDailyCost - b.estimatedDailyCost,
-  );
-  const itemizedDailyTotal = costItems.reduce((total, item) => total + item.estimatedDailyCost, 0);
-  if (!Number.isSafeInteger(itemizedDailyTotal * 30))
-    throw new CliError('PROTOCOL_ERROR', '费用估算超出支持范围');
   const fee = {
     ...rawFee,
-    costItems,
-    itemizedDailyTotal,
-    itemizedThirtyDayTotal: itemizedDailyTotal * 30,
     currency: 'GLOW_TOKEN',
     unitsPerToken: 100,
-    totalsConsistent:
-      rawFee.estimatedDailyTotal === itemizedDailyTotal &&
-      rawFee.estimatedMonthlyTotal === itemizedDailyTotal * 30,
-    confirmationRequired:
-      itemizedDailyTotal > 0 || rawFee.estimatedDailyTotal > 0 || rawFee.estimatedMonthlyTotal > 0,
+    display: {
+      unit: '算力值',
+      estimatedDaily: rawFee.estimatedDailyTotal / 100,
+      estimatedThirtyDay: rawFee.estimatedMonthlyTotal / 100,
+    },
+    confirmationRequired: rawFee.estimatedDailyTotal > 0 || rawFee.estimatedMonthlyTotal > 0,
   };
   // 当前发布成功回调会公开站点，接口没有原子保持未公开的参数。
   const visibilityEffect = {
@@ -119,12 +110,7 @@ export async function preparePublish(service: CreationRuntime, sessionId: string
     visibilityEffect,
     quoteId,
     sourcePolicy: 'CURRENT_MAINLINE_ONLY',
-    warning: [
-      '部署成功会将站点公开，当前接口不支持全程保持未公开；先部署再下线仍会产生公开窗口。',
-      ...(!fee.totalsConsistent
-        ? ['服务端汇总与费用明细不一致，请展示两者及差额，不称免费；实际计费须核实。']
-        : []),
-    ].join(' '),
+    ...(visibilityEffect.changesCurrentStatus ? { warning: '部署成功后，当前未公开的站点会对外公开。' } : {}),
   };
 }
 

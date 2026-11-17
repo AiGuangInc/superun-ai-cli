@@ -79,27 +79,27 @@ function publishActions(
           ...(forLaunch ? ['--for-launch'] : []),
           '--version-id',
           String(pending.encryptedId),
-          '--',
           sessionId,
         ],
       },
     ];
-  const candidate = encryptedId
-    ? records.find((item) => item.encryptedId === encryptedId)
-    : object(value.unPublishedVersion);
-  const target = text(candidate?.encryptedId);
-  if (target && candidate?.deployStatus !== 1)
+  const candidate = object(value.unPublishedVersion);
+  const target = text(candidate.encryptedId);
+  if (target && (!encryptedId || target === encryptedId) && candidate.deployStatus === 0)
     return [
       {
         action: 'PUBLISH_VERSION',
         instruction: forLaunch
-          ? '用户已明确要求上线运营。原样展示目标版本的 changeLog 作为发布进度说明，与 Glow 发布卡片保持一致；不要改写、概括或用 changeLogSummary 替代，缺少日志时如实说明。直接执行本版本发布并等待完成，不再询问是否确认发布；完成后展示 publishUrl。'
-          : '只展示目标版本的 changeLog 原文和发布状态；用户明确要求发布或上线运营后执行发布命令，不把查询状态视为发布授权。',
+          ? '用户已明确要求上线运营。原样展示目标版本的 changeLog 作为发布进度说明，与 Glow 发布卡片保持一致；不要改写、概括或用 changeLogSummary 替代，缺少日志时如实说明。先准备本次发布。费用以 prepare 返回的服务端汇总为准，统一展示每日和 30 天的算力值估算（包含零值），有费用时取得本次费用许可；已明确的公开授权不用重复确认。'
+          : '只展示目标版本的 changeLog 原文和发布状态；用户明确要求发布后先准备报价与公开影响，不把查询状态视为发布授权。',
         requiresUserInput: !forLaunch,
-        command: [...command, 'start', ...(forLaunch ? ['--for-launch'] : []), '--', sessionId, target],
+        command: [...command, 'prepare', sessionId],
       },
     ];
-  if (records.some((item) => item.deployStatus === 1) && publicStatus === 0)
+  const deployed = records.some(
+    (item) => (!encryptedId || item.encryptedId === encryptedId) && item.deployStatus === 1,
+  );
+  if (deployed && publicStatus === 0)
     return [
       {
         action: 'MAKE_PUBLIC',
@@ -107,14 +107,10 @@ function publishActions(
           ? '部署已完成，继续按用户的上线运营要求将站点公开，不再重复确认；完成后展示 publishUrl。'
           : '部署已完成，但站点尚未公开；用户明确要求对外上线后执行此命令。',
         requiresUserInput: !forLaunch,
-        command: [...command, 'visibility', '--', sessionId, 'public'],
+        command: [...command, 'visibility', sessionId, 'public'],
       },
     ];
-  if (
-    showCompletedGuidance &&
-    publicStatus === 1 &&
-    records.some((item) => (!encryptedId || item.encryptedId === encryptedId) && item.deployStatus === 1)
-  )
+  if (showCompletedGuidance && publicStatus === 1 && deployed)
     return [
       {
         action: 'AGENT_FRIENDLY',
@@ -321,6 +317,7 @@ export function registerPublish(chat: Command, context: CommandContext): void {
   withWait(
     publish
       .command('start <sessionId> <encryptedId>')
+      .allowExcessArguments(false)
       .description('通过指定发布记录发布当前主线，不支持选择历史源码')
       .option('--for-launch', '继续已授权的上线运营流程，部署后引导公开站点')
       .addOption(new Option('--region <region>', '部署区域').choices(['CN', 'INTL']))
@@ -340,6 +337,7 @@ export function registerPublish(chat: Command, context: CommandContext): void {
   withWait(
     publish
       .command('deploy <sessionId> <encryptedId>')
+      .allowExcessArguments(false)
       .description('按准备回执发布当前研发主线；成功会公开站点，写前复核目标与费用')
       .requiredOption('--source-message-id <messageId>', '本次prepare返回的主线消息')
       .requiredOption('--quote-id <quoteId>', '本次prepare返回的准备和费用指纹')
