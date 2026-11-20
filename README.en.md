@@ -69,7 +69,11 @@ superun-ai
 ├── auth                                                          # Manage PAT login
 │   ├── login                                                     # Sign in and save a PAT
 │   ├── status                                                    # Check local PAT configuration
+│   ├── whoami                                                    # Show profile, personal credits and managed team balances
+│   ├── contacts                                                  # Show bound email and masked phone
 │   └── logout                                                    # Remove the locally saved PAT
+├── workspace                                                     # Query workspaces
+│   └── list                                                      # List your workspaces and roles
 ├── session                                                       # Query projects and conversation binding
 │   ├── list                                                      # List projects
 │   ├── get <sessionId>                                           # Get project details
@@ -81,7 +85,7 @@ superun-ai
 ├── order                                                         # Query your superun product and service purchase orders
 │   └── list                                                      # List purchase orders, items, order amounts, and existing invoices
 ├── bill                                                          # Query credit bills and deduction statistics
-│   ├── balance                                                   # 查询当前登录账号的实时个人算力余额
+│   ├── balance                                                   # Read personal or team credits
 │   ├── list                                                      # List credit bills with server pagination, without date or page-size options
 │   ├── stats                                                     # Summarize deductions including negative reversals, excluding recharge-type usage rebates
 │   ├── projects                                                  # List bill-filter project candidates, not current editing permissions
@@ -233,7 +237,7 @@ superun-ai bill projects
 superun-ai bill types
 ```
 
-`bill balance` reads the signed-in user's real-time personal `GLOW_TOKEN` balance from Glow's account API. `balanceStr` is a decimal credit string (`amountUnit=credit`). It does not accept a workspace ID or report team balances. An absent or invalid balance produces an error, not zero.
+Use `bill balance` for personal credits or add `--workspace-id <id>` for a team from `superun-ai workspace list`. The CLI follows the Glow account panel’s role and site visibility and uses the same account API and membership check. Ordinary members receive a role-specific message before any balance request is made. The decimal string `balanceStr` is already in credits (`amountUnit=credit`). Missing balances and permission failures produce errors.
 
 The other four commands only read `GLOW_TOKEN` bills. Without `--workspace-id`, they query the personal account. An explicit positive workspace ID queries the workspace bills visible to the current account; ordinary and former members are limited to their own historical consumption. `--session-id` filters within the selected billing account without changing it or requiring current project editing permission. A team project can be personally funded, so its workspace does not determine the billing account. `bill projects` only lists filter candidates; an absent candidate does not prove that historical charges are absent.
 
@@ -353,6 +357,10 @@ superun-ai session clear
 Bindings survive reopening the same host conversation and are isolated by conversation, superun account, and endpoint. WorkBuddy subagents share the main task binding when their ownership can be verified. Bindings are local to this device.
 
 `UNBOUND` means no project is selected. `UNAVAILABLE` means the host conversation cannot be identified; continue passing an explicit `sessionId`. For `CREATING` or `CREATE_UNKNOWN`, check the original creation request before creating again. Once you have confirmed the project ID, restore the binding with `use`.
+
+## Current account and teams
+
+Run `superun-ai auth whoami` for the current user's profile, personal credit balance, teams they manage and those team balances. `superun-ai auth contacts` reads only the bound email and masked phone. A partial result reports `PARTIAL` and retains the available fields. A single balance read rechecks the workspace role before returning the amount. The overview rechecks all roles together after reading balances. A failed recheck withholds team amounts. An HTTP 401 fails the command and prompts for login. Every `balanceStr` is already in credits, so `"2019.78"` means 2019.78 credits. `superun-ai workspace list` returns string team IDs, names and roles.
 
 ## PAT login
 

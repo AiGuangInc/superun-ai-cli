@@ -71,7 +71,11 @@ superun-ai
 ├── auth                                                          # 管理 PAT 登录
 │   ├── login                                                     # 登录 superun 并保存 PAT
 │   ├── status                                                    # 查看本地 PAT 配置状态
+│   ├── whoami                                                    # 查询当前用户、个人算力余额、本人管理的团队及其余额
+│   ├── contacts                                                  # 查询绑定邮箱与脱敏手机号
 │   └── logout                                                    # 清除本地 PAT
+├── workspace                                                     # 查询工作空间
+│   └── list                                                      # 列出本人所属团队及角色
 ├── session                                                       # 查询项目与当前会话绑定
 │   ├── list                                                      # 查询项目列表
 │   ├── get <sessionId>                                           # 查询项目详情
@@ -83,7 +87,7 @@ superun-ai
 ├── order                                                         # 查询本人购买的 superun 产品和服务订单
 │   └── list                                                      # 分页查询购买订单、商品、订单金额和已有发票信息
 ├── bill                                                          # 查询实时算力余额、账单和扣减类统计
-│   ├── balance                                                   # 查询当前登录账号的实时个人算力余额
+│   ├── balance                                                   # 查询个人或指定团队的实时算力余额
 │   ├── list                                                      # 查询算力账单明细，按服务端游标翻页，无日期或条数选项
 │   ├── stats                                                     # 按日期汇总扣减类账单，含负数冲正，不含充值类用量返还
 │   ├── projects                                                  # 查询账单作品筛选候选，不代表当前编辑权限
@@ -242,7 +246,7 @@ superun-ai bill projects
 superun-ai bill types
 ```
 
-`bill balance` 通过 Glow 账户接口查询当前登录账号的实时个人 `GLOW_TOKEN` 余额；`balanceStr` 为算力十进制字符串（`amountUnit=credit`）。它不接受工作空间 ID，也不代表任一团队余额；接口未返回有效余额时报错，不当作零。
+`bill balance` 返回个人实时算力余额。传入 `--workspace-id <id>` 查询指定团队，ID 来自 `superun-ai workspace list`。CLI 按 Glow 账户页的目标团队角色和站点选择可见余额，复用其账户接口与成员校验。普通成员查询当前团队时，CLI 提示仅限该团队的主账号或管理员查询，并在请求余额前结束。金额 `balanceStr` 已是算力十进制字符串（`amountUnit=credit`），零余额返回零，金额缺失或无权查看时返回错误。
 
 其余四条命令只读 `GLOW_TOKEN` 账单。省略 `--workspace-id` 查询个人账户；明确传入正整数工作空间 ID 后，查询该工作空间中当前账号有权查看的范围，普通成员及离开成员只看自己的历史消费。作品筛选 `--session-id` 不改变付费账户，也不要求当前项目可编辑；团队作品可能由个人付费，不能从项目归属推断账户。目录 `bill projects` 只是账单筛选候选，不是完整授权清单；候选缺失不证明没有历史消费。
 
@@ -381,6 +385,10 @@ superun-ai session clear
 `UNBOUND` 表示尚未绑定；`UNAVAILABLE` 表示无法识别宿主会话，此时继续显式传入 `sessionId`。若返回 `CREATING` 或 `CREATE_UNKNOWN`，先核对原创建请求，不要重复创建；确认已有项目后可用 `use` 恢复绑定。
 
 会话与交互状态统一保存在用户级目录：macOS/Linux 为 `~/.local/state/superun-ai-cli/`（可通过 `XDG_STATE_HOME` 指定上级目录），Windows 为 `%LOCALAPPDATA%\superun-ai-cli\`。辅助项目映射使用其中的 `sessions.json`，绑定不变时不重复写入。
+
+## 查询当前账号和团队
+
+`superun-ai auth whoami` 返回当前用户资料、个人算力余额、本人担任主账号或管理员的团队及其余额。`superun-ai auth contacts` 只读取绑定邮箱和脱敏手机号。部分信息读取失败时返回 `PARTIAL` 并保留成功项。单查在返回余额前复核团队角色，总览在全部余额读取后统一复核一次。角色复核失败时不返回团队金额，任一账户查询收到 HTTP 401 时整条命令提示重新登录。所有 `balanceStr` 均为最终算力值，例如 `"2019.78"` 代表 2019.78 算力，直接展示。`superun-ai workspace list` 返回字符串团队 ID、名称和角色。
 
 ## PAT 登录
 

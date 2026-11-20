@@ -61,14 +61,17 @@ export function registerBill(program: Command, context: CommandContext): void {
   const bill = program.command('bill').description('查询实时算力余额、账单和扣减类统计');
   bill
     .command('balance')
-    .description('查询当前登录账号的实时个人算力余额')
+    .description('查询个人或指定团队的实时算力余额')
+    .option('--workspace-id <id>', '查询该团队的算力余额（限该团队主账号或管理员）', positiveLong)
     .action(async (_options: unknown, command: Command) => {
       const service = await runtime(context, command);
-      const result = await new BillQueryApi(service.client).balance();
+      const { workspaceId } = command.opts<{ workspaceId?: string }>();
+      const result = await new BillQueryApi(service.client).balance(workspaceId);
       context.output.write({
         state: 'COMPLETED',
         currency: 'GLOW_TOKEN',
-        scope: 'personal',
+        scope: workspaceId === undefined ? 'personal' : 'workspace',
+        ...(workspaceId === undefined ? {} : { workspaceId }),
         amountUnit: 'credit',
         ...result,
       });

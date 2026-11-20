@@ -1,4 +1,5 @@
 /** 命令树与公共选项。@author xiuyu.yi */
+import { registerWorkspace } from './commands/workspace.js';
 import { Command } from 'commander';
 import { COMMAND_NAME, PACKAGE_VERSION } from './config/constants.js';
 import type { CommandContext } from './commands/shared.js';
@@ -54,6 +55,7 @@ export function createProgram(
     rememberExplicitSession(context, action);
   });
   registerAuth(program, context);
+  registerWorkspace(program, context);
   registerSession(program, context);
   registerOrder(program, context);
   registerBill(program, context);
