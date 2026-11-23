@@ -6,7 +6,7 @@ import { requestChannel } from '../config/request-channel.js';
 import { assertProjectWritable } from '../api/project-mode.js';
 import { object, text } from '../contracts/value.js';
 import { HttpClient } from './http-client.js';
-import type { HttpResponse } from './http-client.js';
+import type { HttpResponse, HttpRequest } from './http-client.js';
 
 export class ApiClient {
   constructor(
@@ -15,6 +15,16 @@ export class ApiClient {
     private readonly http = new HttpClient(),
     readonly signal?: AbortSignal,
   ) {}
+
+  /** 限制单次等待的生命周期，同时保留原客户端的中断信号。 */
+  withSignal(signal: AbortSignal): ApiClient {
+    return new ApiClient(
+      this.config,
+      this.pat,
+      this.http,
+      this.signal ? AbortSignal.any([this.signal, signal]) : signal,
+    );
+  }
 
   get interactionScope(): string {
     return createHash('sha256').update(`${this.config.endpoint}\n${this.pat}`).digest('hex');
@@ -31,6 +41,7 @@ export class ApiClient {
       native?: boolean;
       timeoutMs?: number;
       retryRead?: boolean;
+      jsonReviver?: HttpRequest['jsonReviver'];
     } = {},
   ): Promise<HttpResponse> {
     if (options.write) {
@@ -54,6 +65,7 @@ export class ApiClient {
       },
       timeoutMs: options.timeoutMs ?? this.config.timeoutMs,
       retryRead: options.retryRead,
+      jsonReviver: options.jsonReviver,
       signal: this.signal,
       write: options.write,
       native: options.native,

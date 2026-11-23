@@ -1,6 +1,7 @@
 /** 查询本人购买的 superun 产品和服务订单。@author xiuyu.yi */
 import { InvalidArgumentError, Option } from 'commander';
 import type { Command } from 'commander';
+import { registerPurchaseOrders } from './purchase.js';
 import { OrderQueryApi } from '../../api/order-query-api.js';
 import { CliError } from '../../output/exit-codes.js';
 import type { CommandContext } from '../shared.js';
@@ -13,7 +14,7 @@ function orderLimit(value: string): number {
 }
 
 export function registerOrder(program: Command, context: CommandContext): void {
-  const order = program.command('order').description('查询本人购买的 superun 产品和服务订单');
+  const order = program.command('order').description('管理本人购买的 superun 产品和服务订单');
   order
     .command('list')
     .description('分页查询购买订单、商品、订单金额和已有发票信息')
@@ -45,4 +46,5 @@ export function registerOrder(program: Command, context: CommandContext): void {
         nextPage: hasMore ? page + 1 : null,
       });
     });
+  registerPurchaseOrders(order, context);
 }

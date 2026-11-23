@@ -82,8 +82,13 @@ superun-ai
 │   ├── current                                                   # Read the saved project for this host conversation
 │   ├── use <sessionId>                                           # Select a project for this conversation
 │   └── clear                                                     # Clear the local binding and keep the remote project
-├── order                                                         # Query your superun product and service purchase orders
-│   └── list                                                      # List purchase orders, items, order amounts, and existing invoices
+├── product                                                       # Browse main-site fixed credit packages
+│   └── list                                                      # List personal or managed team products and prices
+├── order                                                         # Manage your superun product and service purchase orders
+│   ├── list                                                      # List purchase orders, items, order amounts, and existing invoices
+│   ├── create                                                    # Quote and confirm a personal or managed team order
+│   ├── status <orderNo>                                          # Read the payment status of your order
+│   └── wait <orderNo>                                            # Wait for the payment result of your order
 ├── bill                                                          # Query credit bills and deduction statistics
 │   ├── balance                                                   # Read personal or team credits
 │   ├── list                                                      # List credit bills with server pagination, without date or page-size options
@@ -357,6 +362,12 @@ superun-ai session clear
 Bindings survive reopening the same host conversation and are isolated by conversation, superun account, and endpoint. WorkBuddy subagents share the main task binding when their ownership can be verified. Bindings are local to this device.
 
 `UNBOUND` means no project is selected. `UNAVAILABLE` means the host conversation cannot be identified; continue passing an explicit `sessionId`. For `CREATING` or `CREATE_UNKNOWN`, check the original creation request before creating again. Once you have confirmed the project ID, restore the binding with `use`.
+
+## Main-site credit purchases
+
+Run `superun-ai product list` for fixed personal CNY offers. Use a returned `order create` command to obtain a quote. After confirming the account, benefits and total (minor units), run its exact `confirmCommand`. The purchase ID binds this purchase to the original selection. Creation returns the order number and official checkout link immediately. Sign in with the purchasing account in your browser to pay. After an uncertain response, reuse the original confirmation command to recover the order.
+
+Use `order status <orderNo>` for a single read or `order wait <orderNo> --timeout 300` to wait. After payment, run the returned `balanceCommand` to read the paying account. Fixed packages are sold one at a time. For a team purchase, use `product list --workspace-id <id>`. The CLI follows the Glow purchase tab: the selected workspace must grant management access. The quote and confirmation commands retain that workspace ID, and membership is checked again before placing the order. Purchase commands reject international and unsupported sites before login or business requests.
 
 ## Current account and teams
 

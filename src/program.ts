@@ -6,6 +6,9 @@ import type { CommandContext } from './commands/shared.js';
 import { requireCredentials, rememberExplicitSession } from './commands/shared.js';
 import { registerAuth } from './commands/auth/index.js';
 import { registerSession } from './commands/session/index.js';
+import { registerProduct } from './commands/order/purchase.js';
+import { assertMainPurchaseSite } from './api/purchase-api.js';
+import { runtimeConfig } from './config/runtime-config.js';
 import { registerOrder } from './commands/order/index.js';
 import { registerBill } from './commands/bill/index.js';
 import { registerSite } from './commands/site/index.js';
@@ -50,6 +53,12 @@ export function createProgram(
       (authCommand && action.name() === 'logout') ||
       (action.parent?.name() === 'clone' && action.name() === 'prepare');
     if (offline || action === program) return;
+    if (
+      action.parent?.name() === 'product' ||
+      (action.parent?.name() === 'order' && ['create', 'status', 'wait'].includes(action.name()))
+    ) {
+      assertMainPurchaseSite(runtimeConfig({ endpoint: action.optsWithGlobals().endpoint }).endpoint);
+    }
     if (!authCommand) await hooks.beforeBusiness();
     if (!(authCommand && action.name() === 'login')) await requireCredentials(context, action, !authCommand);
     rememberExplicitSession(context, action);
@@ -57,6 +66,7 @@ export function createProgram(
   registerAuth(program, context);
   registerWorkspace(program, context);
   registerSession(program, context);
+  registerProduct(program, context);
   registerOrder(program, context);
   registerBill(program, context);
   registerSite(program, context);

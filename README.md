@@ -84,8 +84,13 @@ superun-ai
 │   ├── current                                                   # 读取当前宿主会话保存的项目绑定
 │   ├── use <sessionId>                                           # 选择当前会话继续使用的项目
 │   └── clear                                                     # 清除当前会话的项目绑定，保留远端项目
-├── order                                                         # 查询本人购买的 superun 产品和服务订单
-│   └── list                                                      # 分页查询购买订单、商品、订单金额和已有发票信息
+├── product                                                       # 查询主站可购买的固定算力套餐
+│   └── list                                                      # 查询个人或管理团队的商品与价格
+├── order                                                         # 管理本人购买的 superun 产品和服务订单
+│   ├── list                                                      # 分页查询购买订单、商品、订单金额和已有发票信息
+│   ├── create                                                    # 获取主站固定套餐报价，明确确认后创建个人或管理团队订单
+│   ├── status <orderNo>                                          # 查询本人指定订单的支付状态
+│   └── wait <orderNo>                                            # 等待本人指定订单的支付结果
 ├── bill                                                          # 查询实时算力余额、账单和扣减类统计
 │   ├── balance                                                   # 查询个人或指定团队的实时算力余额
 │   ├── list                                                      # 查询算力账单明细，按服务端游标翻页，无日期或条数选项
@@ -385,6 +390,12 @@ superun-ai session clear
 `UNBOUND` 表示尚未绑定；`UNAVAILABLE` 表示无法识别宿主会话，此时继续显式传入 `sessionId`。若返回 `CREATING` 或 `CREATE_UNKNOWN`，先核对原创建请求，不要重复创建；确认已有项目后可用 `use` 恢复绑定。
 
 会话与交互状态统一保存在用户级目录：macOS/Linux 为 `~/.local/state/superun-ai-cli/`（可通过 `XDG_STATE_HOME` 指定上级目录），Windows 为 `%LOCALAPPDATA%\superun-ai-cli\`。辅助项目映射使用其中的 `sessions.json`，绑定不变时不重复写入。
+
+## 主站固定算力套餐购买
+
+`superun-ai product list` 返回个人固定档位、CNY 金额及报价命令。执行对应的 `order create --item-id <id> --sku-id <id>` 获取本次报价；核对账户、权益和金额后，再执行回执中的 `confirmCommand`。确认命令绑定本次 purchaseId、同一档位、币种和应付金额（分）。创建成功立即返回订单号和可在浏览器中打开的官方收银台地址，使用下单账号登录后可扫码。遇到网络异常，保留同一确认命令核对原单。
+
+`order status <orderNo>` 单次查单。`order wait <orderNo> --timeout 300` 独立等待，成功后按回执中的 `balanceCommand` 查询付款账户的最新余额。超时可继续等同一单。固定档位每单一份；个人与团队目录按账户区分。团队目录使用 `product list --workspace-id <id>`。与 Glow 购买 Tab 相同，当前账号须在目标团队具有管理权限；报价和确认命令均携带原团队 ID，下单前重新查询权限。国际站与未支持站点的购买命令会在登录和业务请求前退出。
 
 ## 查询当前账号和团队
 
