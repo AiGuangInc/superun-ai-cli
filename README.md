@@ -71,7 +71,11 @@ superun-ai
 ├── auth                                                          # 管理 PAT 登录
 │   ├── login                                                     # 登录 superun 并保存 PAT
 │   ├── status                                                    # 查看本地 PAT 配置状态
+│   ├── whoami                                                    # 查询当前用户、个人算力余额、本人管理的团队及其余额
+│   ├── contacts                                                  # 查询绑定邮箱与脱敏手机号
 │   └── logout                                                    # 清除本地 PAT
+├── workspace                                                     # 查询工作空间
+│   └── list                                                      # 列出本人所属团队及角色
 ├── session                                                       # 查询项目与当前会话绑定
 │   ├── list                                                      # 查询项目列表
 │   ├── get <sessionId>                                           # 查询项目详情
@@ -80,10 +84,15 @@ superun-ai
 │   ├── current                                                   # 读取当前宿主会话保存的项目绑定
 │   ├── use <sessionId>                                           # 选择当前会话继续使用的项目
 │   └── clear                                                     # 清除当前会话的项目绑定，保留远端项目
-├── order                                                         # 查询本人购买的 superun 产品和服务订单
-│   └── list                                                      # 分页查询购买订单、商品、订单金额和已有发票信息
+├── product                                                       # 查询主站可购买的固定算力套餐
+│   └── list                                                      # 查询个人或管理团队的商品与价格
+├── order                                                         # 管理本人购买的 superun 产品和服务订单
+│   ├── list                                                      # 分页查询购买订单、商品、订单金额和已有发票信息
+│   ├── create                                                    # 获取主站固定套餐报价，明确确认后创建个人或管理团队订单
+│   ├── status <orderNo>                                          # 查询本人指定订单的支付状态
+│   └── wait <orderNo>                                            # 等待本人指定订单的支付结果
 ├── bill                                                          # 查询实时算力余额、账单和扣减类统计
-│   ├── balance                                                   # 查询当前登录账号的实时个人算力余额
+│   ├── balance                                                   # 查询个人或指定团队的实时算力余额
 │   ├── list                                                      # 查询算力账单明细，按服务端游标翻页，无日期或条数选项
 │   ├── stats                                                     # 按日期汇总扣减类账单，含负数冲正，不含充值类用量返还
 │   ├── projects                                                  # 查询账单作品筛选候选，不代表当前编辑权限
@@ -242,7 +251,7 @@ superun-ai bill projects
 superun-ai bill types
 ```
 
-`bill balance` 通过 Glow 账户接口查询当前登录账号的实时个人 `GLOW_TOKEN` 余额；`balanceStr` 为算力十进制字符串（`amountUnit=credit`）。它不接受工作空间 ID，也不代表任一团队余额；接口未返回有效余额时报错，不当作零。
+`bill balance` 返回个人实时算力余额。传入 `--workspace-id <id>` 查询指定团队，ID 来自 `superun-ai workspace list`。CLI 按 Glow 账户页的目标团队角色和站点选择可见余额，复用其账户接口与成员校验。普通成员查询当前团队时，CLI 提示仅限该团队的主账号或管理员查询，并在请求余额前结束。金额 `balanceStr` 已是算力十进制字符串（`amountUnit=credit`），零余额返回零，金额缺失或无权查看时返回错误。
 
 其余四条命令只读 `GLOW_TOKEN` 账单。省略 `--workspace-id` 查询个人账户；明确传入正整数工作空间 ID 后，查询该工作空间中当前账号有权查看的范围，普通成员及离开成员只看自己的历史消费。作品筛选 `--session-id` 不改变付费账户，也不要求当前项目可编辑；团队作品可能由个人付费，不能从项目归属推断账户。目录 `bill projects` 只是账单筛选候选，不是完整授权清单；候选缺失不证明没有历史消费。
 
@@ -381,6 +390,16 @@ superun-ai session clear
 `UNBOUND` 表示尚未绑定；`UNAVAILABLE` 表示无法识别宿主会话，此时继续显式传入 `sessionId`。若返回 `CREATING` 或 `CREATE_UNKNOWN`，先核对原创建请求，不要重复创建；确认已有项目后可用 `use` 恢复绑定。
 
 会话与交互状态统一保存在用户级目录：macOS/Linux 为 `~/.local/state/superun-ai-cli/`（可通过 `XDG_STATE_HOME` 指定上级目录），Windows 为 `%LOCALAPPDATA%\superun-ai-cli\`。辅助项目映射使用其中的 `sessions.json`，绑定不变时不重复写入。
+
+## 主站固定算力套餐购买
+
+`superun-ai product list` 返回个人固定档位、CNY 金额及报价命令。执行对应的 `order create --item-id <id> --sku-id <id>` 获取本次报价；核对账户、权益和金额后，再执行回执中的 `confirmCommand`。确认命令绑定本次 purchaseId、同一档位、币种和应付金额（分）。创建成功立即返回订单号和可在浏览器中打开的官方收银台地址，使用下单账号登录后可扫码。遇到网络异常，保留同一确认命令核对原单。
+
+`order status <orderNo>` 单次查单。`order wait <orderNo> --timeout 300` 独立等待，成功后按回执中的 `balanceCommand` 查询付款账户的最新余额。超时可继续等同一单。固定档位每单一份；个人与团队目录按账户区分。团队目录使用 `product list --workspace-id <id>`。与 Glow 购买 Tab 相同，当前账号须在目标团队具有管理权限；报价和确认命令均携带原团队 ID，下单前重新查询权限。国际站与未支持站点的购买命令会在登录和业务请求前退出。
+
+## 查询当前账号和团队
+
+`superun-ai auth whoami` 返回当前用户资料、个人算力余额、本人担任主账号或管理员的团队及其余额。`superun-ai auth contacts` 只读取绑定邮箱和脱敏手机号。部分信息读取失败时返回 `PARTIAL` 并保留成功项。单查在返回余额前复核团队角色，总览在全部余额读取后统一复核一次。角色复核失败时不返回团队金额，任一账户查询收到 HTTP 401 时整条命令提示重新登录。所有 `balanceStr` 均为最终算力值，例如 `"2019.78"` 代表 2019.78 算力，直接展示。`superun-ai workspace list` 返回字符串团队 ID、名称和角色。
 
 ## PAT 登录
 

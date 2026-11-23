@@ -14,6 +14,7 @@ export type HttpRequest = {
   write?: boolean;
   native?: boolean;
   retryRead?: boolean;
+  jsonReviver?: (key: string, value: unknown, context?: { source?: string }) => unknown;
 };
 
 export class HttpClient {
@@ -88,7 +89,9 @@ export class HttpClient {
       );
     let body: unknown;
     try {
-      body = await response.json();
+      body = request.jsonReviver
+        ? JSON.parse(await response.text(), request.jsonReviver)
+        : await response.json();
     } catch {
       throw new CliError(request.write ? 'OUTCOME_UNKNOWN' : 'PROTOCOL_ERROR', '接口未返回有效 JSON');
     }
