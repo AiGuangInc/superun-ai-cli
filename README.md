@@ -412,7 +412,7 @@ superun-ai auth logout
 
 `auth login` 会先在线验证已有 PAT，有效时直接复用；未配置凭据，或默认主站的本地 PAT 明确失效时，打开系统默认浏览器，完成 superun 登录后领取 PAT 并保存。登录失败或取消会保留旧凭据。业务命令缺少 PAT 时也会进入同一浏览器流程，包括 Agent 的非 TTY Shell，登录后继续原命令。业务入口已有 PAT 时不额外探测；服务端明确拒绝会返回恢复命令，执行 `auth login` 后先核对原请求结果与项目阶段，再决定是否继续，不能自动重发结果不确定的写请求。
 
-CLI 自动读取宿主注入的环境标识，目前支持 WorkBuddy、Codex、Claude Code、Gemini CLI、Qwen Code、Cursor 和 QoderWork 桌面端。无法识别或标识冲突时统一使用 `superun-ai-cli`；豆包工作、Qoder CLI 和千问办公暂未启用识别规则。开关标识必须为 `1`，WorkBuddy 还需同时具备产品标识和 CodeBuddy 调用上下文；QoderWork 需同时满足 `QODER_PRODUCT_ID=qoder` 和 `QODER_SESSION_TYPE=app`，渠道值为 `qoder`。
+CLI 自动读取宿主注入的环境标识，目前支持 WorkBuddy、Codex、Claude Code、Gemini CLI、Qwen Code、Cursor、QoderWork 桌面端、豆包工作和飞书 Aily 豆包工作伙伴。无法识别或标识冲突时统一使用 `superun-ai-cli`；豆包工作本地、云电脑和飞书 Aily 豆包工作伙伴统一使用渠道值 `doubao`。Qoder CLI 和千问办公暂未启用识别规则。开关标识必须为 `1`，WorkBuddy 还需同时具备产品标识和 CodeBuddy 调用上下文；QoderWork 需同时满足 `QODER_PRODUCT_ID=qoder` 和 `QODER_SESSION_TYPE=app`，渠道值为 `qoder`。
 
 新建 PAT 的默认 `name` 和业务请求的 `request-channel` 共用识别结果，无需修改专家团或 Skill。全局 `--name` 只覆盖新建 PAT 的名称，不改变请求渠道：
 

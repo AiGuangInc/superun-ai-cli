@@ -20,6 +20,10 @@ export function detectRequestChannel(env: NodeJS.ProcessEnv): string {
     (env.QODER_PRODUCT_ID === 'qoder-cn' && env.QODERCN_SESSION_TYPE === 'app')
   )
     channels.push('qoder');
+  // 豆包工作本地、云电脑和飞书 Aily 工作伙伴共用注册渠道。
+  const isDoubaoWork = env.DOUBAO_OFFICE_AGENT_NAME === 'doubao_moa';
+  const isAily = env.LARKSUITE_CLI_AGENT_NAME === 'aily_agent';
+  if (isDoubaoWork || isAily) channels.push('doubao');
   // 未识别或多个宿主信号冲突时统一兜底，不猜测嵌套调用的归属。
   return channels.length === 1 ? channels[0]! : DEFAULT_REQUEST_CHANNEL;
 }
