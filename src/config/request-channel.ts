@@ -2,6 +2,9 @@
 const DEFAULT_REQUEST_CHANNEL = 'superun-ai-cli';
 
 export function detectRequestChannel(env: NodeJS.ProcessEnv): string {
+  // Qoder 产品标识优先于其他宿主信号，所有会话类型统一归入 qoder。
+  if (env.QODER_PRODUCT_ID === 'qoder' || env.QODER_PRODUCT_ID === 'qoder-cn') return 'qoder';
+
   const channels: string[] = [];
   // CodeBuddy 上下文需结合 WorkBuddy 产品标识，避免混淆两个产品。
   if (
@@ -14,12 +17,6 @@ export function detectRequestChannel(env: NodeJS.ProcessEnv): string {
   if (env.GEMINI_CLI === '1') channels.push('gemini-cli');
   if (env.QWEN_CODE === '1') channels.push('qwen-code');
   if (env.CURSOR_AGENT === '1') channels.push('cursor');
-  // Qoder 普通版与国内版使用各自的桌面会话标识，统一归入 qoder 渠道。
-  if (
-    (env.QODER_PRODUCT_ID === 'qoder' && env.QODER_SESSION_TYPE === 'app') ||
-    (env.QODER_PRODUCT_ID === 'qoder-cn' && env.QODERCN_SESSION_TYPE === 'app')
-  )
-    channels.push('qoder');
   // 豆包工作本地、云电脑和飞书 Aily 工作伙伴共用注册渠道。
   const isDoubaoWork = env.DOUBAO_OFFICE_AGENT_NAME === 'doubao_moa';
   const isAily = env.LARKSUITE_CLI_AGENT_NAME === 'aily_agent';
